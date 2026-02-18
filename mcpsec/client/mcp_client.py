@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shlex
+import shutil
 import sys
 from contextlib import AsyncExitStack
 from typing import Any
@@ -39,15 +40,24 @@ class MCPSecClient:
             if sys.platform == "win32":
                 # Windows: handle .cmd extensions and backslash paths
                 parts = shlex.split(command, posix=False)
-                command = parts[0]
+                executable = parts[0]
                 # Auto-fix common Windows command names
-                if command.lower() in ("npx", "node", "npm"):
-                    command = command + ".cmd"
+                if executable.lower() in ("npx", "node", "npm") and not executable.lower().endswith(".cmd"):
+                    executable = executable + ".cmd"
+                
+                # Resolve full path if possible
+                resolved = shutil.which(executable)
+                if resolved:
+                    executable = resolved
+                
+                command = executable
                 args = parts[1:] if len(parts) > 1 else []
             else:
                 parts = shlex.split(command)
                 command = parts[0]
                 args = parts[1:] if len(parts) > 1 else []
+
+        console.print(f"  [dim]Debug: Executing {command} with args {args}[/dim]")
 
         server_params = StdioServerParameters(
             command=command,
