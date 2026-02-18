@@ -76,7 +76,7 @@ mcpsec list-scanners
 
 ```
 ┌─────────┐     MCP Protocol      ┌────────────┐
-│ mcpsec  │ ◄──── JSON-RPC ────► │ Target MCP │
+│ mcpsec  │ ◄──── JSON-RPC ────►  │ Target MCP │
 │ client  │    (stdio or HTTP)    │   Server   │
 └────┬────┘                       └────────────┘
      │
