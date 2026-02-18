@@ -47,8 +47,8 @@ dev = [
 mcpsec = "mcpsec.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/manthan/mcpsec"
-Repository = "https://github.com/manthan/mcpsec"
+Homepage = "https://github.com/manthanghasadiya/mcpsec"
+Repository = "https://github.com/manthanghasadiya/mcpsec"
 
 [tool.ruff]
 target-version = "py311"
