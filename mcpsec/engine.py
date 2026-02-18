@@ -12,6 +12,9 @@ from mcpsec.models import ScanResult, ServerProfile, TransportType
 from mcpsec.scanners.base import BaseScanner
 from mcpsec.scanners.prompt_injection import PromptInjectionScanner
 from mcpsec.scanners.auth_audit import AuthAuditScanner
+from mcpsec.scanners.path_traversal import PathTraversalScanner
+from mcpsec.scanners.command_injection import CommandInjectionScanner
+from mcpsec.scanners.ssrf import SSRFScanner
 from mcpsec.ui import console, print_finding, print_section, print_summary, get_progress
 
 
@@ -20,6 +23,9 @@ from mcpsec.ui import console, print_finding, print_section, print_summary, get_
 ALL_SCANNERS: list[BaseScanner] = [
     PromptInjectionScanner(),
     AuthAuditScanner(),
+    PathTraversalScanner(),
+    CommandInjectionScanner(),
+    SSRFScanner(),
 ]
 
 SCANNER_MAP: dict[str, BaseScanner] = {s.name: s for s in ALL_SCANNERS}

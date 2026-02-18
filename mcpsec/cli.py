@@ -179,8 +179,11 @@ async def _scan_async(
 
     # ── Output ───────────────────────────────────────────────────────────
     if output_path:
-        Path(output_path).write_text(result.to_json())
-        console.print(f"  [success]✔ Report saved to {output_path}[/success]")
+        from mcpsec.reporters.json_report import generate_json_report
+        if generate_json_report(result, output_path):
+            console.print(f"  [success]✔ Report saved to {output_path}[/success]")
+        else:
+            console.print(f"  [danger]✗ Failed to save report to {output_path}[/danger]")
 
     await client.close()
 
