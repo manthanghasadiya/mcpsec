@@ -33,7 +33,7 @@ pip install mcpsec
 Or install from source:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/mcpsec.git
+git clone https://github.com/manthanghasadiya/mcpsec.git
 cd mcpsec
 pip install -e .
 ```
@@ -117,7 +117,7 @@ mcpsec list-scanners
 ## Development
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/mcpsec.git
+git clone https://github.com/manthanghasadiya/mcpsec.git
 cd mcpsec
 pip install -e ".[dev]"
 
