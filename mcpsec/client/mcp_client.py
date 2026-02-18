@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shlex
+import sys
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -35,10 +36,18 @@ class MCPSecClient:
     async def connect_stdio(self, command: str, args: list[str] | None = None, env: dict | None = None) -> ServerProfile:
         """Connect to an MCP server via stdio transport."""
         if not args:
-            # Parse command string into command + args
-            parts = shlex.split(command)
-            command = parts[0]
-            args = parts[1:] if len(parts) > 1 else []
+            if sys.platform == "win32":
+                # Windows: handle .cmd extensions and backslash paths
+                parts = shlex.split(command, posix=False)
+                command = parts[0]
+                # Auto-fix common Windows command names
+                if command.lower() in ("npx", "node", "npm"):
+                    command = command + ".cmd"
+                args = parts[1:] if len(parts) > 1 else []
+            else:
+                parts = shlex.split(command)
+                command = parts[0]
+                args = parts[1:] if len(parts) > 1 else []
 
         server_params = StdioServerParameters(
             command=command,
