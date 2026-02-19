@@ -32,9 +32,11 @@ async def run_audit(
     findings = []
     
     try:
-        # Walk directory
+        # Walk directory or single file
         root = Path(source_path)
-        for file_path in root.rglob("*"):
+        files = [root] if root.is_file() else root.rglob("*")
+        
+        for file_path in files:
             if not file_path.is_file():
                 continue
             
@@ -53,6 +55,13 @@ async def run_audit(
             
             file_findings = []
             taint_findings = []
+
+            # Phase 5: Scan for secrets (ALL file types)
+            try:
+                from mcpsec.scanners.secrets_exposure import scan_secrets
+                file_findings.extend(scan_secrets(file_path))
+            except Exception:
+                pass
 
             # Scan JS/TS
             if ext in JS_EXTENSIONS:

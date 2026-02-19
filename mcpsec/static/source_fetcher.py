@@ -128,9 +128,6 @@ def _validate_local_path(path: str) -> str | None:
     if not p.exists():
         console.print(f"  [danger]Path does not exist: {path}[/danger]")
         return None
-    if not p.is_dir():
-        console.print(f"  [danger]Path is not a directory: {path}[/danger]")
-        return None
     return str(p)
 
 def cleanup_temp(path: str):

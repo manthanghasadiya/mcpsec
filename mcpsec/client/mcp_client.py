@@ -34,6 +34,12 @@ class MCPSecClient:
         self._exit_stack = AsyncExitStack()
         self._profile: ServerProfile | None = None
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
     async def connect_stdio(self, command: str, args: list[str] | None = None, env: dict | None = None) -> ServerProfile:
         """Connect to an MCP server via stdio transport."""
         if not args:

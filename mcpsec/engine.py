@@ -76,6 +76,21 @@ async def run_scan(
                 console.print(f"  [warning]⚠ {error_msg}[/warning]")
 
             progress.advance(task)
+            
+        # Phase 5: Run MCP-specific protocol scanners (fast, no network needed)
+        try:
+            from mcpsec.scanners.description_injection import scan_descriptions
+            from mcpsec.scanners.annotation_integrity import scan_annotations
+            
+            # These are instant, so we just run them
+            result.findings.extend(scan_descriptions(profile.tools))
+            result.findings.extend(scan_annotations(profile.tools))
+            
+            result.scanners_run.append("description-injection")
+            result.scanners_run.append("annotation-integrity")
+            
+        except Exception as e:
+            console.print(f"  [warning]⚠ Protocol scanners failed: {e}[/warning]")
 
     # ── Print findings ────────────────────────────────────────────────────
     if result.findings:

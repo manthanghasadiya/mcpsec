@@ -1,7 +1,7 @@
 """
 mcpsec terminal UI theme — hacker aesthetic.
 """
-
+from mcpsec import __version__
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -34,7 +34,7 @@ console = Console(theme=MCPSEC_THEME)
 
 # ── ASCII Banner ─────────────────────────────────────────────────────────────
 
-BANNER = r"""[cyan]
+BANNER = f"""[cyan]
                                          
   ███╗   ███╗ ██████╗██████╗ ███████╗███████╗ ██████╗
   ████╗ ████║██╔════╝██╔══██╗██╔════╝██╔════╝██╔════╝
@@ -43,11 +43,11 @@ BANNER = r"""[cyan]
   ██║ ╚═╝ ██║╚██████╗██║     ███████║███████╗╚██████╗
   ╚═╝     ╚═╝ ╚═════╝╚═╝     ╚══════╝╚══════╝ ╚═════╝
                                                        
-[/cyan][dim white]  ──── MCP Security Scanner ── v0.1.0 ────[/dim white]
+[/cyan][dim white]  ──── MCP Security Scanner ── v{__version__} ────[/dim white]
 [dim cyan]  Because your AI agents deserve a pentest too.[/dim cyan]
 """
 
-SMALL_BANNER = "[bold cyan]⚡ mcpsec[/bold cyan] [dim]v0.1.0[/dim]"
+SMALL_BANNER = f"[bold cyan]⚡ mcpsec[/bold cyan] [dim]v{__version__}[/dim]"
 
 
 def print_banner(small: bool = False):
