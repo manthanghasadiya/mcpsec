@@ -78,6 +78,10 @@ class Finding(BaseModel):
     remediation: str = ""
     cwe: str = ""
     references: list[str] = Field(default_factory=list)
+    # Taint Analysis Fields
+    taint_source: str = ""
+    taint_sink: str = ""
+    taint_flow: str = ""
 
     def short_str(self) -> str:
         if self.file_path:

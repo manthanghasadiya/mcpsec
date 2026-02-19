@@ -54,6 +54,13 @@ async def run_audit(
             # Scan JS/TS
             if ext in JS_EXTENSIONS:
                 findings.extend(scan_js_file(file_path))
+                # Phase 4: Taint Analysis
+                try:
+                    from mcpsec.static.taint_analyzer import scan_taint
+                    findings.extend(scan_taint(file_path))
+                except Exception as e:
+                    # Don't fail the whole audit if taint analysis crashes
+                    pass
             
             # Scan Python
             elif ext in PY_EXTENSIONS:
@@ -90,7 +97,7 @@ def _is_excluded(path: Path) -> bool:
         return True
         
     # 3. Exclude analyzer definition files (they contain the patterns!)
-    if name in ("patterns.py", "py_analyzer.py"):
+    if name in ("patterns.py", "py_analyzer.py", "taint_analyzer.py"):
         return True
 
     return False
