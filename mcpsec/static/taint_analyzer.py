@@ -55,6 +55,9 @@ class TaintAnalyzer:
             stripped = line.strip()
             if not stripped or stripped.startswith("//") or stripped.startswith("#"):
                 continue
+            # Skip JSDoc/block comment lines: lines starting with * or */ or /**
+            if stripped.startswith("*") or stripped.startswith("/*") or stripped.startswith("*/"):
+                continue
 
             # A. Propagate Taint
             self._propagate_taint(stripped)
@@ -163,9 +166,23 @@ class TaintAnalyzer:
         for sink_func, vuln_type in self.sinks.items():
             if sink_func not in stripped:
                 continue
+
+            # Special case: "exec" can be RegExp.exec() - not dangerous
+            if sink_func == "exec":
+                # If it's variable.exec( pattern - it's RegExp, skip
+                if re.search(r"\w+\.exec\s*\(", stripped):
+                    continue
+                # Also skip: .exec( at start of match means method call
                 
             for var_name, source in self.tainted_vars.items():
                 if var_name in stripped:
+                    # Skip if var is being ASSIGNED FROM the sink (destructuring result)
+                    if re.search(
+                        r"(?:const|let|var)\s*\{[^}]*\b" + re.escape(var_name) + r"\b[^}]*\}\s*=\s*(?:await\s+)?\w*" + re.escape(sink_func),
+                        stripped
+                    ):
+                        continue
+
                     # HEURISTIC: precise check is hard with regex. 
                     # If line contains sink_func AND tainted_var, flag it.
                     
@@ -368,6 +385,9 @@ class CrossFileTaintAnalyzer:
         for line in lines:
             stripped = line.strip()
             if stripped and not stripped.startswith("//") and not stripped.startswith("#"):
+                # Also skip JSDoc lines
+                if stripped.startswith("*") or stripped.startswith("/*") or stripped.startswith("*/"):
+                    continue
                 analyzer._propagate_taint(stripped)
         
         tainted = analyzer.tainted_vars

@@ -102,10 +102,26 @@ async def run_audit(
         if npm or github:
             cleanup_temp(source_path)
 
+    # Filter out known false positives (e.g. RegExp.exec flagged by regex scanner)
+    findings = _filter_false_positives(findings)
+
     # Sort findings by severity
     findings.sort(key=lambda x: _severity_rank(x.severity), reverse=True)
     
     return findings
+
+def _filter_false_positives(findings: List[Finding]) -> List[Finding]:
+    """Filter out known false positives from regex scanner."""
+    import re
+    filtered = []
+    for f in findings:
+        # Regex scanner flags RegExp.exec() as Command Injection
+        if f.title == "Command Injection (Variable Argument)" and f.code_snippet:
+             # Check for variable.exec( - likely RegExp
+             if re.search(r"\w+\.exec\s*\(", f.code_snippet):
+                 continue
+        filtered.append(f)
+    return filtered
 
 def _is_excluded(path: Path) -> bool:
     """Check if file should be excluded from audit (tests, build dirs)."""
