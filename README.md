@@ -146,7 +146,8 @@ The test server (`tests/vuln_test_server.py`) contains 8 intentional vulnerabili
 - [x] JSON report output
 - [ ] SQL injection scanner
 - [ ] Tool description drift detector (rug pull detection)
-- [x] Static source code analysis mode (scan without running the server)
+- [x] **Static source code analysis mode** (Taint Analysis & pattern matching)
+- [x] **Cross-File Taint Analysis** (Detects vulnerabilities spanning multiple files)
 - [ ] AI-powered semantic prompt injection detection
 - [ ] HTML report dashboard
 - [ ] SARIF output for CI/CD integration
