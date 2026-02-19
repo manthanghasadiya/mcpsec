@@ -80,6 +80,20 @@ async def run_audit(
 
             findings.extend(file_findings)
 
+        # Phase 4.2: Cross-file taint analysis
+        try:
+            from mcpsec.static.taint_analyzer import scan_taint_cross_file
+            cross_file_findings = scan_taint_cross_file(root)
+            if cross_file_findings:
+                # Deduplicate against existing findings on same lines
+                existing_lines = {(f.file_path, f.line_number) for f in findings}
+                for cf in cross_file_findings:
+                    if (cf.file_path, cf.line_number) not in existing_lines:
+                        findings.append(cf)
+        except Exception:
+            # Don't crash if cross-file analysis fails
+            pass
+
     except Exception as e:
         console.print(f"  [danger]Error during scan: {e}[/danger]")
     finally:

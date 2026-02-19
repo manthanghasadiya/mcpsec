@@ -242,3 +242,197 @@ def scan_taint(file_path: Path) -> List[Finding]:
     """Entry point for the audit engine."""
     analyzer = TaintAnalyzer()
     return analyzer.scan_file(file_path)
+
+class CrossFileTaintAnalyzer:
+    """Analyzes taint flow across multiple files in a project."""
+    
+    def __init__(self):
+        # Map: function_name -> file where it's defined + parameter names
+        self.exported_functions: Dict[str, dict] = {}
+        # Map: file -> set of tainted variables at call sites
+        self.tainted_calls: List[dict] = []
+        # Map: function_name -> file where dangerous sink exists with param
+        self.dangerous_functions: Dict[str, dict] = {}
+    
+    def analyze_project(self, source_dir: Path) -> List[Finding]:
+        """Run cross-file taint analysis on entire project."""
+        findings = []
+        all_files = []
+        
+        # Collect all JS/TS and Python files (respecting exclusions)
+        for file_path in source_dir.rglob("*"):
+            if not file_path.is_file():
+                continue
+            if any(part.startswith(".") for part in file_path.parts):
+                continue
+            if "node_modules" in file_path.parts or "dist" in file_path.parts:
+                continue
+            ext = file_path.suffix.lower()
+            if ext in {".js", ".ts", ".mjs", ".cjs", ".tsx", ".jsx", ".py"}:
+                all_files.append(file_path)
+        
+        # PASS 1: Catalog all exported functions and their dangerous sinks
+        for file_path in all_files:
+            try:
+                content = file_path.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+            self._catalog_functions(file_path, content)
+        
+        # PASS 2: Find where tainted data flows into cataloged functions
+        for file_path in all_files:
+            try:
+                content = file_path.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+            findings.extend(self._trace_cross_file(file_path, content))
+        
+        return findings
+    
+    def _catalog_functions(self, file_path: Path, content: str):
+        """Find functions that contain dangerous sinks and record their params."""
+        
+        dangerous_sinks = [
+            "exec", "execSync", "execAsync", "execPromise", 
+            "eval", "os.system", "subprocess.run", "subprocess.call",
+            "os.popen", "spawn",
+        ]
+        
+        # JS/TS: Find exported functions / top-level functions
+        # Pattern: export (async) function NAME(PARAMS) { ... }
+        # Pattern: export const NAME = async (PARAMS) => { ... }
+        # Pattern: async function NAME(PARAMS) { ... }
+        
+        func_patterns = [
+            # export async function fetchWithRetry(url: string, ...
+            r"(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)",
+            # export const fetchWithRetry = async (url: string, ...
+            r"(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*(?:=>|:)",
+            # Python: def function_name(param1, param2):
+            r"(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)",
+        ]
+        
+        for pat in func_patterns:
+            for match in re.finditer(pat, content):
+                func_name = match.group(1)
+                params_str = match.group(2)
+                
+                # Extract parameter names (strip types)
+                params = []
+                for p in params_str.split(","):
+                    p = p.strip()
+                    if not p:
+                        continue
+                    # JS: remove type annotations (param: string)
+                    # Python: remove type hints (param: str) and defaults (param=val)
+                    param_name = re.split(r"[:\s=?]", p)[0].strip()
+                    if param_name and param_name != "self":
+                        params.append(param_name)
+                
+                if not params:
+                    continue
+                
+                # Check: does this function body contain a dangerous sink
+                # that uses one of the parameters?
+                # Get function body (rough: from match to next function or EOF)
+                func_start = match.end()
+                # Simple heuristic: grab next 2000 chars as "body"
+                func_body = content[func_start:func_start + 2000]
+                
+                for sink in dangerous_sinks:
+                    if re.search(r"\b" + re.escape(sink) + r"\s*\(", func_body):
+                        # Check if any param flows into a variable that reaches the sink
+                        for param in params:
+                            if param in func_body:
+                                # This function takes a param and has a dangerous sink
+                                self.dangerous_functions[func_name] = {
+                                    "file": str(file_path),
+                                    "params": params,
+                                    "dangerous_param": param,
+                                    "sink": sink,
+                                }
+                                break
+                    if func_name in self.dangerous_functions:
+                        break
+    
+    def _trace_cross_file(self, file_path: Path, content: str) -> List[Finding]:
+        """Find calls to dangerous functions with tainted arguments."""
+        findings = []
+        
+        # First, identify taint sources in THIS file
+        analyzer = TaintAnalyzer()
+        analyzer._identify_sources(content)
+        
+        # Also propagate through the file to catch derived tainted vars
+        lines = content.splitlines()
+        for line in lines:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("//") and not stripped.startswith("#"):
+                analyzer._propagate_taint(stripped)
+        
+        tainted = analyzer.tainted_vars
+        
+        if not tainted:
+            return findings
+        
+        # Now check: does this file call any dangerous function with tainted data?
+        for i, line in enumerate(lines):
+            line_no = i + 1
+            stripped = line.strip()
+            
+            for func_name, info in self.dangerous_functions.items():
+                # Skip if the dangerous function is in THIS same file
+                # (intra-file analyzer already handles that)
+                if info["file"] == str(file_path):
+                    continue
+                
+                # Check if this line calls the dangerous function
+                if re.search(r"\b" + re.escape(func_name) + r"\s*\(", stripped):
+                    # Check if any tainted variable is passed as argument
+                    for var_name, source in tainted.items():
+                        if re.search(r"\b" + re.escape(var_name) + r"\b", stripped):
+                            # CROSS-FILE TAINT FLOW DETECTED
+                            sink_file = Path(info["file"]).name
+                            
+                            flow = (
+                                f"{source} → {func_name}({var_name}) → "
+                                f"{info['sink']}() in {sink_file}"
+                            )
+                            
+                            findings.append(Finding(
+                                severity=Severity.CRITICAL,
+                                scanner="mcp-taint-analyzer-xfile",
+                                title=f"Cross-File Tainted Data Flow: {info['sink']}()",
+                                description=(
+                                    f"Tool parameter '{var_name}' is passed to "
+                                    f"function '{func_name}()' which contains "
+                                    f"dangerous sink '{info['sink']}()' in "
+                                    f"{sink_file}."
+                                ),
+                                detail=(
+                                    f"Source: {source} (in {file_path.name})\n"
+                                    f"Sink: {info['sink']}() (in {sink_file})\n"
+                                    f"Via: {func_name}() call"
+                                ),
+                                evidence=stripped[:200],
+                                file_path=str(file_path),
+                                line_number=line_no,
+                                code_snippet=stripped[:200],
+                                remediation=(
+                                    f"Sanitize '{var_name}' before passing to "
+                                    f"'{func_name}()'. In {sink_file}, use "
+                                    f"execFile() instead of {info['sink']}() "
+                                    f"or validate input."
+                                ),
+                                taint_source=source.split(" → ")[0],
+                                taint_sink=f"{info['sink']}() in {sink_file}",
+                                taint_flow=flow,
+                                confidence="high",
+                            ))
+        
+        return findings
+
+def scan_taint_cross_file(source_dir: Path) -> List[Finding]:
+    """Run cross-file taint analysis on entire project directory."""
+    analyzer = CrossFileTaintAnalyzer()
+    return analyzer.analyze_project(source_dir)

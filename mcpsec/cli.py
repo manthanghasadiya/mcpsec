@@ -372,6 +372,8 @@ def _print_finding_detail(f):
     console.print(f"            {f.description}")
     if f.remediation:
         console.print(f"            [dim]Remediation: {f.remediation}[/dim]")
+    if f.taint_flow:
+        console.print(f"            [cyan]Flow: {f.taint_flow}[/cyan]")
     console.print()
 
 # ─── ENTRY POINT ─────────────────────────────────────────────────────────────
