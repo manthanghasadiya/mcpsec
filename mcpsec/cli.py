@@ -418,7 +418,9 @@ def _print_finding_detail(f):
 @app.command()
 def fuzz(
     stdio: str = typer.Option(..., "--stdio", "-s", help="MCP server command"),
-    timeout: float = typer.Option(2.0, "--timeout", "-t", help="Response timeout in seconds"),
+    timeout: float = typer.Option(2.0, "--timeout", "-t", help="Per-test response timeout in seconds"),
+    startup_timeout: float = typer.Option(15.0, "--startup-timeout", help="Server startup/initialization timeout in seconds"),
+    framing: str = typer.Option("auto", "--framing", "-f", help="Message framing: 'auto', 'jsonl' (Python), or 'clrf' (Node)"),
     generators: str = typer.Option(None, "--generators", "-g", help="Comma-separated generator names"),
     output: str = typer.Option(None, "--output", "-o", help="Save results to JSON"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Print raw responses for debugging"),
@@ -436,7 +438,7 @@ def fuzz(
     
     gen_list = [g.strip() for g in generators.split(",")] if generators else None
     
-    engine = FuzzEngine(stdio, timeout, debug)
+    engine = FuzzEngine(stdio, timeout, startup_timeout, framing, debug)
     summary = engine.run(gen_list)
     
     # Print results

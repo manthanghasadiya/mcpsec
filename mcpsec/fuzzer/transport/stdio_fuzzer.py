@@ -36,7 +36,9 @@ class StdioFuzzer:
         self.crash_count = 0
         self.timeout_count = 0
         self.interesting_count = 0
+        self.interesting_count = 0
         self.stderr_lines: list[str] = []
+        self.framing = "clrf" # Default to content-length framing
 
     def start_server(self):
         """Spawn the MCP server subprocess."""
@@ -202,6 +204,36 @@ class StdioFuzzer:
     
     def _read_response(self) -> bytes | None:
         """Read a complete MCP response with timeout."""
+        if self.framing == "jsonl":
+            return self._read_jsonl_response()
+        else:
+            return self._read_clrf_response()
+            
+    def _read_jsonl_response(self) -> bytes | None:
+        """Read a single JSON line."""
+        # Use thread with timeout
+        import threading
+        result = [None]
+        
+        def _reader():
+            try:
+                if self.process and self.process.stdout:
+                    line = self.process.stdout.readline()
+                    if line:
+                        result[0] = line.strip()
+            except: pass
+        
+        t = threading.Thread(target=_reader, daemon=True)
+        t.start()
+        t.join(timeout=self.timeout)
+        
+        if t.is_alive():
+            raise TimeoutError()
+            
+        return result[0]
+
+    def _read_clrf_response(self) -> bytes | None:
+        """Read Content-Length framed response."""
         # Use a thread to read because select/poll doesn't work on Windows pipes
         import threading
         
@@ -232,26 +264,20 @@ class StdioFuzzer:
                 # Split at the first \r\n\r\n
                 parts = data.split(b"\r\n\r\n", 1)
                 header_part = parts[0]
-                # The rest is the body start (if we over-read? read(1) implies we didn't over-read much)
-                # But wait, we read byte by byte, so we stopped exactly at the 4th byte of \r\n\r\n
-                # So data ends with \r\n\r\n. parts[1] should be empty bytes.
                 
                 # Parse Content-Length from the header part
-                # We scan lines from the end, or just search for the pattern
                 header_str = header_part.decode("utf-8", errors="replace")
                 
                 length = 0
-                # Split by \n to handle mixed line endings in noise
                 lines = header_str.splitlines()
                 for line in reversed(lines):
                     line = line.strip()
                     if line.lower().startswith("content-length:"):
-                        length = int(line.split(":", 1)[1].strip())
-                        break
-                
-                if length == 0:
-                    # Maybe didn't find it? Or it's 0.
-                    pass
+                        try:
+                            length = int(line.split(":", 1)[1].strip())
+                            break
+                        except ValueError:
+                            pass
                 
                 # Read body (N bytes)
                 body = b""
@@ -285,9 +311,27 @@ class StdioFuzzer:
         Convenience: send a properly framed MCP message.
         Encodes as JSON, adds Content-Length header.
         """
+        return self.send_mcp_message_with_timeout(message, self.timeout)
+
+    def send_mcp_message_with_timeout(self, message: dict, timeout: float) -> FuzzResult:
+        """Send a properly framed MCP message with a specific timeout."""
         json_bytes = json.dumps(message).encode("utf-8")
-        framed = f"Content-Length: {len(json_bytes)}\r\n\r\n".encode() + json_bytes
-        return self.send_raw(framed)
+        
+        if self.framing == "jsonl":
+            # Python SDK: just newline-delimited JSON
+            payload = json_bytes + b"\n"
+        else:
+            # Node SDK: Content-Length framing (default)
+            payload = f"Content-Length: {len(json_bytes)}\r\n\r\n".encode() + json_bytes
+        
+        # We can implement this by temporarily swapping self.timeout or by passing timeout to send_raw
+        # Use a temporary swap for now since send_raw relies on self._read_response which uses self.timeout
+        old_timeout = self.timeout
+        self.timeout = timeout
+        try:
+            return self.send_raw(payload)
+        finally:
+            self.timeout = old_timeout
     
     def send_malformed(self, raw_bytes: bytes, generator_name: str = "") -> FuzzResult:
         """Send raw malformed bytes (no framing)."""
