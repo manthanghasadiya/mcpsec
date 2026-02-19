@@ -300,6 +300,80 @@ def list_scanners():
     console.print()
 
 
+# ─── AUDIT COMMAND ───────────────────────────────────────────────────────────
+
+@app.command()
+def audit(
+    npm: Optional[str] = typer.Option(None, "--npm", help="NPM package to audit"),
+    github: Optional[str] = typer.Option(None, "--github", help="GitHub repository URL to audit"),
+    path: Optional[str] = typer.Option(None, "--path", help="Local directory path to audit"),
+):
+    """
+    🔬 Audit source code for vulnerabilities (static analysis).
+    """
+    if not any([npm, github, path]):
+        console.print("[danger]Error: Specify --npm, --github, or --path[/danger]")
+        raise typer.Exit(1)
+    
+    if sum([bool(npm), bool(github), bool(path)]) > 1:
+        console.print("[danger]Error: Specify only one source (npm, github, or path)[/danger]")
+        raise typer.Exit(1)
+
+    _run_async(_audit_async(npm, github, path))
+
+async def _audit_async(npm: str | None, github: str | None, path: str | None):
+    from mcpsec.static.audit_engine import run_audit
+    from mcpsec.models import Finding
+    
+    print_banner(small=True)
+    print_section("Static Audit", "🔬")
+    
+    findings = await run_audit(npm, github, path)
+    
+    if not findings:
+        console.print("\n  [success]✔ No vulnerabilities found.[/success]")
+        return
+
+    console.print(f"\n  [danger]Found {len(findings)} issues:[/danger]\n")
+    
+    # Identify critical/high findings
+    critical_count = sum(1 for f in findings if f.severity == "critical")
+    high_count = sum(1 for f in findings if f.severity == "high")
+
+    # Display findings
+    for f in findings:
+        _print_finding_detail(f)
+        
+    if critical_count > 0 or high_count > 0:
+        raise typer.Exit(1)
+
+def _print_finding_detail(f):
+    """Print detailed finding for audit."""
+    color = "red" if f.severity in ("critical", "high") else "yellow"
+    if f.severity == "info": color = "blue"
+    
+    console.print(f"  [{color} bold]{f.severity.upper():<8}[/{color} bold]  {f.title}")
+    if f.file_path:
+        # Show relative path if possible
+        try:
+             # Just show the name or partial path for cleanliness
+             # p = Path(f.file_path).name 
+             # But complete path is better for triage
+             p = f.file_path
+        except:
+             p = f.file_path
+        console.print(f"            [dim]file={p}  line={f.line_number}[/dim]")
+    
+    if f.code_snippet:
+        # Indent code snippet
+        snippet = "\n".join(f"            {line}" for line in f.code_snippet.splitlines())
+        console.print(f"[dim]{snippet}[/dim]")
+        
+    console.print(f"            {f.description}")
+    if f.remediation:
+        console.print(f"            [dim]Remediation: {f.remediation}[/dim]")
+    console.print()
+
 # ─── ENTRY POINT ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

@@ -72,11 +72,16 @@ class Finding(BaseModel):
     description: str = ""
     detail: str = ""
     evidence: str = ""
+    file_path: str = ""
+    line_number: int = 0
+    code_snippet: str = ""
     remediation: str = ""
     cwe: str = ""
     references: list[str] = Field(default_factory=list)
 
     def short_str(self) -> str:
+        if self.file_path:
+            return f"[{self.severity.value.upper()}] {self.title} (file={self.file_path}:{self.line_number})"
         return f"[{self.severity.value.upper()}] {self.title} (tool={self.tool_name})"
 
 

@@ -56,6 +56,15 @@ mcpsec scan --stdio "python my_server.py" --output report.json
 # Run specific scanners only
 mcpsec scan --stdio "python my_server.py" --scanners prompt-injection,path-traversal
 
+# Static Audit (Source Code Analysis)
+mcpsec audit --path .
+
+# Scan NPM package (downloads and scans)
+mcpsec audit --npm @modelcontextprotocol/server-filesystem
+
+# Scan GitHub repository
+mcpsec audit --github modelcontextprotocol/servers
+
 # List available scanners
 mcpsec list-scanners
 ```
@@ -137,7 +146,7 @@ The test server (`tests/vuln_test_server.py`) contains 8 intentional vulnerabili
 - [x] JSON report output
 - [ ] SQL injection scanner
 - [ ] Tool description drift detector (rug pull detection)
-- [ ] Static source code analysis mode (scan without running the server)
+- [x] Static source code analysis mode (scan without running the server)
 - [ ] AI-powered semantic prompt injection detection
 - [ ] HTML report dashboard
 - [ ] SARIF output for CI/CD integration

@@ -100,7 +100,8 @@ class CommandInjectionScanner(BaseScanner):
                                 evidence=evidence,
                                 remediation=(
                                     "Avoid passing user input directly to shell commands. "
-                                    "Use APIs that support argument arrays instead of string interpolation (e.g., subprocess.run(['ls', path]) instead of shell=True). "
+                                    "Use APIs that support argument arrays instead of string interpolation "
+                                    "(e.g., subprocess.run(['ls', path]) instead of shell=False). "
                                     "Strictly validate and sanitize all input against an allowlist."
                                 ),
                                 cwe="CWE-78",
