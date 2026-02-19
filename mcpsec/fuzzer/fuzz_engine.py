@@ -186,7 +186,7 @@ class FuzzEngine:
             "params": {
                 "protocolVersion": "2024-11-05",  # Updated for latest spec
                 "capabilities": {},
-                "clientInfo": {"name": "mcpsec-fuzzer", "version": "0.2.0"}
+                "clientInfo": {"name": "mcpsec-fuzzer", "version": "0.3.0"}
             }
         }
 
