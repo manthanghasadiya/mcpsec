@@ -47,7 +47,7 @@ BANNER = f"""[cyan]
 [dim cyan]  Because your AI agents deserve a pentest too.[/dim cyan]
 """
 
-SMALL_BANNER = f"[bold cyan]⚡ mcpsec[/bold cyan] [dim]v{__version__}[/dim]"
+SMALL_BANNER = f"[bold cyan]* mcpsec[/bold cyan] [dim]v{__version__}[/dim]"
 
 
 def print_banner(small: bool = False):
@@ -55,7 +55,12 @@ def print_banner(small: bool = False):
     if small:
         console.print(SMALL_BANNER)
     else:
-        console.print(BANNER)
+        # Check for Unicode support
+        try:
+            console.print(BANNER)
+        except UnicodeEncodeError:
+            # Fallback for legacy Windows consoles
+            console.print(f"--- mcpsec v{__version__} ---")
 
 
 def print_target_info(target_type: str, target: str, transport: str = "stdio"):
@@ -66,12 +71,22 @@ def print_target_info(target_type: str, target: str, transport: str = "stdio"):
     table.add_row("TARGET", target)
     table.add_row("TRANSPORT", transport)
     table.add_row("TYPE", target_type)
-    console.print(Panel(
-        table,
-        title="[bold cyan]◉ Target[/bold cyan]",
-        border_style="cyan",
-        padding=(1, 2),
-    ))
+    
+    title = "◉ Target"
+    try:
+        console.print(Panel(
+            table,
+            title=f"[bold cyan]{title}[/bold cyan]",
+            border_style="cyan",
+            padding=(1, 2),
+        ))
+    except UnicodeEncodeError:
+         console.print(Panel(
+            table,
+            title="[bold cyan]Target[/bold cyan]",
+            border_style="cyan",
+            padding=(1, 2),
+        ))
 
 
 def print_tool_info(name: str, description: str, params: dict):
@@ -80,7 +95,9 @@ def print_tool_info(name: str, description: str, params: dict):
         f"[param]{k}[/param]:[muted]{v}[/muted]"
         for k, v in params.items()
     ) if params else "[muted]none[/muted]"
-    console.print(f"  [tool_name]⚙ {name}[/tool_name]  ({param_str})")
+    
+    icon = "o" # Safe fallback
+    console.print(f"  [tool_name]{icon} {name}[/tool_name]  ({param_str})")
     if description:
         short = description[:120] + "..." if len(description) > 120 else description
         console.print(f"    [muted]{short}[/muted]")
@@ -90,8 +107,9 @@ def print_finding(severity: str, scanner: str, tool_name: str, title: str, detai
     """Print a vulnerability finding."""
     sev_style = f"vuln.{severity.lower()}"
     sev_label = severity.upper().ljust(8)
-    icon = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "info": "⚪"}.get(
-        severity.lower(), "⚪"
+    # Use ASCII icons for better compatibility
+    icon = {"critical": "[!]", "high": "[!]", "medium": "[!]", "low": "[?]", "info": "[i]"}.get(
+        severity.lower(), "[i]"
     )
     console.print(
         f"  {icon} [{sev_style}]{sev_label}[/{sev_style}] "
@@ -104,10 +122,13 @@ def print_finding(severity: str, scanner: str, tool_name: str, title: str, detai
     console.print()
 
 
-def print_section(title: str, icon: str = "─"):
+def print_section(title: str, icon: str = "-"):
     """Print a section divider."""
     console.print()
-    console.rule(f"[bold cyan] {icon} {title} [/bold cyan]", style="dim cyan")
+    try:
+        console.rule(f"[bold cyan] {icon} {title} [/bold cyan]", style="dim cyan")
+    except UnicodeEncodeError:
+        console.print(f"--- {title} ---")
     console.print()
 
 
@@ -137,14 +158,17 @@ def print_summary(total: int, critical: int, high: int, medium: int, low: int, i
     table.add_section()
     table.add_row("[bold white]TOTAL[/bold white]", f"[bold white]{total}[/bold white]")
 
-    console.print(table)
+    try:
+        console.print(table)
+    except UnicodeEncodeError:
+        console.print(f"Summary: {total} issues ({critical} critical, {high} high)")
 
     if critical > 0 or high > 0:
-        console.print("\n  [danger]⚠  Critical/High findings require immediate attention.[/danger]")
+        console.print("\n  [danger]!  Critical/High findings require immediate attention.[/danger]")
     elif total == 0:
-        console.print("\n  [success]✔  No vulnerabilities found. Nice.[/success]")
+        console.print("\n  [success]*  No vulnerabilities found. Nice.[/success]")
     else:
-        console.print("\n  [warning]⚡ Review findings and remediate as needed.[/warning]")
+        console.print("\n  [warning]! Review findings and remediate as needed.[/warning]")
     console.print()
 
 

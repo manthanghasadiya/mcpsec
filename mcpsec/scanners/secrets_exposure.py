@@ -31,8 +31,57 @@ SECRET_PATTERNS = [
      "Private Key in Source", Severity.CRITICAL),
 ]
 
+SKIP_DIRS = {"docs", "doc", "examples", "example", "test", "tests", 
+             "__tests__", "fixtures", "node_modules", ".git", "dist", 
+             "build", "vendor"}
+
+SKIP_EXTENSIONS = {".md", ".mdx", ".rst", ".txt", ".html", ".css",
+                   ".svg", ".png", ".jpg", ".gif", ".lock", ".map"}
+
+DUMMY_PATTERNS = [
+    r"example",
+    r"test",
+    r"dummy", 
+    r"sample",
+    r"placeholder",
+    r"your[-_]?(api[-_]?key|token|secret)",
+    r"xxx+",
+    r"abc123",
+    r"changeme",
+    r"TODO",
+    r"REPLACE",
+    r"<[A-Z_]+>",  # <YOUR_API_KEY> style placeholders
+]
+
+def should_skip_file(file_path: Path) -> bool:
+    """Skip non-source files for secrets scanning."""
+    # Skip by directory
+    parts = set(file_path.parts)
+    if parts & SKIP_DIRS:
+        return True
+    
+    # Skip by extension  
+    if file_path.suffix.lower() in SKIP_EXTENSIONS:
+        return True
+    
+    # Skip README, CHANGELOG, LICENSE etc
+    name_upper = file_path.name.upper()
+    if any(name_upper.startswith(x) for x in 
+           ["README", "CHANGELOG", "LICENSE", "CONTRIBUTING", "HISTORY"]):
+        return True
+    
+    return False
+
+def is_dummy_secret(line: str) -> bool:
+    """Check if the 'secret' is actually an example/placeholder."""
+    line_lower = line.lower()
+    return any(re.search(p, line_lower) for p in DUMMY_PATTERNS)
+
 def scan_secrets(file_path: Path) -> list:
     """Scan a source file for exposed secrets."""
+    if should_skip_file(file_path):
+        return []
+        
     findings = []
     try:
         content = file_path.read_text(encoding="utf-8", errors="ignore")
@@ -45,6 +94,9 @@ def scan_secrets(file_path: Path) -> list:
         stripped = line.strip()
         # Skip comments
         if stripped.startswith("//") or stripped.startswith("#") or stripped.startswith("*"):
+            continue
+            
+        if is_dummy_secret(stripped):
             continue
             
         for pattern, label, severity in SECRET_PATTERNS:

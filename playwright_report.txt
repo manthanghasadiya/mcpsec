@@ -1,0 +1,22 @@
+* mcpsec v0.3.0
+
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  ≡ƒö¼ Static Audit  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  Cloning GitHub repo: https://github.com/executeautomation/mcp-playwright
+  Source code available at: 
+C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_enyf5a9y
+  Scanning files...
+
+  Found 1 issues:
+
+  CRITICAL  Tainted Data Flow: Command Injection
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_enyf5a9y\src\to
+olHandler.ts  line=168
+            const installProcess = spawn('npx', ['playwright', 'install', 
+browserType], {
+            User input from 'browserType' flows into dangerous sink 'spawn' 
+without sanitization.
+            Remediation: Validate and sanitize input before using it in 
+dangerous functions.
+            Flow: tool parameter 'browserType' ΓåÆ spawn()
+

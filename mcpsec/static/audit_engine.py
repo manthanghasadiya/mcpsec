@@ -81,10 +81,25 @@ async def run_audit(
                 except Exception:
                     pass
 
-            # Deduplicate: Taint findings take precedence over regex findings on same line
+            # Deduplicate findings on same line
             if taint_findings:
+                # 1. Deduplicate multiple taint findings on same line for same source
+                seen_taint = set()
+                dedup_taint = []
+                for f in taint_findings:
+                    # Keep only the first finding for a given (line, source)
+                    key = (f.line_number, f.taint_source)
+                    if key not in seen_taint:
+                        dedup_taint.append(f)
+                        seen_taint.add(key)
+                taint_findings = dedup_taint
+
+                # 2. Taint findings take precedence over regex findings, but keep secrets
                 taint_lines = {f.line_number for f in taint_findings}
-                file_findings = [f for f in file_findings if f.line_number not in taint_lines]
+                file_findings = [
+                    f for f in file_findings 
+                    if f.line_number not in taint_lines or f.scanner == "secrets-exposure"
+                ]
                 file_findings.extend(taint_findings)
 
             findings.extend(file_findings)
@@ -111,7 +126,7 @@ async def run_audit(
         if npm or github:
             cleanup_temp(source_path)
 
-    # Filter out known false positives (e.g. RegExp.exec flagged by regex scanner)
+    # Filter out known false positives
     findings = _filter_false_positives(findings)
 
     # Sort findings by severity
@@ -120,17 +135,36 @@ async def run_audit(
     return findings
 
 def _filter_false_positives(findings: List[Finding]) -> List[Finding]:
-    """Filter out known false positives from regex scanner."""
+    """Filter out known false positives."""
     import re
     filtered = []
     for f in findings:
-        # Regex scanner flags RegExp.exec() as Command Injection
-        if f.title == "Command Injection (Variable Argument)" and f.code_snippet:
-             # Check for variable.exec( - likely RegExp
-             if re.search(r"\w+\.exec\s*\(", f.code_snippet):
+        code = f.code_snippet or ""
+        
+        # 1. Generic assignment target check (for both regex and taint scanners)
+        # Scan title or description for the variable name
+        var_match = re.search(r"'(.*?)'", f.description)
+        if var_match:
+            var_name = var_match.group(1)
+            if _is_assignment_target(var_name, code):
+                continue
+
+        # 2. RegExp.exec() false positive for regex scanner
+        if f.title == "Command Injection (Variable Argument)":
+             if re.search(r"\w+\.exec\s*\(", code):
                  continue
+                 
         filtered.append(f)
     return filtered
+
+def _is_assignment_target(var_name: str, line: str) -> bool:
+    """Check if variable is being assigned FROM the sink (not flowing INTO it)."""
+    import re
+    patterns = [
+        rf"(?:const|let|var)\s+{re.escape(var_name)}\s*=",
+        rf"{re.escape(var_name)}\s*=\s*(?:await\s+)?(?:spawn|exec|execAsync|execSync|subprocess|os\.system|os\.popen)",
+    ]
+    return any(re.search(p, line) for p in patterns)
 
 def _is_excluded(path: Path) -> bool:
     """Check if file should be excluded from audit (tests, build dirs)."""

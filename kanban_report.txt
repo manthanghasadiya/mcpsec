@@ -1,0 +1,350 @@
+* mcpsec v0.3.0
+
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  ≡ƒö¼ Static Audit  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  Cloning GitHub repo: 
+https://github.com/Sunwood-ai-labs/github-kanban-mcp-server
+  Source code available at: 
+C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw
+  Scanning files...
+
+  Found 25 issues:
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\comment-handlers.ts  line=21
+                  try {
+                    const command = args.state === 'closed' ? 'close' : 
+'reopen';
+                    await execAsync(
+                      `gh issue ${command} ${args.issue_number} --repo 
+${args.repo}`
+                    );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\comment-handlers.ts  line=37
+                const fullPath = await writeToTempFile(args.body, tempFile);
+                try {
+                  await execAsync(
+                    `gh issue comment ${args.issue_number} --repo ${args.repo} 
+--body-file "${fullPath}"`
+                  );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\comment-handlers.ts  line=50
+                // µ¢┤µû░σ╛îπü«issueµâàσá▒πéÆσÅûσ╛ùπüùπüªΦ┐öσì┤
+                try {
+                  const { stdout: issueData } = await execAsync(
+                    `gh issue view ${args.issue_number} --repo ${args.repo} 
+--json number,title,state,url`
+                  );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\comment-handlers.ts  line=21
+                  try {
+                    const command = args.state === 'closed' ? 'close' : 
+'reopen';
+                    await execAsync(
+                      `gh issue ${command} ${args.issue_number} --repo 
+${args.repo}`
+                    );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\comment-handlers.ts  line=37
+                const fullPath = await writeToTempFile(args.body, tempFile);
+                try {
+                  await execAsync(
+                    `gh issue comment ${args.issue_number} --repo ${args.repo} 
+--body-file "${fullPath}"`
+                  );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\comment-handlers.ts  line=50
+                // µ¢┤µû░σ╛îπü«issueµâàσá▒πéÆσÅûσ╛ùπüùπüªΦ┐öσì┤
+                try {
+                  const { stdout: issueData } = await execAsync(
+                    `gh issue view ${args.issue_number} --repo ${args.repo} 
+--json number,title,state,url`
+                  );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=29
+              const labelsFlag = args.labels?.length ? `--label 
+${args.labels.join(',')}` : '';
+              
+              const { stdout } = await execAsync(
+                `gh issue list --repo ${owner}/${repo} ${stateFlag} 
+${labelsFlag} --json number,title,state,labels,assignees,createdAt,updatedAt`
+              );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=72
+                const titleWithEmoji = args.emoji ? `${args.emoji} 
+${args.title}` : args.title;
+            
+                const { stdout } = await execAsync(
+                  `gh issue create --repo ${owner}/${repo} --title 
+"${titleWithEmoji}" ${bodyFlag} ${labelsFlag} ${assigneesFlag}`
+                );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=81
+            
+                // Σ╜£µêÉπüùπüƒissueπü«Φ⌐│τ┤░µâàσá▒πéÆσÅûσ╛ù
+                const { stdout: issueData } = await execAsync(
+                  `gh issue view ${issueNumber} --repo ${owner}/${repo} --json 
+number,title,url`
+                );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=117
+                if (args.state) {
+                  const command = args.state === 'closed' ? 'close' : 'reopen';
+                  await execAsync(
+                    `gh issue ${command} ${args.issue_number} --repo 
+${owner}/${repo}`
+                  );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=129
+                  }
+            
+                  await execAsync(
+                    `gh issue edit ${args.issue_number} --repo ${owner}/${repo}
+${titleFlag} ${bodyFlag} ${labelsFlag} ${assigneesFlag}`
+                  );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=134
+                }
+            
+                const { stdout: issueData } = await execAsync(
+                  `gh issue view ${args.issue_number} --repo ${owner}/${repo} 
+--json number,title,state,url`
+                );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=29
+              const labelsFlag = args.labels?.length ? `--label 
+${args.labels.join(',')}` : '';
+              
+              const { stdout } = await execAsync(
+                `gh issue list --repo ${owner}/${repo} ${stateFlag} 
+${labelsFlag} --json number,title,state,labels,assignees,createdAt,updatedAt`
+              );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=72
+                const titleWithEmoji = args.emoji ? `${args.emoji} 
+${args.title}` : args.title;
+            
+                const { stdout } = await execAsync(
+                  `gh issue create --repo ${owner}/${repo} --title 
+"${titleWithEmoji}" ${bodyFlag} ${labelsFlag} ${assigneesFlag}`
+                );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=81
+            
+                // Σ╜£µêÉπüùπüƒissueπü«Φ⌐│τ┤░µâàσá▒πéÆσÅûσ╛ù
+                const { stdout: issueData } = await execAsync(
+                  `gh issue view ${issueNumber} --repo ${owner}/${repo} --json 
+number,title,url`
+                );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=117
+                if (args.state) {
+                  const command = args.state === 'closed' ? 'close' : 'reopen';
+                  await execAsync(
+                    `gh issue ${command} ${args.issue_number} --repo 
+${owner}/${repo}`
+                  );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=129
+                  }
+            
+                  await execAsync(
+                    `gh issue edit ${args.issue_number} --repo ${owner}/${repo}
+${titleFlag} ${bodyFlag} ${labelsFlag} ${assigneesFlag}`
+                  );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=134
+                }
+            
+                const { stdout: issueData } = await execAsync(
+                  `gh issue view ${args.issue_number} --repo ${owner}/${repo} 
+--json number,title,state,url`
+                );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\label-handlers.ts  line=23
+              try {
+                const { owner, repo } = await getRepoInfoFromGitConfig(path);
+                const { stdout } = await execAsync(
+                  `gh label list --repo ${owner}/${repo} --json name --jq 
+'.[].name'`
+                );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Template Literal)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\label-handlers.ts  line=40
+              const { owner, repo } = await getRepoInfoFromGitConfig(path);
+              try {
+                await execAsync(
+                  `gh label create "${name}" --repo ${owner}/${repo} --color 
+"${color}" --force`
+                );
+            Command execution with template literal interpolation used in 
+`exec` or `spawn`.
+            Remediation: Use `execFile` or `spawn` with an array of arguments 
+instead of a shell command string. Do not interpolate variables into shell 
+commands.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\label-handlers.ts  line=23
+              try {
+                const { owner, repo } = await getRepoInfoFromGitConfig(path);
+                const { stdout } = await execAsync(
+                  `gh label list --repo ${owner}/${repo} --json name --jq 
+'.[].name'`
+                );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  CRITICAL  Command Injection (Async Exec)
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\label-handlers.ts  line=40
+              const { owner, repo } = await getRepoInfoFromGitConfig(path);
+              try {
+                await execAsync(
+                  `gh label create "${name}" --repo ${owner}/${repo} --color 
+"${color}" --force`
+                );
+            Async command execution with backticks/template literal.
+            Remediation: Use `execFile` or `spawn` with an array of arguments.
+
+  HIGH      Dangerous Exec Wrapper Setup
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ut
+ils\exec.ts  line=6
+            import fs from 'fs/promises';
+            
+            export const execAsync = promisify(exec);
+            
+            /**
+            `promisify(exec)` creates an async exec wrapper. Check usages for 
+unsanitized input.
+            Remediation: Verify all calls to this wrapper use sanitized inputs.
+
+  CRITICAL  Cross-File Tainted Data Flow: execAsync()
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=55
+            const existingLabels = await getExistingLabels(args.path);
+            Tool parameter 'path' is passed to function 'getExistingLabels()' 
+which contains dangerous sink 'execAsync()' in label-handlers.ts.
+            Remediation: Sanitize 'path' before passing to 
+'getExistingLabels()'. In label-handlers.ts, use execFile() instead of 
+execAsync() or validate input.
+            Flow: tool parameter 'path' ΓåÆ getExistingLabels(path) ΓåÆ execAsync()
+in label-handlers.ts
+
+  CRITICAL  Cross-File Tainted Data Flow: execAsync()
+            file=C:\Users\Manthan\AppData\Local\Temp\mcpsec_git_19zzgilw\src\ha
+ndlers\issue-handlers.ts  line=58
+            await createLabel(args.path, label);
+            Tool parameter 'path' is passed to function 'createLabel()' which 
+contains dangerous sink 'execAsync()' in label-handlers.ts.
+            Remediation: Sanitize 'path' before passing to 'createLabel()'. In 
+label-handlers.ts, use execFile() instead of execAsync() or validate input.
+            Flow: tool parameter 'path' ΓåÆ createLabel(path) ΓåÆ execAsync() in 
+label-handlers.ts
+

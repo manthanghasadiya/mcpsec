@@ -192,6 +192,10 @@ class TaintAnalyzer:
                         # Validate var usage: using word boundary
                         if re.search(r"\b" + re.escape(var_name) + r"\b", stripped):
                             
+                            # Phase 9: Skip if variable is an assignment target
+                            if self.is_assignment_target(var_name, stripped):
+                                continue
+
                             if not self._is_sanitized(stripped):
                                 confidence = "high"
                                 # Downgrade confidence heuristics
@@ -231,6 +235,14 @@ class TaintAnalyzer:
             return True
             
         return any(s in line for s in sanitizers)
+
+    def is_assignment_target(self, var_name: str, line: str) -> bool:
+        """Check if variable is being assigned FROM the sink (not flowing INTO it)."""
+        patterns = [
+            rf"(?:const|let|var)\s+{re.escape(var_name)}\s*=",
+            rf"{re.escape(var_name)}\s*=\s*(?:await\s+)?(?:spawn|exec|execAsync|execSync|subprocess|os\.system|os\.popen)",
+        ]
+        return any(re.search(p, line) for p in patterns)
 
     def _add_finding(self, file_path: Path, line: int, vuln_type: str, sink: str, var: str, flow: str, code: str, confidence: str):
         code = code[:200] # Truncate long lines
@@ -307,70 +319,70 @@ class CrossFileTaintAnalyzer:
         return findings
     
     def _catalog_functions(self, file_path: Path, content: str):
-        """Find functions that contain dangerous sinks and record their params."""
+        """Pass 1: Find exported functions that contain dangerous sinks."""
+        lines = content.splitlines()
+        functions = []  # list of (name, start_line, params)
+        
+        # First, find all function definitions with their line numbers
+        for i, line in enumerate(lines):
+            # JS/TS and Python function patterns
+            match = re.search(
+                r"(?:export\s+)?(?:async\s+)?(?:function\s+|def\s+)(\w+)\s*\(([^)]*)\)",
+                line
+            )
+            if match:
+                functions.append({
+                    "name": match.group(1),
+                    "start": i,
+                    "params": match.group(2),
+                    "file": str(file_path),
+                })
+        
+        # Determine end line for each function (next function start or EOF)
+        for idx, func in enumerate(functions):
+            if idx + 1 < len(functions):
+                func["end"] = functions[idx + 1]["start"]
+            else:
+                func["end"] = len(lines)
         
         dangerous_sinks = [
             "exec", "execSync", "execAsync", "execPromise", 
             "eval", "os.system", "subprocess.run", "subprocess.call",
             "os.popen", "spawn",
         ]
-        
-        # JS/TS: Find exported functions / top-level functions
-        # Pattern: export (async) function NAME(PARAMS) { ... }
-        # Pattern: export const NAME = async (PARAMS) => { ... }
-        # Pattern: async function NAME(PARAMS) { ... }
-        
-        func_patterns = [
-            # export async function fetchWithRetry(url: string, ...
-            r"(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)",
-            # export const fetchWithRetry = async (url: string, ...
-            r"(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*(?:=>|:)",
-            # Python: def function_name(param1, param2):
-            r"(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)",
-        ]
-        
-        for pat in func_patterns:
-            for match in re.finditer(pat, content):
-                func_name = match.group(1)
-                params_str = match.group(2)
-                
-                # Extract parameter names (strip types)
-                params = []
-                for p in params_str.split(","):
-                    p = p.strip()
-                    if not p:
-                        continue
-                    # JS: remove type annotations (param: string)
-                    # Python: remove type hints (param: str) and defaults (param=val)
-                    param_name = re.split(r"[:\s=?]", p)[0].strip()
-                    if param_name and param_name != "self":
-                        params.append(param_name)
-                
-                if not params:
-                    continue
-                
-                # Check: does this function body contain a dangerous sink
-                # that uses one of the parameters?
-                # Get function body (rough: from match to next function or EOF)
-                func_start = match.end()
-                # Simple heuristic: grab next 2000 chars as "body"
-                func_body = content[func_start:func_start + 2000]
-                
-                for sink in dangerous_sinks:
-                    if re.search(r"\b" + re.escape(sink) + r"\s*\(", func_body):
-                        # Check if any param flows into a variable that reaches the sink
-                        for param in params:
-                            if param in func_body:
-                                # This function takes a param and has a dangerous sink
-                                self.dangerous_functions[func_name] = {
-                                    "file": str(file_path),
-                                    "params": params,
-                                    "dangerous_param": param,
-                                    "sink": sink,
-                                }
-                                break
-                    if func_name in self.dangerous_functions:
+
+        # Now check each function body for dangerous sinks
+        for func in functions:
+            body = "\n".join(lines[func["start"]:func["end"]])
+            for sink in dangerous_sinks:
+                if re.search(r"\b" + re.escape(sink) + r"\s*\(", body):
+                    # This function ACTUALLY calls the sink
+                    # Find which param reaches the sink
+                    for param in self._parse_params(func["params"]):
+                        if param.lower() in body.lower():
+                            self.dangerous_functions[func["name"]] = {
+                                "file": func["file"],
+                                "sink": sink,
+                                "param": param,
+                                "line": func["start"] + 1,
+                            }
+                            break
+                    if func["name"] in self.dangerous_functions:
                         break
+
+    def _parse_params(self, params_str: str) -> List[str]:
+        """Extract parameter names from params string."""
+        params = []
+        for p in params_str.split(","):
+            p = p.strip()
+            if not p:
+                continue
+            # JS: remove type annotations (param: string)
+            # Python: remove type hints (param: str) and defaults (param=val)
+            param_name = re.split(r"[:\s=?]", p)[0].strip()
+            if param_name and param_name != "self":
+                params.append(param_name)
+        return params
     
     def _trace_cross_file(self, file_path: Path, content: str) -> List[Finding]:
         """Find calls to dangerous functions with tainted arguments."""
