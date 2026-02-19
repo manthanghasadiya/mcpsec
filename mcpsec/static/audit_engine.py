@@ -51,20 +51,34 @@ async def run_audit(
 
             ext = file_path.suffix.lower()
             
+            file_findings = []
+            taint_findings = []
+
             # Scan JS/TS
             if ext in JS_EXTENSIONS:
-                findings.extend(scan_js_file(file_path))
-                # Phase 4: Taint Analysis
+                file_findings.extend(scan_js_file(file_path))
                 try:
                     from mcpsec.static.taint_analyzer import scan_taint
-                    findings.extend(scan_taint(file_path))
-                except Exception as e:
-                    # Don't fail the whole audit if taint analysis crashes
+                    taint_findings.extend(scan_taint(file_path))
+                except Exception:
                     pass
             
             # Scan Python
             elif ext in PY_EXTENSIONS:
-                findings.extend(scan_py_file(file_path))
+                file_findings.extend(scan_py_file(file_path))
+                try:
+                    from mcpsec.static.taint_analyzer import scan_taint
+                    taint_findings.extend(scan_taint(file_path))
+                except Exception:
+                    pass
+
+            # Deduplicate: Taint findings take precedence over regex findings on same line
+            if taint_findings:
+                taint_lines = {f.line_number for f in taint_findings}
+                file_findings = [f for f in file_findings if f.line_number not in taint_lines]
+                file_findings.extend(taint_findings)
+
+            findings.extend(file_findings)
 
     except Exception as e:
         console.print(f"  [danger]Error during scan: {e}[/danger]")

@@ -82,6 +82,7 @@ class Finding(BaseModel):
     taint_source: str = ""
     taint_sink: str = ""
     taint_flow: str = ""
+    confidence: str = "high"
 
     def short_str(self) -> str:
         if self.file_path:
