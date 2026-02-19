@@ -130,4 +130,5 @@ async def get_version() -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    # Force stdio transport for compatibility with fuzzer on all platforms
+    mcp.run(transport='stdio')

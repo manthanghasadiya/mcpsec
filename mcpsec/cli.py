@@ -413,6 +413,55 @@ def _print_finding_detail(f):
         console.print(f"            [cyan]Flow: {f.taint_flow}[/cyan]")
     console.print()
 
+# ─── FUZZ COMMAND ────────────────────────────────────────────────────────────
+
+@app.command()
+def fuzz(
+    stdio: str = typer.Option(..., "--stdio", "-s", help="MCP server command"),
+    timeout: float = typer.Option(2.0, "--timeout", "-t", help="Response timeout in seconds"),
+    generators: str = typer.Option(None, "--generators", "-g", help="Comma-separated generator names"),
+    output: str = typer.Option(None, "--output", "-o", help="Save results to JSON"),
+    debug: bool = typer.Option(False, "--debug", "-d", help="Print raw responses for debugging"),
+):
+    """
+    🔥 Fuzz an MCP server with malformed protocol messages.
+    
+    Generates thousands of adversarial JSON-RPC messages to find crashes,
+    hangs, and parsing bugs at the protocol level.
+    """
+    from mcpsec.fuzzer.fuzz_engine import FuzzEngine
+    
+    print_banner()
+    print_target_info("MCP Server (Fuzz)", stdio[:80], "stdio")
+    
+    gen_list = [g.strip() for g in generators.split(",")] if generators else None
+    
+    engine = FuzzEngine(stdio, timeout, debug)
+    summary = engine.run(gen_list)
+    
+    # Print results
+    print_section("Fuzz Results", "🔥")
+    console.print(f"  [accent]Total tests:[/accent] {summary['total_tests']}")
+    console.print(f"  [danger]Crashes:[/danger] {summary['crashes']}" if summary['crashes'] else f"  [success]Crashes:[/success] 0")
+    console.print(f"  [warning]Timeouts:[/warning] {summary['timeouts']}" if summary['timeouts'] else f"  [success]Timeouts:[/success] 0")
+    console.print(f"  [accent]Interesting:[/accent] {summary['interesting']}" if summary['interesting'] else f"  [muted]Interesting:[/muted] 0")
+    
+    if summary['interesting_cases']:
+        console.print()
+        for ic in summary['interesting_cases']:
+            icon = "🔴" if ic['crashed'] else "🟡" if ic['timeout'] else "🟠"
+            status = "CRASH" if ic['crashed'] else "TIMEOUT" if ic['timeout'] else "ANOMALY"
+            console.print(f"  {icon} [{status}] {ic['case_name']} ({ic['generator']})")
+            console.print(f"       {ic['description']}")
+            if ic['error']:
+                console.print(f"       [muted]{ic['error'][:100]}[/muted]")
+            console.print()
+    
+    if output:
+        import json
+        Path(output).write_text(json.dumps(summary, indent=2))
+        console.print(f"  [success]✔ Results saved to {output}[/success]")
+
 # ─── ENTRY POINT ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

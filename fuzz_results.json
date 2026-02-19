@@ -1,0 +1,26 @@
+{
+  "total_tests": 69,
+  "crashes": 0,
+  "timeouts": 4,
+  "interesting": 2,
+  "interesting_cases": [
+    {
+      "case_name": "garbage_bytes",
+      "generator": "malformed_json",
+      "description": "Non-JSON garbage data",
+      "crashed": false,
+      "timeout": true,
+      "elapsed_ms": 500.0,
+      "error": ""
+    },
+    {
+      "case_name": "empty_body",
+      "generator": "malformed_json",
+      "description": "Empty message body",
+      "crashed": false,
+      "timeout": true,
+      "elapsed_ms": 500.0,
+      "error": ""
+    }
+  ]
+}
