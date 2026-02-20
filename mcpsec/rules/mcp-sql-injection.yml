@@ -101,3 +101,21 @@ rules:
       cwe: CWE-89
       category: sql-injection
       confidence: MEDIUM
+
+  # ─── ORM RAW QUERY DETECTION ─────────────────────────────────────────
+  - id: general-sql-raw-query
+    patterns:
+      - pattern-either:
+          - pattern: "$DB.raw(`...${$VAR}...`)"
+          - pattern: "$KNEX.raw(`...${$VAR}...`)"
+          - pattern: "$PRISMA.$queryRaw(`...${$VAR}...`)"
+          - pattern: "$SEQ.query(`...${$VAR}...`)"
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Raw SQL query with template literal interpolation in ORM call.
+      Use parameterized queries or tagged template literals instead.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH

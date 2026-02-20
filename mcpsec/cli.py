@@ -466,6 +466,61 @@ def list_scanners():
     console.print()
 
 
+# ─── SETUP COMMAND ───────────────────────────────────────────────────────────
+
+@app.command()
+def setup():
+    """
+    🧠 Configure AI provider for mcpsec (API key, model).
+    
+    Saves config to ~/.mcpsec/config.json for all future scans.
+    """
+    from mcpsec.config import PROVIDERS, save_config, load_config
+    
+    print_banner(small=True)
+    console.print()
+    console.print("  [bold cyan]🧠 mcpsec AI Configuration[/bold cyan]")
+    console.print()
+    console.print("  Select AI provider:")
+    console.print()
+    
+    provider_list = list(PROVIDERS.items())
+    for i, (pid, info) in enumerate(provider_list, 1):
+        console.print(f"  [bold][{i}][/bold] {info['name']:<12} ({info['description']})")
+    console.print(f"  [bold][{len(provider_list) + 1}][/bold] Skip        (no AI features)")
+    console.print()
+    
+    try:
+        choice = typer.prompt("  > Enter choice", type=int)
+    except (KeyboardInterrupt, typer.Abort):
+        console.print("\n  [muted]Setup cancelled.[/muted]")
+        raise typer.Exit(0)
+    
+    if choice < 1 or choice > len(provider_list) + 1:
+        console.print("  [danger]Invalid choice.[/danger]")
+        raise typer.Exit(1)
+    
+    if choice == len(provider_list) + 1:
+        console.print("  [muted]Skipped. AI features disabled.[/muted]")
+        raise typer.Exit(0)
+    
+    provider_id, provider_info = provider_list[choice - 1]
+    
+    api_key = ""
+    if provider_info.get("env_var"):  # Ollama doesn't need a key
+        console.print(f"\n  Get your key at: [link]{provider_info['key_url']}[/link]")
+        try:
+            api_key = typer.prompt("  > Enter API key", hide_input=True)
+        except (KeyboardInterrupt, typer.Abort):
+            console.print("\n  [muted]Setup cancelled.[/muted]")
+            raise typer.Exit(0)
+    
+    save_config(provider_id, api_key)
+    console.print(f"\n  [success]✔ Saved to ~/.mcpsec/config.json[/success]")
+    console.print(f"  AI features enabled for all future scans ({provider_info['name']}, {provider_info['model']}).")
+    console.print()
+
+
 # ─── AUDIT COMMAND ───────────────────────────────────────────────────────────
 
 @app.command()
@@ -588,12 +643,18 @@ def fuzz(
     generators: str = typer.Option(None, "--generators", "-g", help="Comma-separated generator names"),
     output: str = typer.Option(None, "--output", "-o", help="Save results to JSON"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Print raw responses for debugging"),
+    intensity: str = typer.Option("medium", "--intensity", "-i", help="Fuzzing intensity: low, medium, high"),
 ):
     """
     🔥 Fuzz an MCP server with malformed protocol messages.
     
-    Generates thousands of adversarial JSON-RPC messages to find crashes,
+    Generates hundreds of adversarial JSON-RPC messages to find crashes,
     hangs, and parsing bugs at the protocol level.
+    
+    Intensity levels:
+      low    — core protocol tests (~65 cases)
+      medium — + session attacks & encoding tests (~115 cases)
+      high   — + injection payloads & resource exhaustion (~200+ cases)
     """
     from mcpsec.fuzzer.fuzz_engine import FuzzEngine
     
@@ -602,7 +663,7 @@ def fuzz(
     
     gen_list = [g.strip() for g in generators.split(",")] if generators else None
     
-    engine = FuzzEngine(stdio, timeout, startup_timeout, framing, debug)
+    engine = FuzzEngine(stdio, timeout, startup_timeout, framing, debug, intensity=intensity)
     summary = engine.run(gen_list)
     
     # Print results

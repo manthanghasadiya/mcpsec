@@ -140,3 +140,33 @@ rules:
       cwe: CWE-78
       category: command-injection
       confidence: MEDIUM
+
+  - id: general-promisify-exec-setup
+    pattern: |
+      const $EXEC = promisify(exec)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      promisify(exec) creates an async exec wrapper. Check all usages 
+      of $EXEC for command injection vulnerabilities.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: LOW
+
+  - id: general-child-process-exec-call
+    patterns:
+      - pattern-either:
+          - pattern: "$CP.exec($CMD, ...)"
+          - pattern: "$CP.execSync($CMD, ...)"
+      - pattern-not: "$CP.exec(\"...\", ...)"
+      - pattern-not: "$CP.execSync(\"...\", ...)"
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      child_process exec/execSync called with a variable command argument.
+      Verify the argument is not derived from user input.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM

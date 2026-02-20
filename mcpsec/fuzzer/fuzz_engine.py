@@ -15,18 +15,23 @@ from mcpsec.fuzzer.generators import (
     type_confusion,
     boundary_testing,
     unicode_attacks,
+    session_attacks,
+    injection_payloads,
+    resource_exhaustion,
+    encoding_attacks,
 )
 from mcpsec.ui import console, print_section, get_progress
 
 class FuzzEngine:
     """Orchestrates the fuzzing campaign."""
     
-    def __init__(self, command: str, timeout: float = 2.0, startup_timeout: float = 15.0, framing: str = "auto", debug: bool = False):
+    def __init__(self, command: str, timeout: float = 2.0, startup_timeout: float = 15.0, framing: str = "auto", debug: bool = False, intensity: str = "medium"):
         self.command = command
         self.timeout = timeout
         self.startup_timeout = startup_timeout
         self.framing = framing
         self.debug = debug
+        self.intensity = intensity
         self.results: List[FuzzResult] = []
         self.interesting: List[tuple[FuzzCase, FuzzResult]] = []
     
@@ -149,13 +154,30 @@ class FuzzEngine:
     
     def _collect_cases(self, generators: list[str] | None, framing: str) -> list[FuzzCase]:
         """Collect fuzz cases from all enabled generators."""
-        gen_map = {
+        # Base generators (always included)
+        base_gens = {
             "malformed_json": malformed_json.generate,
             "protocol_violation": protocol_violation.generate,
             "type_confusion": type_confusion.generate,
             "boundary": boundary_testing.generate,
             "unicode": unicode_attacks.generate,
         }
+        # Medium adds session + encoding
+        medium_gens = {
+            "session_attacks": session_attacks.generate,
+            "encoding_attacks": encoding_attacks.generate,
+        }
+        # High adds injection + exhaustion
+        high_gens = {
+            "injection_payloads": injection_payloads.generate,
+            "resource_exhaustion": resource_exhaustion.generate,
+        }
+        
+        gen_map = dict(base_gens)
+        if self.intensity in ("medium", "high"):
+            gen_map.update(medium_gens)
+        if self.intensity == "high":
+            gen_map.update(high_gens)
         
         cases = []
         active = generators or list(gen_map.keys())
@@ -163,10 +185,8 @@ class FuzzEngine:
         for name in active:
             if name in gen_map:
                 try:
-                    # Try passing framing argument
                     cases.extend(gen_map[name](framing=framing))
                 except TypeError:
-                    # Fallback for generators not yet updated (though I will update them all)
                     cases.extend(gen_map[name]())
         
         return cases

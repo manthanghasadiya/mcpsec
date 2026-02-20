@@ -58,3 +58,18 @@ rules:
       cwe: CWE-22
       category: path-traversal
       confidence: MEDIUM
+
+  - id: general-path-join-user-input
+    patterns:
+      - pattern: "path.join(..., $VAR, ...)"
+      - pattern-not-inside: |
+          if ($VAR.includes("..")) { ... }
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      path.join with variable input. Note that path.join does NOT prevent 
+      path traversal. Verify the resolved path stays within the intended directory.
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: LOW

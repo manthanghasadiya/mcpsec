@@ -6,37 +6,35 @@ from typing import List
 from mcpsec.models import Finding, Severity
 from mcpsec.ai.llm_client import LLMClient
 
-VALIDATOR_SYSTEM_PROMPT = """You are a senior penetration tester reviewing automated 
-scanner findings. Your primary goal is to prioritize findings, NOT to dismiss them.
+VALIDATOR_SYSTEM_PROMPT = """You are a security finding validator. You receive findings from a 
+static analysis tool (Semgrep) and must assess each one.
 
-The findings you are reviewing come from Semgrep, which uses AST (Abstract Syntax Tree) 
-analysis. This means they are syntactically correct and represent real code patterns.
+IMPORTANT RULES:
+1. Semgrep findings are AST-based and HIGH CONFIDENCE. They matched 
+   actual code patterns, not string grep. DO NOT dismiss them lightly.
+2. Mark as REAL if:
+   - User input flows to a dangerous function (exec, query, eval)
+   - No sanitization is visible between source and sink
+   - The finding is in application code (not test/example files)
+3. Mark as FALSE_POSITIVE only if you can identify a SPECIFIC reason:
+   - The value is hardcoded (not from user input)
+   - There IS sanitization between source and sink
+   - The code is commented out or unreachable
+   - The file is explicitly a test fixture or documentation
+4. Mark as BY_DESIGN if:
+   - The tool/server is explicitly designed to execute commands
+   - The README says "execute commands" or "shell access"
+5. When in doubt, mark as REAL. False negatives are worse than 
+   false positives in security scanning.
+6. NEVER dismiss a finding just because it "looks like scanner output"
+   or "appears to be automated testing."
 
-INSTRUCTIONS:
-1. TRUST THE SCANNER. Assume the finding is REAL unless you have specific evidence otherwise.
-2. ONLY dismiss a finding as FALSE POSITIVE if:
-   - The code is inside a comment or string literal (and not executable)
-   - The value is hardcoded constant (e.g., exec("ls"))
-   - The code is clearly inside a test file or example script
-   - The input is explicitly sanitized immediately before use (e.g., parseInt(input))
-
-3. DO NOT dismiss findings because:
-   - "It might be safe" (If unclear, mark as LOW RISK, not False Positive)
-   - "It requires user interaction" (That's still a vulnerability)
-   - "It's a CLI tool" (Command injection is still valid in CLI tools)
-
-4. CLASSIFICATION:
-   - REAL: Valid vulnerability.
-   - LOW_RISK: Valid but difficult to exploit or low impact.
-   - FALSE_POSITIVE: Technically impossible to exploit (dead code, hardcoded, etc).
-
-Respond with JSON array:
+For each finding, respond with EXACTLY this JSON format:
 [
   {
     "index": 0,
-    "verdict": "REAL" | "LOW_RISK" | "FALSE_POSITIVE",
-    "reasoning": "Brief explanation",
-    "exploit_scenario": "How to exploit (if REAL)"
+    "verdict": "REAL" | "FALSE_POSITIVE" | "BY_DESIGN",
+    "reason": "one line explanation"
   }
 ]"""
 
@@ -107,41 +105,25 @@ Respond ONLY with JSON array."""
             status = verdict.get("verdict", "REAL").upper()
             
             if status == "FALSE_POSITIVE":
-                # console.print(f"    [dim]  [{i}] {f.title}: Dismissed ({verdict.get('reasoning')})[/dim]")
+                reason = verdict.get("reason", verdict.get("reasoning", ""))
+                console.print(f"    [dim]  [{i}] {f.title}: Dismissed ({reason})[/dim]")
                 continue
                 
             # Update finding with AI details
-            if verdict.get("reasoning"):
-                f.description = f"{f.description}\n\n🤖 AI Assessment ({status}): {verdict['reasoning']}"
+            reason = verdict.get("reason", verdict.get("reasoning", ""))
+            if reason:
+                f.description = f"{f.description}\n\n🤖 AI Assessment ({status}): {reason}"
             
-            if status == "LOW_RISK":
+            if status == "BY_DESIGN":
                 f.severity = Severity.LOW
                 
             validated.append(f)
-            
-        # WARNING: If AI removed EVERYTHING, that's suspicious
-        if len(serious) > 0 and len(validated) == 0:
-            console.print("\n    [bold red]⚠ AI Validator dismissed ALL findings. This might be a mistake.[/bold red]")
-            console.print("    [yellow]Run without --ai to see raw scanner results.[/yellow]\n")
-            
-        return validated + low
-        for i, f in enumerate(serious):
-            verdict = verdicts.get(i, {"verdict": "REAL"})
-            if verdict.get("verdict") == "FALSE_POSITIVE":
-                continue  # Remove false positive
-            # Add AI reasoning to finding description
-            if verdict.get("exploit_scenario"):
-                reason = verdict.get("reasoning", "")
-                console.print(f"    [dim]  [{i}] {serious[i].title}: {verdict.get('verdict')} - {reason[:60]}...[/dim]")
-                f.description = (
-                    f"{f.description}\n"
-                    f"AI Assessment: {reason}\n"
-                    f"Exploit: {verdict.get('exploit_scenario', '')}"
-                )
-            else:
-                console.print(f"    [dim]  [{i}] {serious[i].title}: {verdict.get('verdict')}[/dim]")
-            validated.append(f)
         
+        # SAFEGUARD: If AI removed EVERYTHING, keep all originals
+        if len(serious) > 0 and len(validated) == 0:
+            console.print("\n    [bold red]⚠ AI Validator dismissed ALL findings — keeping originals.[/bold red]")
+            return serious + low
+            
         return validated + low
     
     def _parse_verdicts(self, response: str) -> dict:
