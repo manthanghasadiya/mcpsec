@@ -1,0 +1,142 @@
+rules:
+  - id: mcp-exec-with-user-input
+    message: >
+      MCP tool parameter flows into exec(). This allows arbitrary 
+      command execution via the MCP protocol.
+    severity: ERROR
+    languages: [typescript, javascript]
+    mode: taint
+    pattern-sources:
+      # MCP SDK tool handler parameters
+      - pattern: |
+          server.tool($NAME, $DESC, $SCHEMA, async ($REQ) => { ... })
+      - pattern: |
+          const { $PARAM } = $REQ.params.arguments
+      - pattern: |
+          const $PARAM = $REQ.params.arguments.$PROP
+      - pattern: |
+          const $PARAM = args.$PROP
+      - pattern: |
+          const $PARAM = request.params.arguments.$PROP
+      
+      # Heuristic: Exported handler functions taint their arguments
+      - patterns:
+          - pattern: |
+              export async function $NAME($PARAM) { ... }
+          - focus-metavariable: $PARAM
+    pattern-sinks:
+      - pattern: exec($CMD)
+      - pattern: execSync($CMD)
+      - pattern: execAsync($CMD)
+      - pattern: child_process.exec($CMD)
+      - pattern: child_process.execSync($CMD)
+      - pattern: util.promisify(exec)($CMD)
+    pattern-sanitizers:
+      - pattern: execFile(...)
+      - pattern: parseInt(...)
+      - pattern: encodeURIComponent(...)
+      - pattern: path.basename(...)
+      - pattern: shlex.quote(...)
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: HIGH
+
+  # ─── GENERAL PATTERNS (MEDIUM CONFIDENCE) ─────────────────────────────
+  - id: general-exec-template-literal
+    patterns:
+      - pattern: exec(`...${$VAR}...`)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: Template literal with variable passed to exec().
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  - id: general-execSync-template-literal
+    patterns:
+      - pattern: execSync(`...${$VAR}...`)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: Template literal with variable passed to execSync().
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  - id: general-execAsync-template-literal
+    patterns:
+      - pattern: $EXEC(`...${$VAR}...`)
+      - metavariable-regex:
+          metavariable: $EXEC
+          regex: (execAsync|execPromise|execCommand)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: Template literal with variable passed to async exec function.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  - id: general-exec-variable
+    patterns:
+      - pattern: exec($CMD, ...)
+      - pattern-not: exec("...", ...)
+      - pattern-not: exec('...', ...)
+      - pattern-not: exec(`...`, ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: exec() called with variable argument.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  - id: general-execAsync-variable
+    patterns:
+      - pattern: $EXEC($CMD, ...)
+      - pattern-not: $EXEC("...", ...)
+      - pattern-not: $EXEC('...', ...)
+      - pattern-not: $EXEC(`...`, ...)
+      - metavariable-regex:
+          metavariable: $EXEC
+          regex: (execAsync|execPromise)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: Async exec function called with variable argument.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  - id: mcp-exec-template-literal
+    message: >
+      Template literal with variable interpolation passed to exec().
+      Use execFile() with array arguments instead.
+    severity: ERROR  
+    languages: [typescript, javascript]
+    patterns:
+      - pattern: "exec(`...${$VAR}...`)"
+      - pattern-not: "execFile(...)"
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: HIGH
+
+  - id: mcp-spawn-shell-true
+    message: >
+      spawn() called with shell: true option. This enables shell command 
+      execution and is vulnerable to injection if arguments are not sanitized.
+    severity: WARNING
+    languages: [typescript, javascript]
+    patterns:
+      - pattern-either:
+          - pattern: "spawn(..., { shell: true, ... })"
+          - pattern: "child_process.spawn(..., { shell: true, ... })"
+          - pattern: "cp.spawn(..., { shell: true, ... })"
+          - pattern: "$CP.spawn(..., { shell: true, ... })"
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM

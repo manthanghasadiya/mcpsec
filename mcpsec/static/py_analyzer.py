@@ -1,16 +1,45 @@
 """
-Static analyzer for Python files using AST and regex.
+Static analyzer for Python files using AST and regex (Simplified fallback).
 """
 
 import ast
+import re
 from pathlib import Path
-from typing import List, Any
+from typing import List, Dict, Any
 
 from mcpsec.models import Finding, Severity
-from mcpsec.static.patterns import PY_PATTERNS, COMMON_PATTERNS
 
 # File extensions
 PY_EXTENSIONS = {".py", ".pyw"}
+
+class Pattern:
+    def __init__(self, name, regex, description, severity, remediation, cwe):
+        self.name = name
+        self.regex = re.compile(regex, re.MULTILINE)
+        self.description = description
+        self.severity = severity
+        self.remediation = remediation
+        self.cwe = cwe
+
+# Minimal fallback patterns (mostly covered by Semgrep now)
+FALLBACK_PATTERNS = [
+    Pattern(
+        "Hardcoded API Key",
+        r"(?i)(api_key|access_token|secret_key|private_key)\s*[:=]\s*['\"][a-zA-Z0-9_\-]{20,}['\"]",
+        "Hardcoded API key detected.",
+        Severity.CRITICAL,
+        "Use environment variables.",
+        "CWE-798"
+    ),
+    Pattern(
+        "Unsafe Deserialization",
+        r"pickle\.(?:load|loads)\(",
+        "Unsafe deserialization detected.",
+        Severity.CRITICAL,
+        "Avoid pickle on untrusted data.",
+        "CWE-502"
+    )
+]
 
 class DangerousCallVisitor(ast.NodeVisitor):
     def __init__(self):
@@ -22,37 +51,17 @@ class DangerousCallVisitor(ast.NodeVisitor):
             self.findings.append({
                 "line": node.lineno,
                 "msg": "subprocess call with shell=True",
-                "severity": "critical",
+                "severity": Severity.CRITICAL,
                 "cwe": "CWE-78",
                 "remediation": "Set shell=False and pass args as list."
             })
         
-        # Check for os.system
-        elif self._is_call_to(node, "os", "system"):
-            self.findings.append({
-                "line": node.lineno,
-                "msg": "os.system text execution",
-                "severity": "critical",
-                "cwe": "CWE-78",
-                "remediation": "Use subprocess.run with shell=False."
-            })
-
-        # Check for os.popen
-        elif self._is_call_to(node, "os", "popen"):
-             self.findings.append({
-                "line": node.lineno,
-                "msg": "os.popen text execution",
-                "severity": "critical",
-                "cwe": "CWE-78",
-                "remediation": "Use subprocess.run with shell=False."
-            })
-
         # Check for eval/exec
         elif self._is_builtin(node, "eval") or self._is_builtin(node, "exec"):
              self.findings.append({
                 "line": node.lineno,
                 "msg": "Dynamic code execution (eval/exec)",
-                "severity": "critical",
+                "severity": Severity.CRITICAL,
                 "cwe": "CWE-95",
                 "remediation": "Avoid dynamic execution of code."
             })
@@ -60,31 +69,20 @@ class DangerousCallVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _is_subprocess_shell(self, node: ast.Call) -> bool:
-        # Check if it's subprocess.<something>
         if not isinstance(node.func, ast.Attribute):
             return False
-        
-        # Check if value is a Name node (e.g. subprocess.run)
         if not isinstance(node.func.value, ast.Name):
             return False
 
         if node.func.value.id == 'subprocess':
             method = node.func.attr
             if method in ('run', 'call', 'Popen', 'check_output'):
-                # Check keywords for shell=True
                 for kw in node.keywords:
                     # kw.value must be a Constant (True/False)
                     if kw.arg == 'shell' and isinstance(kw.value, ast.Constant) and kw.value.value is True:
                         return True
         return False
 
-    def _is_call_to(self, node: ast.Call, module: str, func: str) -> bool:
-        if isinstance(node.func, ast.Attribute):
-            if isinstance(node.func.value, ast.Name) and node.func.value.id == module:
-                if node.func.attr == func:
-                    return True
-        return False
-        
     def _is_builtin(self, node: ast.Call, func: str) -> bool:
         if isinstance(node.func, ast.Name) and node.func.id == func:
             return True
@@ -111,12 +109,12 @@ def scan_py_file(file_path: Path) -> List[Finding]:
         visitor.visit(tree)
         
         for f in visitor.findings:
-            line_no = int(f["line"])  # Ensure line_no is int
-            snippet = _get_context_str(lines, line_no - 1)
+            line_no = int(f["line"])
+            snippet = _get_context(lines, line_no - 1)
             findings.append(Finding(
-                severity=Severity(str(f["severity"])), # Ensure string for Enum
+                severity=f["severity"],
                 scanner="static-analysis-py-ast",
-                title=str(f.get("title", f["msg"])),
+                title=str(f.get("msg")),
                 description=str(f["msg"]),
                 detail=f"AST Analysis found dangerous pattern in {file_path.name}:{line_no}",
                 evidence=lines[line_no-1].strip() if 0 <= line_no-1 < len(lines) else "",
@@ -128,62 +126,36 @@ def scan_py_file(file_path: Path) -> List[Finding]:
             ))
 
     except SyntaxError:
-        # Fallback to pure regex if AST parsing fails
         pass
 
-    # 2. Regex Analysis (Fallback & Common Patterns)
-    # Combine common patterns. AST covers specific function calls well, 
-    # but regex catches SQLi in strings, open() calls, etc.
-    
-    # We filter out patterns that AST likely covered to avoid dupes?
-    # Actually, let's run all relevant patterns. Deduplication logic is complex,
-    # but for now we can just rely on regex for things AST visitor didn't explicitly look for 
-    # OR run regex as a backup.
-    
-    # Let's run COMMON_PATTERNS (SQL, Path Traversal) via Regex
-    # And specifically PY_PATTERNS which might catch things AST missed (like weird imports)
-    
-    all_patterns = PY_PATTERNS + COMMON_PATTERNS
-    
-    for pattern in all_patterns:
-        # Optimization: Don't run regex for things clearly caught by AST if found?
-        # No, simpler to run all regexes. Overlap is acceptable for MVP.
-        
+    # 2. Regex Fallback
+    for pattern in FALLBACK_PATTERNS:
         for match in pattern.regex.finditer(content):
             start_index = match.start()
             line_number = content.count("\n", 0, start_index) + 1
             
-            # De-duplicate with AST findings on the same line?
-            # If we already have a finding on this line from AST, maybe skip "Command Injection" types?
-            # But "SQL Injection" wouldn't be in AST findings.
-            
-            # Simple check: if we have an AST finding on this line, only add if it's a different category
-            already_found = any(f.line_number == line_number for f in findings)
-            
-            # If it's a common pattern (SQL, Path) or if AST didn't find anything on this line
-            # We add it.
-            if not already_found or pattern in COMMON_PATTERNS:
-                 matched_text = match.group(0)
-                 snippet = _get_context_str(lines, line_number - 1)
-                 
-                 findings.append(Finding(
-                    severity=Severity(pattern.severity),
-                    scanner="static-analysis-py-regex",
-                    title=pattern.name,
-                    description=pattern.description,
-                    detail=f"Regex matched pattern in {file_path.name}:{line_number}",
-                    evidence=matched_text,
-                    remediation=pattern.remediation,
-                    cwe=pattern.cwe,
-                    file_path=str(file_path),
-                    line_number=line_number,
-                    code_snippet=snippet
-                ))
+            # Simple dedup: if AST found finding on matching line
+            if any(f.line_number == line_number for f in findings):
+                continue
+
+            snippet = _get_context(lines, line_number - 1)
+            findings.append(Finding(
+                severity=pattern.severity,
+                scanner="static-analysis-py-regex",
+                title=pattern.name,
+                description=pattern.description,
+                detail=f"Regex matched pattern in {file_path.name}:{line_number}",
+                evidence=match.group(0),
+                remediation=pattern.remediation,
+                cwe=pattern.cwe,
+                file_path=str(file_path),
+                line_number=line_number,
+                code_snippet=snippet
+            ))
 
     return findings
 
-def _get_context_str(lines: List[str], line_idx: int, context: int = 2) -> str:
-    """Get lines around a specific index as a string."""
+def _get_context(lines: List[str], line_idx: int, context: int = 2) -> str:
     start = max(0, line_idx - context)
     end = min(len(lines), line_idx + context + 1)
     return "\n".join(lines[start:end])

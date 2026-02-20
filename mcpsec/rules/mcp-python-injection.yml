@@ -1,0 +1,72 @@
+rules:
+  - id: mcp-python-shell-true
+    message: >
+      subprocess call with shell=True in MCP tool handler.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - pattern: |
+          @mcp.tool()
+          def $FUNC($PARAM, ...):
+              ...
+      - pattern: |
+          @server.tool()  
+          def $FUNC($PARAM, ...):
+              ...
+    pattern-sinks:
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+      - pattern: os.system(...)
+      - pattern: os.popen(...)
+    pattern-sanitizers:
+      - pattern: shlex.quote(...)
+      - pattern: shlex.split(...)
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: HIGH
+
+  - id: mcp-python-formatting-sqli
+    message: >
+      SQL query built with f-string or format() in MCP tool handler.
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern: $CURSOR.execute(f"...", ...)
+      - pattern: $CURSOR.execute("...".format(...), ...)
+      - pattern: $CURSOR.execute($QUERY + ..., ...)
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH
+
+  # ─── GENERAL PYTHON PATTERNS (MEDIUM CONFIDENCE) ──────────────────────
+  - id: python-shell-true
+    patterns:
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+    languages: [python]
+    severity: WARNING
+    message: >
+      subprocess call with shell=True. This avoids shell injection only if 
+      arguments are not shell-formatted.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  - id: python-os-system-general
+    patterns:
+      - pattern: os.system(...)
+      - pattern: os.popen(...)
+    languages: [python]
+    severity: ERROR
+    message: >
+      Use of os.system/popen is dangerous. Use subprocess module without shell=True.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM

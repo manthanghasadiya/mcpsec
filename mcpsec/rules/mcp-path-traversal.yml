@@ -1,0 +1,60 @@
+rules:
+  - id: mcp-path-traversal-readfile
+    message: >
+      MCP tool parameter used in file system operation without validation.
+      This allows path traversal (reading arbitrary files).
+    severity: ERROR
+    languages: [typescript, javascript]
+    mode: taint
+    pattern-sources:
+      - pattern: |
+          server.tool($NAME, $DESC, $SCHEMA, async ($REQ) => { ... })
+      - pattern: |
+          const { $PARAM } = $REQ.params.arguments
+      - pattern: |
+          const $PARAM = $REQ.params.arguments.$PROP
+      - pattern: |
+          const $PARAM = args.$PROP
+    pattern-sinks:
+      - pattern: fs.readFile($PATH, ...)
+      - pattern: fs.readFileSync($PATH, ...)
+      - pattern: fs.open($PATH, ...)
+      - pattern: fs.readdir($PATH, ...)
+    pattern-sanitizers:
+      - pattern: path.basename(...)
+      - pattern: path.normalize(...)
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: HIGH
+
+  # ─── GENERAL PATTERNS (MEDIUM CONFIDENCE) ─────────────────────────────
+  - id: general-readfile-concat
+    patterns:
+      - pattern: $FS.readFile($PATH + ..., ...)
+      - pattern: $FS.readFileSync($PATH + ..., ...)
+      - pattern: fs.promises.readFile($PATH + ..., ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      File path constructed with string concatenation. 
+      Ensure input is validated or sanitized (e.g., path.basename).
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: MEDIUM
+
+  - id: general-readfile-template
+    patterns:
+      - pattern: $FS.readFile(`...${$VAR}...`, ...)
+      - pattern: $FS.readFileSync(`...${$VAR}...`, ...)
+      - pattern: fs.promises.readFile(`...${$VAR}...`, ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      File path constructed with template literal. 
+      Ensure input is validated or sanitized.
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: MEDIUM

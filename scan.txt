@@ -1,0 +1,109 @@
+* mcpsec v0.3.0
+
+──────────────────────────────  🔬 Static Audit  ──────────────────────────────
+
+  Source code available at: 
+C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban
+  Scanning files with Semgrep...
+
+  Found 11 issues:
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\handlers\comment-handlers.ts  line=21
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\handlers\comment-handlers.ts  line=37
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\handlers\comment-handlers.ts  line=50
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\handlers\issue-handlers.ts  line=29
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\handlers\issue-handlers.ts  line=72
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\handlers\issue-handlers.ts  line=81
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\handlers\issue-handlers.ts  line=117
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\handlers\issue-handlers.ts  line=129
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\handlers\issue-handlers.ts  line=134
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\handlers\label-handlers.ts  line=23
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+
+  CRITICAL  mcp-exec-with-user-input
+            file=C:\Users\Manthan\Documents\Code\Projects\mcpsec\temp_kanban\sr
+c\test_vuln.ts  line=9
+            requires login
+            MCP tool parameter flows into exec(). This allows arbitrary  
+command execution via the MCP protocol.
+
+            Remediation: Fix: command-injection vulnerability
+

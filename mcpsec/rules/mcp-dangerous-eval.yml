@@ -1,0 +1,25 @@
+rules:
+  # ─── DANGEROUS EVAL ───────────────────────────────────────────────────
+  - id: general-eval
+    patterns:
+      - pattern: eval(...)
+    languages: [typescript, javascript, python]
+    severity: ERROR
+    message: >
+      Use of eval() detected. This is dangerous and can lead to code execution.
+    metadata:
+      cwe: CWE-95
+      category: dangerous-eval
+      confidence: HIGH
+
+  - id: general-new-function
+    patterns:
+      - pattern: new Function(...)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Use of new Function() detected. This is similar to eval() and dangerous.
+    metadata:
+      cwe: CWE-95
+      category: dangerous-eval
+      confidence: HIGH

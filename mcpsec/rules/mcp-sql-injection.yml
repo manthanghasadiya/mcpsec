@@ -1,0 +1,103 @@
+rules:
+  # ─── TYPESCRIPT / JAVASCRIPT SQL INJECTION ─────────────────────────────
+  - id: ts-sql-template-literal
+    patterns:
+      - pattern: |
+          $DB.query(`...${$VAR}...`)
+      - pattern-not: |
+          $DB.query(`...${$VAR}...`, ...)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      SQL query built with template literal. Risk of SQL injection.
+      Use parameterized queries instead.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: MEDIUM
+
+  - id: ts-sql-execute-template
+    patterns:
+      - pattern: |
+          $STMT.execute(`...${$VAR}...`)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      SQL execute called with template literal. Risk of SQL injection.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: MEDIUM
+
+  - id: ts-sql-concat
+    patterns:
+      - pattern: $DB.query($Q + ...)
+      - pattern: $DB.execute($Q + ...)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      SQL query built with string concatenation. Risk of SQL injection.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: MEDIUM
+
+  - id: ts-sql-variable-query
+    message: >
+      SQL query variable passed directly to database query function.
+      If this variable contains user input, this is SQL injection.
+    severity: WARNING
+    languages: [typescript, javascript]
+    patterns:
+      - pattern: $CONN.query($SQL, ...)
+      - pattern-not: $CONN.query("...", ...)
+      - pattern-not: $CONN.query('...', ...)
+      - pattern-not: $CONN.query(`...`, ...)
+      - pattern-not: $CONN.query($SQL, $PARAMS)
+    metadata:
+      cwe: CWE-89
+      category: sql-injection  
+      confidence: MEDIUM
+
+  - id: mcp-sql-injection-taint
+    message: >
+      MCP tool parameter flows into SQL query without parameterization.
+    severity: ERROR
+    languages: [typescript, javascript]
+    mode: taint
+    pattern-sources:
+      - pattern: |
+          const { $PARAM } = $REQ.params.arguments
+      - pattern: |
+          const $PARAM = args.$PROP
+      - patterns:
+          - pattern: |
+              export async function $NAME($PARAM) { ... }
+          - focus-metavariable: $PARAM
+    pattern-sinks:
+      - pattern: $CONN.query($SQL)
+      - pattern: $CONN.execute($SQL)
+      - pattern: $DB.raw($SQL)
+    pattern-sanitizers:
+      - pattern: $CONN.query($SQL, $PARAMS)
+      - pattern: $CONN.execute($SQL, $PARAMS)
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH
+
+  # ─── PYTHON SQL INJECTION (GENERAL) ───────────────────────────────────
+  - id: python-sql-fstring
+    patterns:
+      - pattern: $CURSOR.execute(f"...", ...)
+      - pattern: $CURSOR.execute("...".format(...), ...)
+      - pattern: $CURSOR.execute($QUERY + ..., ...)
+    languages: [python]
+    severity: ERROR
+    message: >
+      SQL query built with f-string or string formatting. 
+      Use parameterized queries (e.g., execute("SELECT * FROM table WHERE id=%s", (id,)))
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: MEDIUM

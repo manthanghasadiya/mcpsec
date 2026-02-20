@@ -8,7 +8,8 @@ from typing import List
 
 from mcpsec.models import Finding
 from mcpsec.static.source_fetcher import fetch_source, cleanup_temp
-from mcpsec.static.js_analyzer import scan_js_file, JS_EXTENSIONS
+# from mcpsec.static.js_analyzer import scan_js_file, JS_EXTENSIONS
+JS_EXTENSIONS = {".js", ".ts", ".mjs", ".cjs", ".jsx", ".tsx"}
 from mcpsec.static.py_analyzer import scan_py_file, PY_EXTENSIONS
 from mcpsec.ui import console, print_section
 
@@ -27,12 +28,18 @@ async def run_audit(
         return [], None
     
     console.print(f"  [success]Source code available at: {source_path}[/success]")
-    console.print("  Scanning files...")
+    console.print("  Scanning files with Semgrep...")
     
     findings = []
     
     try:
-        # Walk directory or single file
+        # Step 1: Semgrep analysis (AST-based taint tracking)
+        from mcpsec.static.semgrep_engine import run_semgrep
+        findings.extend(run_semgrep(Path(source_path)))
+        
+        # Step 2: Python AST checks (supplementary)
+        # We keep py_analyzer as it has some specific python pattern matching
+        # that complements Semgrep rules.
         root = Path(source_path)
         files = [root] if root.is_file() else root.rglob("*")
         
@@ -47,76 +54,19 @@ async def run_audit(
                "__pycache__" in file_path.parts:
                 continue
             
-            # Phase 3.1: Exclude tests and build artifacts
             if _is_excluded(file_path):
                 continue
-
-            ext = file_path.suffix.lower()
-            
-            file_findings = []
-            taint_findings = []
-
-            # Phase 5: Scan for secrets (ALL file types)
-            try:
-                from mcpsec.scanners.secrets_exposure import scan_secrets
-                file_findings.extend(scan_secrets(file_path))
-            except Exception:
-                pass
-
-            # Scan JS/TS
-            if ext in JS_EXTENSIONS:
-                file_findings.extend(scan_js_file(file_path))
+                
+            # Scan Python ONLY (Semgrep handles JS/TS fully now)
+            if file_path.suffix.lower() in PY_EXTENSIONS:
                 try:
-                    from mcpsec.static.taint_analyzer import scan_taint
-                    taint_findings.extend(scan_taint(file_path))
-                except Exception:
-                    pass
-            
-            # Scan Python
-            elif ext in PY_EXTENSIONS:
-                file_findings.extend(scan_py_file(file_path))
-                try:
-                    from mcpsec.static.taint_analyzer import scan_taint
-                    taint_findings.extend(scan_taint(file_path))
+                    from mcpsec.static.py_analyzer import scan_py_file
+                    findings.extend(scan_py_file(file_path))
                 except Exception:
                     pass
 
-            # Deduplicate findings on same line
-            if taint_findings:
-                # 1. Deduplicate multiple taint findings on same line for same source
-                seen_taint = set()
-                dedup_taint = []
-                for f in taint_findings:
-                    # Keep only the first finding for a given (line, source)
-                    key = (f.line_number, f.taint_source)
-                    if key not in seen_taint:
-                        dedup_taint.append(f)
-                        seen_taint.add(key)
-                taint_findings = dedup_taint
-
-                # 2. Taint findings take precedence over regex findings, but keep secrets
-                taint_lines = {f.line_number for f in taint_findings}
-                file_findings = [
-                    f for f in file_findings 
-                    if f.line_number not in taint_lines or f.scanner == "secrets-exposure"
-                ]
-                file_findings.extend(taint_findings)
-
-            findings.extend(file_findings)
-
-        # Phase 4.2: Cross-file taint analysis
-        try:
-            from mcpsec.static.taint_analyzer import scan_taint_cross_file
-            cross_file_findings = scan_taint_cross_file(root)
-            if cross_file_findings:
-                # Deduplicate against existing findings on same lines
-                existing_lines = {(f.file_path, f.line_number) for f in findings}
-                for cf in cross_file_findings:
-                    if (cf.file_path, cf.line_number) not in existing_lines:
-                        findings.append(cf)
-        except Exception:
-            # Don't crash if cross-file analysis fails
-            pass
+        # Step 3: Apply "By Design" heuristics
+        findings = _apply_design_heuristics(findings, Path(source_path))
 
     except Exception as e:
         console.print(f"  [danger]Error during scan: {e}[/danger]")
@@ -126,13 +76,85 @@ async def run_audit(
         if npm or github:
             cleanup_temp(source_path)
 
-    # Filter out known false positives
-    findings = _filter_false_positives(findings)
-
     # Sort findings by severity
     findings.sort(key=lambda x: _severity_rank(x.severity), reverse=True)
     
     return findings, source_path
+
+
+def _apply_design_heuristics(findings: List[Finding], source_path: Path) -> List[Finding]:
+    """Detect if project is a 'by design' shell tool and adjust severity."""
+    is_shell_tool = False
+    
+    # Check package.json
+    pkg_json = source_path / "package.json"
+    if pkg_json.exists():
+        try:
+            content = pkg_json.read_text(encoding="utf-8", errors="ignore").lower()
+            if any(kw in content for kw in ["command", "shell", "exec", "terminal", "desktop commander", "run command"]):
+                is_shell_tool = True
+        except Exception:
+            pass
+    
+    # Check README
+    if not is_shell_tool:
+        for readme in ["README.md", "readme.md", "README.rst"]:
+            readme_path = source_path / readme
+            if readme_path.exists():
+                try:
+                    content = readme_path.read_text(encoding="utf-8", errors="ignore").lower()
+                    if any(kw in content for kw in ["execute commands", "run shell", "command execution", "terminal access", "shell access", "run arbitrary"]):
+                        is_shell_tool = True
+                        break
+                except Exception:
+                    pass
+    
+    if is_shell_tool:
+        for f in findings:
+            if "command" in f.title.lower() or "exec" in f.title.lower():
+                from mcpsec.models import Severity
+                # Only downgrade if it's currently generic command injection
+                # Don't downgrade definitive issues if we can distinguish them, 
+                # but for now, widespread exec use in a shell tool is likely intended.
+                f.severity = Severity.INFO
+                f.description += (
+                    "\n\nNote: This project appears to be designed for "
+                    "command execution. This finding may be expected behavior."
+                )
+    
+    return findings
+
+
+def _is_excluded(path: Path) -> bool:
+    """Check if file should be excluded from audit (tests, build dirs)."""
+    name = path.name.lower()
+    parts = [p.lower() for p in path.parts]
+    
+    # 1. Directory Exclusions
+    excluded_dirs = {"tests", "__tests__", "test", "build", "dist", "out", "coverage"}
+    if any(d in parts for d in excluded_dirs):
+        return True
+        
+    # 2. File Pattern Exclusions
+    if name.endswith((".test.ts", ".test.js", ".spec.ts", ".spec.js", ".test.jsx", ".test.tsx")):
+        return True
+    
+    if name.startswith("test_") or name.endswith("_test.py"):
+        return True
+        
+    return False
+
+
+def _severity_rank(severity: str) -> int:
+    ranks = {
+        "critical": 4,
+        "high": 3,
+        "medium": 2,
+        "low": 1,
+        "info": 0
+    }
+    s = str(severity).lower()
+    return ranks.get(s, 0)
 
 def _filter_false_positives(findings: List[Finding]) -> List[Finding]:
     """Filter out known false positives."""

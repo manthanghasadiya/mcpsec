@@ -172,7 +172,10 @@ async def _scan_async(
 
         if not quiet:
             for tool in profile.tools:
-                print_tool_info(tool.name, tool.description, tool.parameters)
+                try:
+                    print_tool_info(tool.name, tool.description, tool.parameters)
+                except Exception as e:
+                    console.print(f"  [warning]⚠ Failed to print tool info for {getattr(tool, 'name', 'unknown')}: {e}[/warning]")
 
         if not profile.tools and not profile.resources:
             console.print("  [muted]No tools or resources found. Nothing to scan.[/muted]")
@@ -190,77 +193,81 @@ async def _scan_async(
             if generator.available:
                 console.print("\n  [cyan]🧠 AI generating custom payloads per tool...[/cyan]")
                 for tool in profile.tools:
-                    console.print(f"  [dim]  🧠 AI thinking about {tool.name}...[/dim]")
-                    tool_info = {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.raw_schema or {},
-                    }
                     try:
-                        ai_payloads = await generator.generate_payloads(tool_info)
-                    except Exception as e:
-                        console.print(f"  [danger]    ✗ AI failed to generate payloads for {tool.name}: {e}[/danger]")
-                        ai_payloads = []
-                    
-                    if ai_payloads:
-                        console.print(f"    Executing {len(ai_payloads)} payloads against {tool.name}...")
+                        console.print(f"  [dim]  🧠 AI thinking about {tool.name}...[/dim]")
+                        tool_info = {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.raw_schema or {},
+                        }
+                        try:
+                            ai_payloads = await generator.generate_payloads(tool_info)
+                        except Exception as e:
+                            console.print(f"  [danger]    ✗ AI failed to generate payloads for {tool.name}: {e}[/danger]")
+                            ai_payloads = []
                         
-                        # Execute each AI-generated payload
-                        for payload_info in ai_payloads:
-                            param = payload_info.get("parameter", "")
-                            payload = payload_info.get("payload", "")
-                            category = payload_info.get("category", "unknown")
-                            success_indicator = payload_info.get("success_indicator", "")
+                        if ai_payloads:
+                            console.print(f"    Executing {len(ai_payloads)} payloads against {tool.name}...")
                             
-                            console.print(f"    [dim]→ Testing {param}={payload[:40]}...[/dim]")
-                            
-                            if not param or not payload:
-                                console.print(f"    [dim]→ Skipping malformed payload: param={param}, payload={payload}[/dim]")
-                                continue
-                            
-                            try:
-                                result = await client.call_tool(tool.name, {param: payload})
-                                response_text = ""
-                                if result and result.content:
-                                    for block in result.content:
-                                        if hasattr(block, 'text'):
-                                            response_text += block.text
-                                
-                                # Debug: Print first 100 chars of response
-                                if response_text:
-                                    # console.print(f"  [dim]    Response: {response_text[:100].replace('\n', ' ')}[/dim]")
-                                    pass # Reduce noise if user doesn't want it, but maybe keep for now? User asked for specific logs.
-                                
-                                # Check if success indicator is in response (Fuzzy matching)
-                                is_vulnerable = False
-                                if success_indicator and success_indicator.lower() in response_text.lower():
-                                    is_vulnerable = True
-                                
-                                # Heuristic Fallback: Flag "interesting" patterns in responses for dangerous categories
-                                if not is_vulnerable and category in ["command-injection", "path-traversal", "sqli", "ssrf"]:
-                                    leak_patterns = [
-                                        "root:", "uid=", "gid=", "[boot loader]", "etc/passwd", 
-                                        "SQLite format 3", "PostgreSQL", "mysql", "Error:",
-                                        "127.0.0.1", "localhost", "200 OK", "index of /"
-                                    ]
-                                    if any(p.lower() in response_text.lower() for p in leak_patterns):
-                                        is_vulnerable = True
-                                        console.print(f"  [yellow]    ⚠ Potential {category} leak detected (heuristic)[/yellow]")
+                            # Execute each AI-generated payload
+                            for payload_info in ai_payloads:
+                                param = payload_info.get("parameter", "")
+                                payload = payload_info.get("payload", "")
+                                category = payload_info.get("category", "unknown")
+                                success_indicator = payload_info.get("success_indicator", "")
 
-                                if is_vulnerable:
-                                    from mcpsec.models import Finding, Severity
-                                    findings.append(Finding(
-                                        severity=Severity.CRITICAL,
-                                        scanner=f"ai-{category}",
-                                        title=f"AI Exploit: {payload_info.get('description', category)}",
-                                        description=f"AI-generated payload confirmed exploitable.\nPayload: {payload}\nResponse: {response_text[:500]}",
-                                        tool=tool.name,
-                                        parameter=param,
-                                    ))
-                                    console.print(f"    [green]✓ CONFIRMED: {category} on {tool.name}[/green]")
-                            except Exception as e:
-                                console.print(f"    [dim]→ Error: {e}[/dim]")
-                                pass
+                                console.print(f"    [dim]→ Testing {param}={payload[:40]}...[/dim]")
+                                
+                                if not param or not payload:
+                                    console.print(f"    [dim]→ Skipping malformed payload: param={param}, payload={payload}[/dim]")
+                                    continue
+                                
+                                try:
+                                    result = await client.call_tool(tool.name, {param: payload})
+                                    response_text = ""
+                                    if result and result.content:
+                                        for block in result.content:
+                                            if hasattr(block, 'text'):
+                                                response_text += block.text
+                                    
+                                    # Debug: Print first 100 chars of response
+                                    if response_text:
+                                        # console.print(f"  [dim]    Response: {response_text[:100].replace('\n', ' ')}[/dim]")
+                                        pass # Reduce noise if user doesn't want it, but maybe keep for now? User asked for specific logs.
+                                    
+                                    # Check if success indicator is in response (Fuzzy matching)
+                                    is_vulnerable = False
+                                    if success_indicator and success_indicator.lower() in response_text.lower():
+                                        is_vulnerable = True
+                                    
+                                    # Heuristic Fallback: Flag "interesting" patterns in responses for dangerous categories
+                                    if not is_vulnerable and category in ["command-injection", "path-traversal", "sqli", "ssrf"]:
+                                        leak_patterns = [
+                                            "root:", "uid=", "gid=", "[boot loader]", "etc/passwd", 
+                                            "SQLite format 3", "PostgreSQL", "mysql", "Error:",
+                                            "127.0.0.1", "localhost", "200 OK", "index of /"
+                                        ]
+                                        if any(p.lower() in response_text.lower() for p in leak_patterns):
+                                            is_vulnerable = True
+                                            console.print(f"  [yellow]    ⚠ Potential {category} leak detected (heuristic)[/yellow]")
+
+                                    if is_vulnerable:
+                                        from mcpsec.models import Finding, Severity
+                                        findings.append(Finding(
+                                            severity=Severity.CRITICAL,
+                                            scanner=f"ai-{category}",
+                                            title=f"AI Exploit: {payload_info.get('description', category)}",
+                                            description=f"AI-generated payload confirmed exploitable.\nPayload: {payload}\nResponse: {response_text[:500]}",
+                                            tool=tool.name,
+                                            parameter=param,
+                                        ))
+                                        console.print(f"    [green]✓ CONFIRMED: {category} on {tool.name}[/green]")
+                                except Exception as e:
+                                    console.print(f"    [dim]→ Error: {e}[/dim]")
+                                    pass
+                    except Exception as e:
+                        console.print(f"  [danger]    ⚠ Skipped tool {getattr(tool, 'name', 'unknown')} due to error: {e}[/danger]")
+                        continue
                 
                 if findings:
                     # Consolidation: remove duplicates by title+tool+param
