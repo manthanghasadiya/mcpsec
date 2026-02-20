@@ -155,11 +155,6 @@ The test server (`tests/vuln_test_server.py`) contains 8 intentional vulnerabili
 - [x] **Cross-File Taint Analysis** (Detects vulnerabilities spanning multiple files)
 - [x] **Protocol Fuzzer** (Crash detection & boundary testing)
 - [x] **AI-Powered Analysis** (Payload generation & Finding validation)
-- [ ] SQL injection scanner (Automated with AI)
-- [ ] Tool description drift detector (rug pull detection)
-- [ ] HTML report dashboard
-- [ ] SARIF output for CI/CD integration
-- [ ] GitHub Action for automated MCP server security testing
 
 ## Contributing
 
