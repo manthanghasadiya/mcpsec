@@ -143,6 +143,14 @@ mcpsec scan --stdio "python tests/vuln_test_server.py"
 
 The test server (`tests/vuln_test_server.py`) contains 8 intentional vulnerabilities covering prompt injection, command injection, path traversal, missing auth, and more. Use it to test scanner development.
 
+## What mcpsec Has Found
+
+- **DoS vulnerability in official Anthropic MCP servers** (mcp-server-fetch, mcp-server-git) — malformed JSON-RPC messages crash the server. [Fixed in PR #3360](https://github.com/modelcontextprotocol/servers/pull/3360) within 6 hours of report.
+- **Reproduced CVE-2025-53967** (Figma MCP command injection) — detected at exact vulnerable line in pre-patch version.
+- **Validated CVE-2025-53818** (github-kanban-mcp-server) — 21 command injection points across 3 handler files.
+- **SQL injection in mcp-server-mysql** — unparameterized queries accepting raw user input.
+- **Fuzz-tested 5+ official MCP servers** — comparative crash analysis showing which servers handle malformed input vs crash.
+
 ## Roadmap
 
 - [x] Prompt injection scanner (keyword, imperative, encoding, cross-tool, exfiltration detection)
