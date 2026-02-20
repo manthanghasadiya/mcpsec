@@ -97,11 +97,13 @@ class MCPSecClient:
         """Call a tool on the connected MCP server. Returns the raw result."""
         if not self.session:
             raise RuntimeError("Not connected to any MCP server")
-        try:
-            result = await self.session.call_tool(tool_name, arguments)
-            return result
-        except Exception as e:
-            return {"error": str(e)}
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
+        """Call a tool on the connected MCP server. Returns the raw result."""
+        if not self.session:
+            raise RuntimeError("Not connected to any MCP server")
+        # Let exceptions propagate so callers can handle them (and see the error type)
+        result = await self.session.call_tool(tool_name, arguments)
+        return result
 
     async def _enumerate(self) -> ServerProfile:
         """Enumerate all tools, resources, and prompts from the server."""

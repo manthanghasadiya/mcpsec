@@ -92,6 +92,26 @@ async def run_scan(
         except Exception as e:
             console.print(f"  [warning]⚠ Protocol scanners failed: {e}[/warning]")
 
+    # ── Deduplicate ────────────────────────────────────────────────────────
+    unique_findings = {}
+    for f in result.findings:
+        # Key: Tool + Type of vulnerability (from title/scanner)
+        # Using a fuzzy key to consolidate multiple "missing annotation" warnings
+        simple_title = f.title.lower()
+        if "missing" in simple_title and "annotation" in simple_title:
+             simple_title = "missing annotations"
+             
+        key = (f.tool_name, simple_title)
+        if key not in unique_findings:
+            unique_findings[key] = f
+        else:
+            # Keep the one with higher severity or more detail
+            existing = unique_findings[key]
+            if len(f.description) > len(existing.description):
+                unique_findings[key] = f
+    
+    result.findings = list(unique_findings.values())
+
     # ── Print findings ────────────────────────────────────────────────────
     if result.findings:
         print_section("Findings", "🔍")

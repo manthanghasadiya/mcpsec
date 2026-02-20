@@ -16,7 +16,7 @@ async def run_audit(
     npm: str | None = None,
     github: str | None = None,
     path: str | None = None
-) -> List[Finding]:
+) -> tuple[List[Finding], str | None]:
     """
     Run the static audit.
     """
@@ -24,7 +24,7 @@ async def run_audit(
     # 1. Fetch Source
     source_path = await fetch_source(npm, github, path)
     if not source_path:
-        return []
+        return [], None
     
     console.print(f"  [success]Source code available at: {source_path}[/success]")
     console.print("  Scanning files...")
@@ -132,7 +132,7 @@ async def run_audit(
     # Sort findings by severity
     findings.sort(key=lambda x: _severity_rank(x.severity), reverse=True)
     
-    return findings
+    return findings, source_path
 
 def _filter_false_positives(findings: List[Finding]) -> List[Finding]:
     """Filter out known false positives."""

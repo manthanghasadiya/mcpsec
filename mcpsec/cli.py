@@ -82,6 +82,11 @@ def scan(
         "--quiet", "-q",
         help="Minimal output (no banner, no tool listing)",
     ),
+    ai: bool = typer.Option(
+        False,
+        "--ai",
+        help="Use AI to generate custom payloads per tool",
+    ),
 ):
     """
     🔍 Scan an MCP server for security vulnerabilities.
@@ -105,6 +110,7 @@ def scan(
         scanner_names=scanner_names,
         output_path=output,
         quiet=quiet,
+        ai=ai,
     ))
 
 
@@ -114,6 +120,7 @@ async def _scan_async(
     scanner_names: list[str] | None,
     output_path: str | None,
     quiet: bool,
+    ai: bool = False,
 ):
     from mcpsec.client.mcp_client import MCPSecClient
     from mcpsec.engine import run_scan
@@ -171,25 +178,140 @@ async def _scan_async(
             console.print("  [muted]No tools or resources found. Nothing to scan.[/muted]")
             raise typer.Exit(0)
 
+        # ── AI Payload Generation ────────────────────────────────────────────
+        findings = []
+        if ai:
+            from mcpsec.ai.ai_payload_generator import AIPayloadGenerator
+            from mcpsec.ai.ai_validator import AIValidator
+            
+            generator = AIPayloadGenerator()
+            validator = AIValidator()
+            
+            if generator.available:
+                console.print("\n  [cyan]🧠 AI generating custom payloads per tool...[/cyan]")
+                for tool in profile.tools:
+                    console.print(f"  [dim]  🧠 AI thinking about {tool.name}...[/dim]")
+                    tool_info = {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.raw_schema or {},
+                    }
+                    try:
+                        ai_payloads = await generator.generate_payloads(tool_info)
+                    except Exception as e:
+                        console.print(f"  [danger]    ✗ AI failed to generate payloads for {tool.name}: {e}[/danger]")
+                        ai_payloads = []
+                    
+                    if ai_payloads:
+                        console.print(f"    Executing {len(ai_payloads)} payloads against {tool.name}...")
+                        
+                        # Execute each AI-generated payload
+                        for payload_info in ai_payloads:
+                            param = payload_info.get("parameter", "")
+                            payload = payload_info.get("payload", "")
+                            category = payload_info.get("category", "unknown")
+                            success_indicator = payload_info.get("success_indicator", "")
+                            
+                            console.print(f"    [dim]→ Testing {param}={payload[:40]}...[/dim]")
+                            
+                            if not param or not payload:
+                                console.print(f"    [dim]→ Skipping malformed payload: param={param}, payload={payload}[/dim]")
+                                continue
+                            
+                            try:
+                                result = await client.call_tool(tool.name, {param: payload})
+                                response_text = ""
+                                if result and result.content:
+                                    for block in result.content:
+                                        if hasattr(block, 'text'):
+                                            response_text += block.text
+                                
+                                # Debug: Print first 100 chars of response
+                                if response_text:
+                                    # console.print(f"  [dim]    Response: {response_text[:100].replace('\n', ' ')}[/dim]")
+                                    pass # Reduce noise if user doesn't want it, but maybe keep for now? User asked for specific logs.
+                                
+                                # Check if success indicator is in response (Fuzzy matching)
+                                is_vulnerable = False
+                                if success_indicator and success_indicator.lower() in response_text.lower():
+                                    is_vulnerable = True
+                                
+                                # Heuristic Fallback: Flag "interesting" patterns in responses for dangerous categories
+                                if not is_vulnerable and category in ["command-injection", "path-traversal", "sqli", "ssrf"]:
+                                    leak_patterns = [
+                                        "root:", "uid=", "gid=", "[boot loader]", "etc/passwd", 
+                                        "SQLite format 3", "PostgreSQL", "mysql", "Error:",
+                                        "127.0.0.1", "localhost", "200 OK", "index of /"
+                                    ]
+                                    if any(p.lower() in response_text.lower() for p in leak_patterns):
+                                        is_vulnerable = True
+                                        console.print(f"  [yellow]    ⚠ Potential {category} leak detected (heuristic)[/yellow]")
+
+                                if is_vulnerable:
+                                    from mcpsec.models import Finding, Severity
+                                    findings.append(Finding(
+                                        severity=Severity.CRITICAL,
+                                        scanner=f"ai-{category}",
+                                        title=f"AI Exploit: {payload_info.get('description', category)}",
+                                        description=f"AI-generated payload confirmed exploitable.\nPayload: {payload}\nResponse: {response_text[:500]}",
+                                        tool=tool.name,
+                                        parameter=param,
+                                    ))
+                                    console.print(f"    [green]✓ CONFIRMED: {category} on {tool.name}[/green]")
+                            except Exception as e:
+                                console.print(f"    [dim]→ Error: {e}[/dim]")
+                                pass
+                
+                if findings:
+                    # Consolidation: remove duplicates by title+tool+param
+                    unique = {}
+                    for f in findings:
+                        key = (f.title, f.tool_name, f.taint_sink or f.evidence[:50] if f.evidence else "")
+                        if key not in unique:
+                            unique[key] = f
+                        else:
+                            # Merge descriptions if they differ
+                            if f.description not in unique[key].description:
+                                unique[key].description += f"\nAdditional Detail: {f.description}"
+                    
+                    findings = list(unique.values())
+                    
+                    console.print(f"  [cyan]🧠 AI validating {len(findings)} findings...[/cyan]")
+                    findings = await validator.validate_findings(findings)
+            else:
+                console.print(
+                    "\n  [yellow]⚠ AI analysis requires an API key.[/yellow]"
+                    "\n  [dim]Set DEEPSEEK_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,"
+                    " or run Ollama locally.[/dim]"
+                )
+
         # ── Scan ─────────────────────────────────────────────────────────────
-        result = await run_scan(
+        scan_result = await run_scan(
             profile=profile,
             client=client,
             scanner_names=scanner_names,
             target=target,
             transport=transport,
         )
+        
+        # Merge AI findings into result
+        if findings:
+            scan_result.findings.extend(findings)
+            # Re-sum counts
+            from mcpsec.models import Severity
+        if findings:
+            scan_result.findings.extend(findings)
+            # Counts recompute automatically via properties in ScanResult
 
-        # ── Output ───────────────────────────────────────────────────────────
         if output_path:
             from mcpsec.reporters.json_report import generate_json_report
-            if generate_json_report(result, output_path):
+            if generate_json_report(scan_result, output_path):
                 console.print(f"  [success]✔ Report saved to {output_path}[/success]")
             else:
                 console.print(f"  [danger]✗ Failed to save report to {output_path}[/danger]")
 
     # Exit with non-zero if critical/high findings
-    if result.critical_count > 0 or result.high_count > 0:
+    if scan_result.critical_count > 0 or scan_result.high_count > 0:
         raise typer.Exit(1)
 
 
@@ -344,6 +466,11 @@ def audit(
     npm: Optional[str] = typer.Option(None, "--npm", help="NPM package to audit"),
     github: Optional[str] = typer.Option(None, "--github", help="GitHub repository URL to audit"),
     path: Optional[str] = typer.Option(None, "--path", help="Local directory path to audit"),
+    ai: bool = typer.Option(
+        False,
+        "--ai",
+        help="Use AI-powered analysis (requires API key: DEEPSEEK_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY)",
+    ),
 ):
     """
     🔬 Audit source code for vulnerabilities (static analysis).
@@ -356,17 +483,47 @@ def audit(
         console.print("[danger]Error: Specify only one source (npm, github, or path)[/danger]")
         raise typer.Exit(1)
 
-    _run_async(_audit_async(npm, github, path))
+    _run_async(_audit_async(npm, github, path, ai))
 
-async def _audit_async(npm: str | None, github: str | None, path: str | None):
+
+async def _audit_async(npm: str | None, github: str | None, path: str | None, ai: bool = False):
     from mcpsec.static.audit_engine import run_audit
     from mcpsec.models import Finding
     
     print_banner(small=True)
     print_section("Static Audit", "🔬")
     
-    findings = await run_audit(npm, github, path)
+    findings, source_path = await run_audit(npm, github, path)
     
+    if ai:
+        from mcpsec.ai.ai_taint_analyzer import AITaintAnalyzer
+        from mcpsec.ai.ai_validator import AIValidator
+        
+        analyzer = AITaintAnalyzer()
+        validator = AIValidator()
+        
+        if analyzer.available and source_path:
+            console.print("\n  [cyan]🧠 Running AI-powered taint analysis...[/cyan]")
+            ai_findings = await analyzer.analyze_project(Path(source_path))
+            
+            if ai_findings:
+                # Deduplicate: skip AI findings on same file+line as existing
+                existing = {(f.file_path, f.line_number) for f in findings if f.line_number}
+                new_ai = [f for f in ai_findings if (f.file_path, f.line_number) not in existing]
+                findings.extend(new_ai)
+                console.print(f"  [cyan]  AI found {len(new_ai)} additional findings[/cyan]")
+            
+            # Validate ALL findings (remove false positives)
+            console.print("  [cyan]🧠 AI validating findings...[/cyan]")
+            findings = await validator.validate_findings(findings)
+            console.print(f"  [cyan]  {len(findings)} findings after AI validation[/cyan]")
+        else:
+            console.print(
+                "\n  [yellow]⚠ AI analysis requires an API key.[/yellow]"
+                "\n  [dim]Set DEEPSEEK_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,"
+                " or run Ollama locally.[/dim]"
+            )
+
     if not findings:
         console.print("\n  [success]✔ No vulnerabilities found.[/success]")
         return
