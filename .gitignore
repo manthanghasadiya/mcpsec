@@ -9,3 +9,7 @@ build/
 .venv/
 venv/
 report.json
+*.log
+install_log.txt
+temp_*.py
+mcp_*.json
