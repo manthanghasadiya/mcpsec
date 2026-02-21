@@ -141,7 +141,9 @@ class FuzzEngine:
                         # Just send it, relying on detected framing
                         fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
                         
-                    except Exception:
+                    except Exception as e:
+                        if self.debug:
+                            console.print(f"  [dim][DEBUG] Re-initialization failed: {e}[/dim]")
                         pass # Keep going if re-init fails
                 
                 result = fuzzer.send_raw(case.payload)
@@ -296,8 +298,19 @@ class FuzzEngine:
         tools_msg = {"jsonrpc": "2.0", "method": "tools/list", "id": 9999}
         result = fuzzer.send_mcp_message_with_timeout(tools_msg, self.startup_timeout)
         
-        if not result or not result.response or result.timeout or result.crashed:
-            console.print("  [warning]⚠ Could not discover tools. Skipping AI fuzz.[/warning]")
+        if not result:
+            console.print("  [warning]⚠ No response from server during tool discovery. Skipping AI fuzz.[/warning]")
+            return cases
+        if result.timeout:
+            console.print("  [warning]⚠ Timeout during tool discovery. Skipping AI fuzz.[/warning]")
+            if self.debug:
+                console.print(f"  [dim][DEBUG] Stderr: {fuzzer.stderr_lines[-5:]}[/dim]")
+            return cases
+        if result.crashed:
+            console.print("  [warning]⚠ Server crashed during tool discovery. Skipping AI fuzz.[/warning]")
+            return cases
+        if not result.response:
+            console.print("  [warning]⚠ Empty response during tool discovery. Skipping AI fuzz.[/warning]")
             return cases
         
         # Parse tools from response
@@ -308,8 +321,10 @@ class FuzzEngine:
                 resp_text = resp_text.split("\r\n\r\n", 1)[-1]
             resp_data = json.loads(resp_text)
             tools = resp_data.get("result", {}).get("tools", [])
-        except Exception:
-            console.print("  [warning]⚠ Could not parse tools/list response. Skipping AI fuzz.[/warning]")
+        except Exception as e:
+            console.print(f"  [warning]⚠ Could not parse tools/list response: {e}. Skipping AI fuzz.[/warning]")
+            if self.debug:
+                console.print(f"  [dim][DEBUG] Raw response: {result.response[:200] if result.response else 'None'}[/dim]")
             return cases
         
         if not tools:

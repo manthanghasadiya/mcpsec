@@ -52,15 +52,20 @@ SMALL_BANNER = f"[bold cyan]* mcpsec[/bold cyan] [dim]v{__version__}[/dim]"
 
 def print_banner(small: bool = False):
     """Print the mcpsec banner."""
-    if small:
-        console.print(SMALL_BANNER)
-    else:
-        # Check for Unicode support
-        try:
+    try:
+        if small:
+            console.print(SMALL_BANNER)
+        else:
             console.print(BANNER)
-        except UnicodeEncodeError:
-            # Fallback for legacy Windows consoles
+    except UnicodeEncodeError:
+        # Fallback for legacy Windows consoles
+        try:
             console.print(f"--- mcpsec v{__version__} ---")
+        except (BrokenPipeError, OSError):
+            pass
+    except (BrokenPipeError, OSError):
+        # Pipe closed early (e.g. output piped through head/Select-Object)
+        pass
 
 
 def print_target_info(target_type: str, target: str, transport: str = "stdio"):
@@ -81,12 +86,17 @@ def print_target_info(target_type: str, target: str, transport: str = "stdio"):
             padding=(1, 2),
         ))
     except UnicodeEncodeError:
-         console.print(Panel(
-            table,
-            title="[bold cyan]Target[/bold cyan]",
-            border_style="cyan",
-            padding=(1, 2),
-        ))
+         try:
+             console.print(Panel(
+                table,
+                title="[bold cyan]Target[/bold cyan]",
+                border_style="cyan",
+                padding=(1, 2),
+            ))
+         except (BrokenPipeError, OSError):
+             pass
+    except (BrokenPipeError, OSError):
+        pass
 
 
 def print_tool_info(name: str, description: str, params: dict):
@@ -128,7 +138,12 @@ def print_section(title: str, icon: str = "-"):
     try:
         console.rule(f"[bold cyan] {icon} {title} [/bold cyan]", style="dim cyan")
     except UnicodeEncodeError:
-        console.print(f"--- {title} ---")
+        try:
+            console.print(f"--- {title} ---")
+        except (BrokenPipeError, OSError):
+            pass
+    except (BrokenPipeError, OSError):
+        pass
     console.print()
 
 
@@ -161,7 +176,12 @@ def print_summary(total: int, critical: int, high: int, medium: int, low: int, i
     try:
         console.print(table)
     except UnicodeEncodeError:
-        console.print(f"Summary: {total} issues ({critical} critical, {high} high)")
+        try:
+            console.print(f"Summary: {total} issues ({critical} critical, {high} high)")
+        except (BrokenPipeError, OSError):
+            pass
+    except (BrokenPipeError, OSError):
+        pass
 
     if critical > 0 or high > 0:
         console.print("\n  [danger]!  Critical/High findings require immediate attention.[/danger]")
