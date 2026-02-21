@@ -22,6 +22,7 @@ import typer
 from rich.table import Table
 from rich import box
 
+from mcpsec import __version__
 from mcpsec.ui import (
     console,
     print_banner,
@@ -46,8 +47,17 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
+def _version_callback(value: bool):
+    if value:
+        console.print(f"mcpsec v{__version__}")
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context):
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "--version", "-V", help="Show version and exit.", callback=_version_callback, is_eager=True),
+):
     """mcpsec — Security scanner for MCP servers."""
     if ctx.invoked_subcommand is None:
         print_banner()
