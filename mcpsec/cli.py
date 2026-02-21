@@ -307,11 +307,6 @@ async def _scan_async(
         # Merge AI findings into result
         if findings:
             scan_result.findings.extend(findings)
-            # Re-sum counts
-            from mcpsec.models import Severity
-        if findings:
-            scan_result.findings.extend(findings)
-            # Counts recompute automatically via properties in ScanResult
 
         if output_path:
             from mcpsec.reporters.json_report import generate_json_report
