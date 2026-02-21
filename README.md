@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-cyan.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.5.2-orange.svg)](https://pypi.org/project/mcpsec/)
+[![Version](https://img.shields.io/badge/version-0.5.4-orange.svg)](https://pypi.org/project/mcpsec/)
 
 **Security scanner for MCP (Model Context Protocol) server implementations.**
 
@@ -54,12 +54,14 @@ mcpsec audit --path . --ai
 mcpsec list-scanners
 ```
 
-## Mega Fuzzer (New in v0.5.2)
+## Mega Fuzzer (New in v0.5.4)
 
-`mcpsec` v0.5.2 introduces a significantly expanded fuzzing engine designed to find edge cases in MCP protocol handlers and tool implementations.
+`mcpsec` v0.5.4 introduces a significantly expanded fuzzing engine designed to find edge cases in MCP protocol handlers and tool implementations, along with critical fixes for OS-level buffer deadlocks preventing deep scanning of huge target stacks like the Kubernetes server.
 
 - **500+ Security Test Cases**: Exhaustive coverage for malformed JSON, protocol violations, type confusion, boundary values, and encoding attacks.
 - **AI-Powered Payloads**: Use `--ai` to leverage LLMs to generate context-aware adversarial payloads based on your server's specific tool schemas.
+- **Enhanced Reliability**: Completely resolved a major "Fuzzer State Desync" bug that caused pipe deadlocks when target servers crashed under intense payloads.
+- **Custom Timeouts**: Use `--timeout` (default 5.0s) to accommodate slower target servers like Puppeteer without triggering premature hang detections.
 - **Refined Intensity Tiers**:
   - `low`: Core protocol smoke tests (~65 cases)
   - `medium`: Standard security baseline (~150 cases)

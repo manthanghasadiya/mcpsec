@@ -1,0 +1,274 @@
+(node:38048) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 drain listeners added to [Socket]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+(Use `node --trace-warnings ...` to show where the warning was created)
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: EPIPE: broken pipe, write
+    at Socket._write (node:internal/net:75:18)
+    at writeOrBuffer (node:internal/streams/writable:570:12)
+    at _write (node:internal/streams/writable:499:10)
+    at Writable.write (node:internal/streams/writable:508:10)
+    at file:///C:/Users/Manthan/AppData/Local/npm-cache/_npx/ab5cd9f6d13a2312/node_modules/@modelcontextprotocol/sdk/dist/server/stdio.js:60:30
+    at new Promise (<anonymous>)
+    at StdioServerTransport.send (file:///C:/Users/Manthan/AppData/Local/npm-cache/_npx/ab5cd9f6d13a2312/node_modules/@modelcontextprotocol/sdk/dist/server/stdio.js:58:16)
+    at Promise.resolve.then.then._a (file:///C:/Users/Manthan/AppData/Local/npm-cache/_npx/ab5cd9f6d13a2312/node_modules/@modelcontextprotocol/sdk/dist/shared/protocol.js:108:83)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -4047,
+  syscall: 'write',
+  code: 'EPIPE'
+}
+
+Node.js v24.13.1
+
+npm WARN deprecated @modelcontextprotocol/server-postgres@0.6.2: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+^C
+(node:14628) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 drain listeners added to [Socket]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+(Use `node --trace-warnings ...` to show where the warning was created)
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: EPIPE: broken pipe, write
+    at Socket._write (node:internal/net:75:18)
+    at writeOrBuffer (node:internal/streams/writable:570:12)
+    at _write (node:internal/streams/writable:499:10)
+    at Writable.write (node:internal/streams/writable:508:10)
+    at file:///C:/Users/Manthan/AppData/Local/npm-cache/_npx/ab5cd9f6d13a2312/node_modules/@modelcontextprotocol/sdk/dist/server/stdio.js:60:30
+    at new Promise (<anonymous>)
+    at StdioServerTransport.send (file:///C:/Users/Manthan/AppData/Local/npm-cache/_npx/ab5cd9f6d13a2312/node_modules/@modelcontextprotocol/sdk/dist/server/stdio.js:58:16)
+    at Promise.resolve.then.then._a (file:///C:/Users/Manthan/AppData/Local/npm-cache/_npx/ab5cd9f6d13a2312/node_modules/@modelcontextprotocol/sdk/dist/shared/protocol.js:108:83)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -4047,
+  syscall: 'write',
+  code: 'EPIPE'
+}
+
+Node.js v24.13.1
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+Starting default (STDIO) server...
+npm WARN deprecated @modelcontextprotocol/server-google-maps@0.6.2: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+npm WARN deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+GOOGLE_MAPS_API_KEY environment variable is not set
+GOOGLE_MAPS_API_KEY environment variable is not set
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+Google Maps MCP Server running on stdio
+(node:35872) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 drain listeners added to [Socket]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+(Use `node --trace-warnings ...` to show where the warning was created)
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: EPIPE: broken pipe, write
+    at Socket._write (node:internal/net:75:18)
+    at writeOrBuffer (node:internal/streams/writable:570:12)
+    at _write (node:internal/streams/writable:499:10)
+    at Writable.write (node:internal/streams/writable:508:10)
+    at file:///C:/Users/Manthan/AppData/Local/npm-cache/_npx/2dedcb6c0f67fe6a/node_modules/@modelcontextprotocol/sdk/dist/server/stdio.js:60:30
+    at new Promise (<anonymous>)
+    at StdioServerTransport.send (file:///C:/Users/Manthan/AppData/Local/npm-cache/_npx/2dedcb6c0f67fe6a/node_modules/@modelcontextprotocol/sdk/dist/server/stdio.js:58:16)
+    at Promise.resolve.then.then._a (file:///C:/Users/Manthan/AppData/Local/npm-cache/_npx/2dedcb6c0f67fe6a/node_modules/@modelcontextprotocol/sdk/dist/shared/protocol.js:108:83)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -4047,
+  syscall: 'write',
+  code: 'EPIPE'
+}
+
+Node.js v24.13.1

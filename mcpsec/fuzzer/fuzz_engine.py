@@ -452,6 +452,7 @@ Return ONLY a JSON array of objects (no markdown, no explanation):
             "crashes": fuzzer.crash_count,
             "timeouts": fuzzer.timeout_count,
             "interesting": len(self.interesting),
+            "error_log": fuzzer.error_log_path,
             "interesting_cases": [
                 {
                     "case_name": case.name,

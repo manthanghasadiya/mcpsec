@@ -645,7 +645,7 @@ def _print_finding_detail(f):
 @app.command()
 def fuzz(
     stdio: str = typer.Option(..., "--stdio", "-s", help="MCP server command"),
-    timeout: float = typer.Option(2.0, "--timeout", "-t", help="Per-test response timeout in seconds"),
+    timeout: float = typer.Option(5.0, "--timeout", "-t", help="Per-test response timeout in seconds"),
     startup_timeout: float = typer.Option(15.0, "--startup-timeout", help="Server startup/initialization timeout in seconds"),
     framing: str = typer.Option("auto", "--framing", "-f", help="Message framing: 'auto', 'jsonl' (Python), or 'clrf' (Node)"),
     generators: str = typer.Option(None, "--generators", "-g", help="Comma-separated generator names"),
@@ -684,6 +684,9 @@ def fuzz(
     console.print(f"  [danger]Crashes:[/danger] {summary['crashes']}" if summary['crashes'] else f"  [success]Crashes:[/success] 0")
     console.print(f"  [warning]Timeouts:[/warning] {summary['timeouts']}" if summary['timeouts'] else f"  [success]Timeouts:[/success] 0")
     console.print(f"  [accent]Interesting:[/accent] {summary['interesting']}" if summary['interesting'] else f"  [muted]Interesting:[/muted] 0")
+    
+    if summary.get('crashes', 0) > 0 and summary.get('error_log'):
+        console.print(f"  [muted]Crash Logs:[/muted] {summary['error_log']}")
     
     if summary['interesting_cases']:
         console.print()
