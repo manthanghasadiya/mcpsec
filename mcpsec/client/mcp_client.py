@@ -93,17 +93,22 @@ class MCPSecClient:
         await self.session.initialize()
         return await self._enumerate()
 
-    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
-        """Call a tool on the connected MCP server. Returns the raw result."""
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any], timeout: float = 30.0) -> Any:
+        """Call a tool on the connected MCP server. Returns the raw result.
+        
+        Args:
+            timeout: Maximum seconds to wait for the tool to respond (default 30s).
+        """
         if not self.session:
             raise RuntimeError("Not connected to any MCP server")
-    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
-        """Call a tool on the connected MCP server. Returns the raw result."""
-        if not self.session:
-            raise RuntimeError("Not connected to any MCP server")
-        # Let exceptions propagate so callers can handle them (and see the error type)
-        result = await self.session.call_tool(tool_name, arguments)
-        return result
+        try:
+            result = await asyncio.wait_for(
+                self.session.call_tool(tool_name, arguments),
+                timeout=timeout,
+            )
+            return result
+        except asyncio.TimeoutError:
+            raise TimeoutError(f"Tool '{tool_name}' did not respond within {timeout}s")
 
     async def _enumerate(self) -> ServerProfile:
         """Enumerate all tools, resources, and prompts from the server."""

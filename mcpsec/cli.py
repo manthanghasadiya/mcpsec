@@ -262,6 +262,9 @@ async def _scan_async(
                                             parameter=param,
                                         ))
                                         console.print(f"    [green]✓ CONFIRMED: {category} on {tool.name}[/green]")
+                                except TimeoutError:
+                                    console.print(f"    [yellow]→ Timeout ({tool.name}): tool hung, skipping[/yellow]")
+                                    continue
                                 except Exception as e:
                                     console.print(f"    [dim]→ Error: {e}[/dim]")
                                     pass
