@@ -8,4 +8,10 @@ from . import (
     injection_payloads,
     resource_exhaustion,
     encoding_attacks,
+    method_mutations,
+    param_mutations,
+    timing_attacks,
+    header_mutations,
+    json_edge_cases,
+    protocol_state,
 )

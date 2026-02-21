@@ -3,6 +3,7 @@ MCP Protocol Fuzzer Engine.
 Orchestrates test case generation, execution, and crash analysis.
 """
 
+import json
 import time
 from pathlib import Path
 from typing import List
@@ -19,19 +20,26 @@ from mcpsec.fuzzer.generators import (
     injection_payloads,
     resource_exhaustion,
     encoding_attacks,
+    method_mutations,
+    param_mutations,
+    timing_attacks,
+    header_mutations,
+    json_edge_cases,
+    protocol_state,
 )
 from mcpsec.ui import console, print_section, get_progress
 
 class FuzzEngine:
     """Orchestrates the fuzzing campaign."""
     
-    def __init__(self, command: str, timeout: float = 2.0, startup_timeout: float = 15.0, framing: str = "auto", debug: bool = False, intensity: str = "medium"):
+    def __init__(self, command: str, timeout: float = 2.0, startup_timeout: float = 15.0, framing: str = "auto", debug: bool = False, intensity: str = "medium", ai: bool = False):
         self.command = command
         self.timeout = timeout
         self.startup_timeout = startup_timeout
         self.framing = framing
         self.debug = debug
         self.intensity = intensity
+        self.ai = ai
         self.results: List[FuzzResult] = []
         self.interesting: List[tuple[FuzzCase, FuzzResult]] = []
     
@@ -86,6 +94,12 @@ class FuzzEngine:
             
         # 2. Collect test cases using the detected framing
         all_cases = self._collect_cases(generators, detected_framing)
+        
+        # 2b. AI-generated fuzz cases (per-tool)
+        if self.ai:
+            ai_cases = self._generate_ai_cases(fuzzer, detected_framing)
+            all_cases.extend(ai_cases)
+        
         console.print(f"  [accent]Test cases:[/accent] {len(all_cases)}")
         
         # 3. Run all fuzz cases
@@ -154,30 +168,41 @@ class FuzzEngine:
     
     def _collect_cases(self, generators: list[str] | None, framing: str) -> list[FuzzCase]:
         """Collect fuzz cases from all enabled generators."""
-        # Base generators (always included)
-        base_gens = {
+        # Low: core protocol tests (~65 cases)
+        low_gens = {
             "malformed_json": malformed_json.generate,
             "protocol_violation": protocol_violation.generate,
             "type_confusion": type_confusion.generate,
             "boundary": boundary_testing.generate,
             "unicode": unicode_attacks.generate,
         }
-        # Medium adds session + encoding
+        # Medium: + session + encoding (~150 cases)
         medium_gens = {
             "session_attacks": session_attacks.generate,
             "encoding_attacks": encoding_attacks.generate,
         }
-        # High adds injection + exhaustion
+        # High: + method/param/timing/header/json/protocol (~500 cases)
         high_gens = {
             "injection_payloads": injection_payloads.generate,
+            "method_mutations": method_mutations.generate,
+            "param_mutations": param_mutations.generate,
+            "timing_attacks": timing_attacks.generate,
+            "header_mutations": header_mutations.generate,
+            "json_edge_cases": json_edge_cases.generate,
+            "protocol_state": protocol_state.generate,
+        }
+        # Insane: all of the above + resource exhaustion (~550+ cases)
+        insane_gens = {
             "resource_exhaustion": resource_exhaustion.generate,
         }
         
-        gen_map = dict(base_gens)
-        if self.intensity in ("medium", "high"):
+        gen_map = dict(low_gens)
+        if self.intensity in ("medium", "high", "insane"):
             gen_map.update(medium_gens)
-        if self.intensity == "high":
+        if self.intensity in ("high", "insane"):
             gen_map.update(high_gens)
+        if self.intensity == "insane":
+            gen_map.update(insane_gens)
         
         cases = []
         active = generators or list(gen_map.keys())
@@ -256,6 +281,129 @@ class FuzzEngine:
 
         # If we get here, all strategies failed. Return the last result.
         return result
+    
+    def _generate_ai_cases(self, fuzzer: StdioFuzzer, framing: str) -> list[FuzzCase]:
+        """Use AI to generate custom adversarial payloads per tool."""
+        cases: list[FuzzCase] = []
+        
+        def _frame(body: bytes) -> bytes:
+            if framing == "jsonl":
+                return body + b"\n"
+            return f"Content-Length: {len(body)}\r\n\r\n".encode() + body
+        
+        # 1. Discover tools by sending tools/list
+        console.print("  [accent]🧠 AI Fuzz:[/accent] Discovering server tools...")
+        tools_msg = {"jsonrpc": "2.0", "method": "tools/list", "id": 9999}
+        result = fuzzer.send_mcp_message_with_timeout(tools_msg, self.startup_timeout)
+        
+        if not result or not result.response or result.timeout or result.crashed:
+            console.print("  [warning]⚠ Could not discover tools. Skipping AI fuzz.[/warning]")
+            return cases
+        
+        # Parse tools from response
+        try:
+            resp_text = result.response.decode("utf-8", errors="replace")
+            # Handle CLRF framing: extract JSON from headers
+            if "\r\n\r\n" in resp_text:
+                resp_text = resp_text.split("\r\n\r\n", 1)[-1]
+            resp_data = json.loads(resp_text)
+            tools = resp_data.get("result", {}).get("tools", [])
+        except Exception:
+            console.print("  [warning]⚠ Could not parse tools/list response. Skipping AI fuzz.[/warning]")
+            return cases
+        
+        if not tools:
+            console.print("  [muted]No tools found. Skipping AI fuzz.[/muted]")
+            return cases
+        
+        console.print(f"  [accent]🧠 AI Fuzz:[/accent] Found {len(tools)} tools. Generating payloads...")
+        
+        # 2. Get LLM client
+        try:
+            from mcpsec.config import get_api_key
+            from mcpsec.ai.llm_client import LLMClient
+            
+            api_key, provider = get_api_key()
+            if not api_key:
+                console.print("  [warning]⚠ No AI API key configured. Skipping AI fuzz.[/warning]")
+                return cases
+            
+            llm = LLMClient(api_key=api_key, provider=provider)
+        except Exception as e:
+            console.print(f"  [warning]⚠ Could not initialize AI: {e}. Skipping AI fuzz.[/warning]")
+            return cases
+        
+        # 3. For each tool, generate adversarial payloads
+        for tool in tools:
+            tool_name = tool.get("name", "unknown")
+            tool_desc = tool.get("description", "No description")
+            tool_schema = tool.get("inputSchema", {})
+            
+            prompt = f"""You are a security fuzzer. Given this MCP tool:
+Name: {tool_name}
+Parameters: {json.dumps(tool_schema, indent=2)}
+Description: {tool_desc}
+
+Generate 15 malformed/adversarial tool call payloads designed to crash, 
+hang, or exploit the server. Each payload should have crafted arguments.
+
+Focus on:
+- Type confusion (wrong types for each parameter)
+- Boundary values (empty, null, huge, negative)
+- Injection payloads specific to the parameter name/type
+  (e.g., SQL for 'query' params, paths for 'file' params, commands for 'command' params)
+- Unicode edge cases in parameter values
+- Prototype pollution in arguments object
+
+Return ONLY a JSON array of objects (no markdown, no explanation):
+[{{"name": "test_name", "arguments": {{}}, "description": "what this tests"}}]"""
+            
+            try:
+                response = llm.chat(prompt)
+                
+                # Parse JSON from response
+                text = response.strip()
+                # Strip markdown if present
+                if "```" in text:
+                    text = text.split("```")[1]
+                    if text.startswith("json"):
+                        text = text[4:]
+                    text = text.strip()
+                
+                payloads = json.loads(text)
+                
+                if not isinstance(payloads, list):
+                    continue
+                
+                for p in payloads:
+                    if not isinstance(p, dict):
+                        continue
+                    test_name = p.get("name", "ai_test")
+                    arguments = p.get("arguments", {})
+                    description = p.get("description", "AI-generated payload")
+                    
+                    msg = {
+                        "jsonrpc": "2.0", "method": "tools/call", "id": 1,
+                        "params": {"name": tool_name, "arguments": arguments}
+                    }
+                    
+                    cases.append(FuzzCase(
+                        name=f"ai_{tool_name}_{test_name}",
+                        generator="ai_fuzz",
+                        payload=_frame(json.dumps(msg).encode()),
+                        description=f"🧠 {tool_name}: {description}",
+                        expected_behavior="Server handles gracefully"
+                    ))
+                
+                console.print(f"  [success]  ✔ {tool_name}:[/success] {sum(1 for c in cases if c.generator == 'ai_fuzz' and tool_name in c.name)} payloads")
+                
+            except Exception as e:
+                if self.debug:
+                    console.print(f"  [warning]  ⚠ {tool_name}: AI generation failed ({e})[/warning]")
+                continue
+        
+        console.print(f"  [accent]🧠 AI Fuzz:[/accent] Generated {len(cases)} custom payloads")
+        return cases
     
     def _is_anomalous(self, result: FuzzResult) -> bool:
         """Detect anomalous responses that might indicate bugs."""

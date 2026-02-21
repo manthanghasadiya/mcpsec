@@ -651,7 +651,8 @@ def fuzz(
     generators: str = typer.Option(None, "--generators", "-g", help="Comma-separated generator names"),
     output: str = typer.Option(None, "--output", "-o", help="Save results to JSON"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Print raw responses for debugging"),
-    intensity: str = typer.Option("medium", "--intensity", "-i", help="Fuzzing intensity: low, medium, high"),
+    intensity: str = typer.Option("medium", "--intensity", "-i", help="Fuzzing intensity: low, medium, high, insane"),
+    ai: bool = typer.Option(False, "--ai", help="Generate custom AI-powered fuzz payloads per tool"),
 ):
     """
     🔥 Fuzz an MCP server with malformed protocol messages.
@@ -661,8 +662,11 @@ def fuzz(
     
     Intensity levels:
       low    — core protocol tests (~65 cases)
-      medium — + session attacks & encoding tests (~115 cases)
-      high   — + injection payloads & resource exhaustion (~200+ cases)
+      medium — + session attacks & encoding tests (~150 cases)
+      high   — + injection, method/param mutations, timing, headers, JSON, protocol state (~500 cases)
+      insane — + resource exhaustion (~550+ cases)
+    
+    Use --ai to add AI-generated payloads custom to each tool's schema.
     """
     from mcpsec.fuzzer.fuzz_engine import FuzzEngine
     
@@ -671,7 +675,7 @@ def fuzz(
     
     gen_list = [g.strip() for g in generators.split(",")] if generators else None
     
-    engine = FuzzEngine(stdio, timeout, startup_timeout, framing, debug, intensity=intensity)
+    engine = FuzzEngine(stdio, timeout, startup_timeout, framing, debug, intensity=intensity, ai=ai)
     summary = engine.run(gen_list)
     
     # Print results
@@ -684,8 +688,12 @@ def fuzz(
     if summary['interesting_cases']:
         console.print()
         for ic in summary['interesting_cases']:
-            icon = "🔴" if ic['crashed'] else "🟡" if ic['timeout'] else "🟠"
-            status = "CRASH" if ic['crashed'] else "TIMEOUT" if ic['timeout'] else "ANOMALY"
+            if ic['generator'] == 'ai_fuzz':
+                icon = "🧠" if not ic['crashed'] and not ic['timeout'] else ("🔴" if ic['crashed'] else "🟡")
+                status = "AI-CRASH" if ic['crashed'] else "AI-TIMEOUT" if ic['timeout'] else "AI-ANOMALY"
+            else:
+                icon = "🔴" if ic['crashed'] else "🟡" if ic['timeout'] else "🟠"
+                status = "CRASH" if ic['crashed'] else "TIMEOUT" if ic['timeout'] else "ANOMALY"
             console.print(f"  {icon} [{status}] {ic['case_name']} ({ic['generator']})")
             console.print(f"       {ic['description']}")
             if ic['error']:
