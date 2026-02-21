@@ -1,4 +1,3 @@
-git push origin main
 rules:
   # ─── DANGEROUS EVAL ───────────────────────────────────────────────────
   - id: general-eval

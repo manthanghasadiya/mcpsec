@@ -2,7 +2,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-cyan.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.5.4-orange.svg)](https://pypi.org/project/mcpsec/)
+[![PyPI](https://img.shields.io/pypi/v/mcpsec)](https://pypi.org/project/mcpsec/)
+[![Found Bugs](https://img.shields.io/badge/bugs_found-3-red)]()
+[![Servers Tested](https://img.shields.io/badge/servers_tested-10+-blue)]()
+[![Fuzz Cases](https://img.shields.io/badge/fuzz_cases-600+-orange)]()
 
 **Security scanner for MCP (Model Context Protocol) server implementations.**
 
@@ -54,9 +57,9 @@ mcpsec audit --path . --ai
 mcpsec list-scanners
 ```
 
-## Mega Fuzzer (New in v0.5.4)
+## Mega Fuzzer (New in v1.0.0)
 
-`mcpsec` v0.5.4 introduces a significantly expanded fuzzing engine designed to find edge cases in MCP protocol handlers and tool implementations, along with critical fixes for OS-level buffer deadlocks preventing deep scanning of huge target stacks like the Kubernetes server.
+`mcpsec` v1.0.0 introduces a significantly expanded fuzzing engine designed to find edge cases in MCP protocol handlers and tool implementations, along with critical fixes for OS-level buffer deadlocks preventing deep scanning of huge target stacks like the Kubernetes server.
 
 - **500+ Security Test Cases**: Exhaustive coverage for malformed JSON, protocol violations, type confusion, boundary values, and encoding attacks.
 - **AI-Powered Payloads**: Use `--ai` to leverage LLMs to generate context-aware adversarial payloads based on your server's specific tool schemas.

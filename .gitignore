@@ -6,6 +6,7 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+.eggs/
 .venv/
 venv/
 report.json
@@ -13,3 +14,7 @@ report.json
 install_log.txt
 temp_*.py
 mcp_*.json
+*.json.bak
+.env
+.mcpsec/
+server_crash.log
