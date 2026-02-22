@@ -123,9 +123,6 @@ mcpsec list-scanners
 - ✅ Protocol Fuzzer (500+ adversarial test cases)
 - ✅ AI-Powered Fuzzing (LLM-generated payloads per tool schema)
 - ✅ Custom timeouts for slow targets (`--timeout`)
-- 🔜 Interactive Remediation (automated patching)
-- 🔜 CI/CD integration (GitHub Actions, GitLab CI)
-- 🔜 HTTP/SSE transport fuzzing
 
 ## Contributing
 
