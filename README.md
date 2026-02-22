@@ -69,9 +69,9 @@ mcpsec audit --path . --ai
 mcpsec list-scanners
 ```
 
-## Mega Fuzzer (New in v1.0.0)
+## Mega Fuzzer (New in v1.0.1)
 
-`mcpsec` v1.0.0 introduces a significantly expanded fuzzing engine designed to find edge cases in MCP protocol handlers and tool implementations, along with critical fixes for OS-level buffer deadlocks preventing deep scanning of huge target stacks like the Kubernetes server.
+`mcpsec` v1.0.1 introduces a significantly expanded fuzzing engine designed to find edge cases in MCP protocol handlers and tool implementations, along with critical fixes for OS-level buffer deadlocks preventing deep scanning of huge target stacks like the Kubernetes server.
 
 - **500+ Security Test Cases**: Exhaustive coverage for malformed JSON, protocol violations, type confusion, boundary values, and encoding attacks.
 - **AI-Powered Payloads**: Use `--ai` to leverage LLMs to generate context-aware adversarial payloads based on your server's specific tool schemas.
