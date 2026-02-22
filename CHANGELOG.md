@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-02-22
+
+### Added
+- Added a robust retry loop for tool discovery in AI fuzzing, allowing slow-starting servers up to 3 attempts to initialize before skipping.
+- Enhanced tool discovery by storing result schemas; the fuzzer now dynamically replaces generic tool names and parameter keys in injection payloads with real-world target data discovered from the server.
+- Improved initialization handshake for "auto" framing mode to gracefully handle servers that close the pipe on incorrect framing by automatically restarting the process.
+
 ## [1.0.1] - 2026-02-22
 
 ### Added
