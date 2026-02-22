@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcpsec"
-version = "1.0.0"
+version = "1.0.1"
 description = "Security scanner and protocol fuzzer for MCP (Model Context Protocol) servers. Found and reported vulnerabilities in official Anthropic and GitHub MCP implementations."
 readme = "README.md"
 license = {text = "MIT"}

@@ -42,6 +42,7 @@ class FuzzEngine:
         self.ai = ai
         self.results: List[FuzzResult] = []
         self.interesting: List[tuple[FuzzCase, FuzzResult]] = []
+        self._discovered_tools: list[dict] = []
     
     def run(self, generators: list[str] | None = None) -> dict:
         """Run the full fuzzing campaign."""
@@ -216,6 +217,53 @@ class FuzzEngine:
                 except TypeError:
                     cases.extend(gen_map[name]())
         
+        # Enrich injection payloads with discovered tool names/params
+        if self._discovered_tools:
+            enriched: list[FuzzCase] = []
+            for case in cases:
+                if case.generator == "injection_payloads":
+                    for tool in self._discovered_tools:
+                        tool_name = tool.get("name", "test_tool")
+                        schema = tool.get("inputSchema", {})
+                        real_params = list(schema.get("properties", {}).keys())
+                        try:
+                            raw = case.payload
+                            # Strip framing to get JSON body
+                            if b"\r\n\r\n" in raw:
+                                body = raw.split(b"\r\n\r\n", 1)[1]
+                            elif raw.endswith(b"\n"):
+                                body = raw.rstrip(b"\n")
+                            else:
+                                body = raw
+                            msg = json.loads(body)
+                            if msg.get("method") == "tools/call":
+                                # Replace tool name
+                                msg["params"]["name"] = tool_name
+                                # Replace generic params with real ones
+                                if real_params:
+                                    old_args = msg["params"].get("arguments", {})
+                                    payload_val = next(iter(old_args.values()), "")
+                                    msg["params"]["arguments"] = {p: payload_val for p in real_params}
+                                new_body = json.dumps(msg).encode()
+                                # Re-frame
+                                if framing == "jsonl":
+                                    framed = new_body + b"\n"
+                                else:
+                                    framed = f"Content-Length: {len(new_body)}\r\n\r\n".encode() + new_body
+                                enriched.append(FuzzCase(
+                                    name=f"{case.name}_{tool_name}",
+                                    generator=case.generator,
+                                    payload=framed,
+                                    description=f"{case.description} (tool: {tool_name})",
+                                    expected_behavior=case.expected_behavior,
+                                ))
+                        except Exception:
+                            pass  # Keep original if enrichment fails
+                    enriched.append(case)  # Keep original generic case too
+                else:
+                    enriched.append(case)
+            return enriched
+        
         return cases
     
     def _do_initialize(self, fuzzer: StdioFuzzer) -> FuzzResult | None:
@@ -273,9 +321,16 @@ class FuzzEngine:
                 # But we do need to tell the fuzzer to keep using it.
                 # fuzzer.framing is already set.
                 
-                # Send initialized notification
-                notif = {"jsonrpc": "2.0", "method": "notifications/initialized"}
-                fuzzer.send_mcp_message(notif)
+                # Send initialized notification — write directly to stdin
+                # (send_raw blocks reading a response, but notifications have none)
+                notif_json = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
+                if getattr(fuzzer, "framing", None) == "jsonl":
+                    notif_payload = (notif_json + "\n").encode("utf-8")
+                else:
+                    body = notif_json.encode("utf-8")
+                    notif_payload = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
+                fuzzer.process.stdin.write(notif_payload)
+                fuzzer.process.stdin.flush()
                 return result
             
             if self.debug:
@@ -295,22 +350,54 @@ class FuzzEngine:
         
         # 1. Discover tools by sending tools/list
         console.print("  [accent]🧠 AI Fuzz:[/accent] Discovering server tools...")
-        tools_msg = {"jsonrpc": "2.0", "method": "tools/list", "id": 9999}
-        result = fuzzer.send_mcp_message_with_timeout(tools_msg, self.startup_timeout)
         
-        if not result:
-            console.print("  [warning]⚠ No response from server during tool discovery. Skipping AI fuzz.[/warning]")
-            return cases
-        if result.timeout:
-            console.print("  [warning]⚠ Timeout during tool discovery. Skipping AI fuzz.[/warning]")
+        # Wait for server to fully initialize after notifications/initialized
+        time.sleep(1.0)
+        
+        # Retry tools/list up to 3 times
+        tools_msg = {"jsonrpc": "2.0", "method": "tools/list", "id": 9999}
+        result = None
+        for attempt in range(3):
+            if not fuzzer.is_alive():
+                fuzzer.restart_server()
+                fuzzer.framing = framing
+                # Re-initialize
+                init_msg = {
+                    "jsonrpc": "2.0", "method": "initialize", "id": 1,
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {"name": "mcpsec-fuzzer", "version": "1.0.0"}
+                    }
+                }
+                init_result = fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
+                if not init_result or init_result.crashed:
+                    continue
+                # Send initialized notification — write directly to stdin
+                # (send_raw blocks reading a response, but notifications have none)
+                notif_json = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
+                if framing == "jsonl":
+                    notif_payload = (notif_json + "\n").encode("utf-8")
+                else:
+                    body = notif_json.encode("utf-8")
+                    notif_payload = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
+                fuzzer.process.stdin.write(notif_payload)
+                fuzzer.process.stdin.flush()
+                time.sleep(0.5)
+            
+            result = fuzzer.send_mcp_message_with_timeout(tools_msg, self.startup_timeout)
+            time.sleep(1.0)
+            if result and result.response and not result.crashed and not result.timeout:
+                break
             if self.debug:
-                console.print(f"  [dim][DEBUG] Stderr: {fuzzer.stderr_lines[-5:]}[/dim]")
+                console.print(f"  [dim][DEBUG] Tool discovery attempt {attempt+1} failed. Retrying...[/dim]")
+            time.sleep(0.5)
+        
+        if not result or not result.response:
+            console.print("  [warning]⚠ Tool discovery failed after 3 attempts. Skipping AI fuzz.[/warning]")
             return cases
         if result.crashed:
             console.print("  [warning]⚠ Server crashed during tool discovery. Skipping AI fuzz.[/warning]")
-            return cases
-        if not result.response:
-            console.print("  [warning]⚠ Empty response during tool discovery. Skipping AI fuzz.[/warning]")
             return cases
         
         # Parse tools from response
@@ -331,6 +418,8 @@ class FuzzEngine:
             console.print("  [muted]No tools found. Skipping AI fuzz.[/muted]")
             return cases
         
+        self._discovered_tools = tools
+        
         console.print(f"  [accent]🧠 AI Fuzz:[/accent] Found {len(tools)} tools. Generating payloads...")
         
         # 2. Get LLM client
@@ -338,12 +427,12 @@ class FuzzEngine:
             from mcpsec.config import get_api_key
             from mcpsec.ai.llm_client import LLMClient
             
-            api_key, provider = get_api_key()
-            if not api_key:
+            provider, api_key, base_url, model = get_api_key()
+            if not provider:
                 console.print("  [warning]⚠ No AI API key configured. Skipping AI fuzz.[/warning]")
                 return cases
             
-            llm = LLMClient(api_key=api_key, provider=provider)
+            llm = LLMClient()
         except Exception as e:
             console.print(f"  [warning]⚠ Could not initialize AI: {e}. Skipping AI fuzz.[/warning]")
             return cases
@@ -354,7 +443,14 @@ class FuzzEngine:
             tool_desc = tool.get("description", "No description")
             tool_schema = tool.get("inputSchema", {})
             
-            prompt = f"""You are a security fuzzer. Given this MCP tool:
+            system_prompt = (
+                "You are a security fuzzer that generates adversarial payloads for MCP tool calls. "
+                "CRITICAL: Output STRICT, STATIC JSON ONLY. You must NOT use any JavaScript functions, "
+                "methods, or expressions (like .repeat()) in your output. You must properly escape all "
+                "control characters (e.g., use \\u0000 instead of \\0). Keys must be static double-quoted strings."
+            )
+            
+            user_prompt = f"""Given this MCP tool:
 Name: {tool_name}
 Parameters: {json.dumps(tool_schema, indent=2)}
 Description: {tool_desc}
@@ -371,10 +467,19 @@ Focus on:
 - Prototype pollution in arguments object
 
 Return ONLY a JSON array of objects (no markdown, no explanation):
-[{{"name": "test_name", "arguments": {{}}, "description": "what this tests"}}]"""
+[{{"name": "test_name", "arguments": {{...}}, "description": "what this tests"}}]"""
             
             try:
-                response = llm.chat(prompt)
+                import asyncio
+                import re
+                response = asyncio.run(llm.chat(system_prompt, user_prompt))
+                
+                if not response:
+                    continue
+                
+                # Log raw AI response for debugging
+                with open("mcpsec_ai_debug.log", "a", encoding="utf-8") as dbg:
+                    dbg.write(f"\n{'='*60}\nTool: {tool_name}\n{'='*60}\n{response}\n")
                 
                 # Parse JSON from response
                 text = response.strip()
@@ -385,7 +490,37 @@ Return ONLY a JSON array of objects (no markdown, no explanation):
                         text = text[4:]
                     text = text.strip()
                 
-                payloads = json.loads(text)
+                # Sanitize common LLM JSON issues
+                # Fix JavaScript .repeat(N) expressions (e.g. "A".repeat(1000000) -> "AAA...A")
+                def _expand_repeat(m):
+                    char = m.group(1)
+                    count = min(int(m.group(2)), 100)  # Cap at 100 chars
+                    return '"' + char * count + '"'
+                text = re.sub(r'"([^"]{1,4})"\.repeat\((\d+)\)', _expand_repeat, text)
+                # Fix JavaScript string concatenation ("a" + "b" -> "ab")
+                text = re.sub(r'"\s*\+\s*"', '', text)
+                # Fix \xNN hex escapes (not valid JSON) -> \u00NN
+                text = re.sub(r'\\x([0-9a-fA-F]{2})', r'\\u00\1', text)
+                # Fix unescaped backslashes (e.g. ..\..\ -> ..\\..\\)
+                # In JSON, \ must be followed by " \ / b f n r t u - escape lone ones
+                text = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', text)
+                # Remove trailing commas before ] or }
+                text = re.sub(r',\s*([}\]])', r'\1', text)
+                # Remove control characters except \n \r \t
+                text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+                
+                try:
+                    payloads = json.loads(text)
+                except json.JSONDecodeError:
+                    # Fallback: try to extract JSON array via regex
+                    match = re.search(r'\[.*\]', text, re.DOTALL)
+                    if match:
+                        cleaned = match.group()
+                        cleaned = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', cleaned)
+                        cleaned = re.sub(r',\s*([}\]])', r'\1', cleaned)
+                        payloads = json.loads(cleaned)
+                    else:
+                        raise
                 
                 if not isinstance(payloads, list):
                     continue
