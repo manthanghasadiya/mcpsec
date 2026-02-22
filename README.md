@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-cyan.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/mcpsec)](https://pypi.org/project/mcpsec/)
-[![Found Bugs](https://img.shields.io/badge/bugs_found-3-red)]()
+[![Found Bugs](https://img.shields.io/badge/bugs_found-5-red)]()
 [![Servers Tested](https://img.shields.io/badge/servers_tested-10+-blue)]()
 [![Fuzz Cases](https://img.shields.io/badge/fuzz_cases-600+-orange)]()
 
@@ -27,6 +27,18 @@ MCP is the universal protocol connecting AI agents (Claude, ChatGPT, Gemini, Cur
 - **~2,000** internet-exposed MCP servers found with **zero authentication** ([Knostic](https://www.descope.com/learn/post/mcp))
 - Anthropic's own Git MCP server had **3 critical RCE vulnerabilities** (CVE-2025-68143/44/45)
 - Nobody built an open-source scanner for this. Until now.
+
+## Proven Results
+
+mcpsec has been used to discover and responsibly report multiple vulnerabilities across official MCP implementations by major technology companies. Findings include transport-layer crashes, unhandled exception panics, and protocol-level denial of service issues affecting the Python SDK, TypeScript SDK, and Go SDK ecosystems.
+
+- **5 bugs reported** across Anthropic and GitHub MCP implementations
+- **3 SDK ecosystems affected** (Python, TypeScript, Go)
+- **Fixes submitted within hours** of initial reports
+- **Reproduced known CVEs**: CVE-2025-53967 (Figma MCP), CVE-2025-53818 (Kanban MCP)
+- **SQL injection confirmed** in community MCP servers via static analysis
+
+> Details will be published following responsible disclosure timelines.
 
 ## Install
 
@@ -99,18 +111,21 @@ mcpsec list-scanners
      └── 5. Report findings with evidence + remediation
 ```
 
-## Roadmap
+## Features
 
-- [x] Prompt injection scanner
-- [x] Authentication & authorization audit
-- [x] Path traversal scanner
-- [x] Command injection scanner
-- [x] SSRF scanner
-- [x] JSON report output
-- [x] **Static source code analysis mode**
-- [x] **Protocol Fuzzer** (500+ security cases)
-- [x] **AI-Powered Fuzzing** (Adversarial payload generation)
-- [ ] **Interactive Remediation** (Automated patching for common vulnerabilities)
+- ✅ Prompt injection scanner
+- ✅ Authentication & authorization audit
+- ✅ Path traversal scanner (dynamic proof-of-exploitation)
+- ✅ Command injection scanner (dynamic proof-of-exploitation)
+- ✅ SSRF scanner
+- ✅ JSON report output
+- ✅ Static source code analysis with Semgrep rules
+- ✅ Protocol Fuzzer (500+ adversarial test cases)
+- ✅ AI-Powered Fuzzing (LLM-generated payloads per tool schema)
+- ✅ Custom timeouts for slow targets (`--timeout`)
+- 🔜 Interactive Remediation (automated patching)
+- 🔜 CI/CD integration (GitHub Actions, GitLab CI)
+- 🔜 HTTP/SSE transport fuzzing
 
 ## Contributing
 
