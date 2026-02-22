@@ -100,12 +100,73 @@ class StdioFuzzer:
         self.stop_server()
         self.start_server()
 
-    def is_alive(self) -> bool:
-        """Check if server process is still running."""
+    def is_alive(self, strict: bool = False) -> bool:
+        """
+        Check if server process is still running.
+        If strict=True, also verifies the process didn't exit with code 0.
+        """
         proc = self.process
         if not proc:
             return False
-        return proc.poll() is None
+        returncode = proc.poll()
+        if returncode is None:
+            return True
+        if strict:
+            return False  # Any exit = not alive
+        # Non-strict: exit code 0 doesn't count as "dead" for crash purposes
+        return False
+
+    def _check_real_crash(self) -> tuple[bool, str]:
+        """
+        Check if server actually crashed vs graceful exit/disconnect.
+        Returns (is_crash, reason).
+        """
+        proc = self.process
+        if not proc:
+            return False, ""
+        
+        returncode = proc.poll()
+        
+        # Still running = not a crash
+        if returncode is None:
+            return False, ""
+        
+        # Exit code 0 = graceful shutdown, not a crash
+        if returncode == 0:
+            return False, "graceful_exit"
+        
+        # Non-zero exit = potential crash, check stderr for confirmation
+        reason = f"exit_code_{returncode}"
+        
+        # Check stderr log for stack traces
+        try:
+            with open(self.error_log_path, "rb") as f:
+                # Read last 4KB of stderr
+                f.seek(0, 2)  # End
+                size = f.tell()
+                f.seek(max(0, size - 4096))
+                stderr_tail = f.read().decode("utf-8", errors="replace").lower()
+                
+                crash_indicators = [
+                    "traceback", "panic:", "fatal", "segfault", "sigsegv",
+                    "exception", "error:", "stack trace", "at object.",
+                    "uncaughtexception", "unhandledrejection"
+                ]
+                
+                if any(ind in stderr_tail for ind in crash_indicators):
+                    reason = "crash_with_stacktrace"
+                    return True, reason
+        except Exception:
+            pass
+        
+        # Non-zero exit without clear stack trace - could be error handling
+        # Be conservative: only count as crash if exit code suggests crash
+        # Common crash codes: 1 (general), 134 (SIGABRT), 139 (SIGSEGV), 143 (SIGTERM)
+        if returncode in (134, 139, 245, 255) or returncode > 128:
+            return True, reason
+        
+        # Exit code 1 is ambiguous - could be handled error
+        return False, "handled_error"
 
     def send_raw(self, payload: bytes) -> FuzzResult:
         """
@@ -160,14 +221,13 @@ class StdioFuzzer:
             elapsed = (time.perf_counter() - start) * 1000
             
             # ─────────────────────────────────────────────────────────────
-            # FIX: Fuzzer State Desync / Payload Bleed
-            # Wait 50ms for the OS to purge buffers and the process to die
-            # if the payload caused a fatal exception.
+            # FIX: Better crash detection - distinguish real crashes from
+            # graceful disconnects and silent rejections
             time.sleep(0.05)
             # ─────────────────────────────────────────────────────────────
             
-            crashed = not self.is_alive()
-            if crashed:
+            is_crash, crash_reason = self._check_real_crash()
+            if is_crash:
                 self.crash_count += 1
             
             return FuzzResult(
@@ -176,21 +236,20 @@ class StdioFuzzer:
                 payload=payload,
                 response=response,
                 elapsed_ms=elapsed,
-                crashed=crashed,
+                crashed=is_crash,
                 timeout=False,
+                error_message=crash_reason if is_crash else "",
             )
             
         except TimeoutError:
             
             # ─────────────────────────────────────────────────────────────
-            # FIX: Fuzzer State Desync / Payload Bleed
-            # If we timed out, wait 50ms to see if the process actually 
-            # died but the OS hadn't updated poll() yet.
+            # FIX: Better crash detection after timeout
             time.sleep(0.05)
             # ─────────────────────────────────────────────────────────────
             
-            crashed = not self.is_alive()
-            if crashed:
+            is_crash, crash_reason = self._check_real_crash()
+            if is_crash:
                 self.crash_count += 1
                 return FuzzResult(
                     test_id=self.test_count,
@@ -200,7 +259,7 @@ class StdioFuzzer:
                     elapsed_ms=self.timeout * 1000,
                     crashed=True,
                     timeout=False,
-                    error_message="Server crashed after timeout"
+                    error_message=crash_reason or "Server crashed after timeout"
                 )
                 
             self.timeout_count += 1

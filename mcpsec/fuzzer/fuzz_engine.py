@@ -109,16 +109,24 @@ class FuzzEngine:
             
             for case in all_cases:
                 if not fuzzer.is_alive():
-                    console.print(f"  [danger]Server crashed! Restarting...[/danger]")
-                    # Record the crash
+                    # Check if it was a REAL crash or graceful exit
+                    is_crash, crash_reason = fuzzer._check_real_crash()
+                    if is_crash:
+                        console.print(f"  [danger]Server crashed! ({crash_reason}) Restarting...[/danger]")
+                    else:
+                        if self.debug:
+                            console.print(f"  [dim]Server exited ({crash_reason}). Restarting...[/dim]")
+                    
+                    # Record the result
                     self.interesting.append((case, FuzzResult(
                         test_id=fuzzer.test_count,
                         generator=case.generator,
                         payload=case.payload,
                         response=None,
                         elapsed_ms=0,
-                        crashed=True, timeout=False,
-                        error_message="Server died from previous test"
+                        crashed=is_crash,  # Use actual crash detection
+                        timeout=False,
+                        error_message=crash_reason if is_crash else "Server exited (not crash)"
                     )))
                     # Restart and re-initialize
                     fuzzer.restart_server()
