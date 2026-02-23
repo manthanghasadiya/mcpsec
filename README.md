@@ -88,6 +88,16 @@ mcpsec list-scanners
   - `insane`: Includes resource exhaustion and DoS patterns
   - `ai`: High intensity + AI-generated payloads
 
+## Chained Fuzzing Engine (v1.0.5)
+
+`mcpsec` v1.0.5 introduces **Chained Fuzzing**, a stateful execution engine designed to find vulnerabilities in complex MCP servers that require multiple tool calls in a specific order.
+
+- **🔗 Multi-Step Attack Chains**: Automatically builds sequences like `navigate` -> `snapshot` -> `click`.
+- **🧠 Dependency Analysis**: Uses AI to automatically discover which tools provide state (refs, IDs) and which require it.
+- **💉 Stateful Payload Injection**: Injects adversarial payloads into the correct tool parameters while maintaining a valid session state.
+- **📄 SARIF Reporting**: Export findings to standard SARIF format for integration with GitHub Actions, GitLab CI, and other DevSecOps tools.
+- **🚀 New Commands**: Use `mcpsec chained` for full analysis, or `mcpsec fuzz --chained` for stateful fuzzing.
+
 ## Scanners
 
 | Scanner | Type | What It Detects |

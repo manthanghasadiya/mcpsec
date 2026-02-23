@@ -679,6 +679,7 @@ def fuzz(
     ai: bool = typer.Option(False, "--ai", help="Generate custom AI-powered fuzz payloads per tool"),
     http: Optional[str] = typer.Option(None, "--http", help="MCP server HTTP URL"),
     header: list[str] = typer.Option([], "--header", "-H", help="HTTP header in 'Key: Value' format"),
+    chained: bool = typer.Option(False, "--chained", help="Use stateful attack chains (discovery & dependency analysis)"),
 ):
     """
     🔥 Fuzz an MCP server with malformed protocol messages.
@@ -708,6 +709,11 @@ def fuzz(
     
     gen_list = [g.strip() for g in generators.split(",")] if generators else None
     
+    if chained:
+        # Delegate to chained engine
+        _run_async(_chained_fuzz_async(target, transport, parsed_headers, intensity, ai))
+        return
+
     engine = FuzzEngine(target, timeout, startup_timeout, framing, debug, intensity=intensity, ai=ai, headers=parsed_headers)
     summary = engine.run(gen_list)
     
@@ -740,6 +746,83 @@ def fuzz(
         import json
         Path(output).write_text(json.dumps(summary, indent=2))
         console.print(f"  [success]✔ Results saved to {output}[/success]")
+
+
+# ─── CHAINED COMMAND ─────────────────────────────────────────────────────────
+
+@app.command()
+def chained(
+    stdio: Optional[str] = typer.Option(None, "--stdio", "-s", help="MCP server command"),
+    http: Optional[str] = typer.Option(None, "--http", help="MCP server HTTP URL"),
+    ai: bool = typer.Option(True, "--ai/--no-ai", help="Use AI for dependency analysis (recommended)"),
+    intensity: str = typer.Option("medium", "--intensity", "-i", help="Fuzzing intensity"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Save results to JSON"),
+    header: list[str] = typer.Option([], "--header", "-H", help="HTTP header"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+):
+    """
+    🔗 Execute stateful attack chains against an MCP server.
+    
+    This engine analyzes tool dependencies, builds multi-step sequences
+    (e.g., navigate -> snapshot -> click), and injects payloads while
+    maintaining valid application state.
+    """
+    target = stdio or http
+    transport = "stdio" if stdio else "http"
+    parsed_headers = _parse_headers(header)
+    
+    if not target:
+        console.print("[danger]Error: Specify either --stdio or --http[/danger]")
+        raise typer.Exit(1)
+        
+    _run_async(_chained_fuzz_async(
+        target=target,
+        transport_type=transport,
+        headers=parsed_headers,
+        intensity=intensity,
+        use_ai=ai,
+        verbose=verbose,
+        output_path=output,
+    ))
+
+
+async def _chained_fuzz_async(
+    target: str,
+    transport_type: str,
+    headers: dict[str, str],
+    intensity: str,
+    use_ai: bool,
+    verbose: bool = False,
+    output_path: str | None = None,
+):
+    from mcpsec.fuzzer.chain.chain_engine import ChainEngine, ChainFuzzingConfig
+    
+    config = ChainFuzzingConfig(
+        use_ai=use_ai,
+        verbose=verbose,
+    )
+    
+    # Map intensity to payload counts
+    intensity_map = {
+        "low": 5,
+        "medium": 20,
+        "high": 50,
+        "insane": 100,
+    }
+    config.max_payloads_per_injection_point = intensity_map.get(intensity.lower(), 20)
+    
+    engine = ChainEngine(config)
+    
+    await engine.run(
+        server_command=target if transport_type == "stdio" else "",
+        transport_type=transport_type,
+        http_url=target if transport_type == "http" else None,
+        headers=headers,
+    )
+    
+    if output_path:
+        engine.reporter.save_json(output_path)
+        console.print(f"\n  [success]✔ Chained report saved to {output_path}[/success]")
 
 
 # ─── ROGUE-SERVER COMMAND ───────────────────────────────────────────────────

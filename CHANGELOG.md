@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2026-02-23
+### Added
+- **Chained Fuzzing Engine**: A new stateful fuzzer that handles sequential tool calls with data dependencies (e.g., `navigate` -> `snapshot` -> `click`).
+- **Chain Analyzer**: AI-powered dependency analysis to automatically discover the correct order of tool calls.
+- **Stateful Injection**: Ability to maintain valid session state and refs while fuzzing deep tool sinks.
+- **SARIF Reporting**: Export chained fuzzing results to SARIF format for seamless CI/CD security pipeline integration.
+- **New Command**: Added `mcpsec chained` command and `--chained` flag to `mcpsec fuzz`.
+
 ## [1.0.4] - 2026-02-23
 ### Added
 - **Diagnostic Fuzz Logging**: New logging system for identifying exactly which payloads crash an MCP server.

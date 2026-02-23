@@ -42,6 +42,18 @@ class StdioFuzzer:
         self.stderr_lines: list[str] = []
         self.framing = "clrf" # Default to content-length framing
 
+    def start(self):
+        """Alias for start_server."""
+        self.start_server()
+
+    def stop(self):
+        """Alias for stop_server."""
+        self.stop_server()
+
+    def restart(self):
+        """Alias for restart_server."""
+        self.restart_server()
+
     def start_server(self):
         """Spawn the MCP server subprocess."""
         import shlex
@@ -167,6 +179,61 @@ class StdioFuzzer:
         
         # Exit code 1 is ambiguous - could be handled error
         return False, "handled_error"
+
+    def send_notification(self, payload: bytes) -> FuzzResult:
+        """Send raw bytes and return WITHOUT waiting for response (for notifications)."""
+        self.test_count += 1
+        
+        proc = self.process
+        if not proc or not proc.stdin or not self.is_alive():
+            return FuzzResult(
+                test_id=self.test_count,
+                generator="",
+                payload=payload,
+                response=None,
+                elapsed_ms=0,
+                crashed=True,
+                timeout=False,
+                error_message="Server not running"
+            )
+            
+        start = time.perf_counter()
+        try:
+            proc.stdin.write(payload)
+            proc.stdin.flush()
+            
+            elapsed = (time.perf_counter() - start) * 1000
+            
+            # Check for crash
+            time.sleep(0.01) # Tiny yield to let OS update process status
+            is_crash, crash_reason = self._check_real_crash()
+            if is_crash:
+                self.crash_count += 1
+                self._log_crash(crash_reason, payload)
+                
+            return FuzzResult(
+                test_id=self.test_count,
+                generator="",
+                payload=payload,
+                response=None,
+                elapsed_ms=elapsed,
+                crashed=is_crash,
+                timeout=False,
+                error_message=crash_reason if is_crash else "",
+            )
+        except (BrokenPipeError, OSError) as e:
+            self.crash_count += 1
+            self._log_crash(str(e), payload)
+            return FuzzResult(
+                test_id=self.test_count,
+                generator="",
+                payload=payload,
+                response=None,
+                elapsed_ms=(time.perf_counter() - start) * 1000,
+                crashed=True,
+                timeout=False,
+                error_message=str(e),
+            )
 
     def send_raw(self, payload: bytes) -> FuzzResult:
         """
@@ -409,3 +476,31 @@ class StdioFuzzer:
         result = self.send_raw(raw_bytes)
         result.generator = generator_name
         return result
+
+    async def send_request_async(self, message: dict) -> Optional[dict]:
+        """
+        Async-friendly wrapper to send an MCP request and return the response.
+        """
+        import asyncio
+        # Run the sync send_mcp_message in a thread to avoid blocking loop
+        result = await asyncio.to_thread(self.send_mcp_message, message)
+        
+        if result.response:
+            try:
+                return json.loads(result.response)
+            except json.JSONDecodeError:
+                return None
+        return None
+
+    async def send_notification_async(self, message: dict) -> None:
+        """
+        Async-friendly wrapper to send an MCP notification.
+        """
+        import asyncio
+        json_bytes = json.dumps(message).encode("utf-8")
+        if self.framing == "jsonl":
+            payload = json_bytes + b"\n"
+        else:
+            payload = f"Content-Length: {len(json_bytes)}\r\n\r\n".encode() + json_bytes
+            
+        await asyncio.to_thread(self.send_notification, payload)

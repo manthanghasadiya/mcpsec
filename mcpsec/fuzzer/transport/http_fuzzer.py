@@ -30,11 +30,11 @@ class HttpFuzzer:
         """No-op for HTTP."""
         pass
 
-    def stop_server(self):
+    def stop(self):
         """No-op for HTTP."""
         pass
 
-    def restart_server(self):
+    def restart(self):
         """No-op for HTTP."""
         pass
 
@@ -156,3 +156,25 @@ class HttpFuzzer:
         import json
         payload = json.dumps(msg).encode()
         return self.send_raw(payload)
+
+    async def send_request_async(self, message: dict) -> Optional[dict]:
+        """
+        Async-friendly wrapper to send an MCP request and return the response.
+        """
+        import asyncio
+        # Run the sync send_mcp_message_with_timeout in a thread
+        result = await asyncio.to_thread(self.send_mcp_message_with_timeout, message, self.timeout)
+        
+        if result.response:
+            try:
+                return json.loads(result.response)
+            except json.JSONDecodeError:
+                return None
+        return None
+
+    async def send_notification_async(self, message: dict) -> None:
+        """
+        Async-friendly wrapper to send an MCP notification.
+        """
+        import asyncio
+        await asyncio.to_thread(self.send_mcp_message_with_timeout, message, self.timeout)
