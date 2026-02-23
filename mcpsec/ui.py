@@ -4,7 +4,6 @@ mcpsec terminal UI theme — hacker aesthetic.
 from mcpsec import __version__
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 from rich.theme import Theme
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
@@ -64,18 +63,28 @@ def print_banner(small: bool = False):
         except (BrokenPipeError, OSError):
             pass
     except (BrokenPipeError, OSError):
-        # Pipe closed early (e.g. output piped through head/Select-Object)
+        # Pipe closed early
         pass
 
 
-def print_target_info(target_type: str, target: str, transport: str = "stdio"):
+def print_target_info(
+    target_type: str,
+    target: str,
+    transport: str,
+    headers: dict[str, str] | None = None,
+):
     """Print target connection info box."""
     table = Table(box=box.SIMPLE_HEAVY, show_header=False, padding=(0, 2))
     table.add_column("key", style="muted", width=12)
     table.add_column("value", style="value")
+    
     table.add_row("TARGET", target)
     table.add_row("TRANSPORT", transport)
     table.add_row("TYPE", target_type)
+    
+    if headers:
+        for k, v in headers.items():
+            table.add_row("HEADER", f"{k}: {_mask_header_value(k, v)}")
     
     title = "◉ Target"
     try:
@@ -86,17 +95,25 @@ def print_target_info(target_type: str, target: str, transport: str = "stdio"):
             padding=(1, 2),
         ))
     except UnicodeEncodeError:
-         try:
-             console.print(Panel(
+        try:
+            console.print(Panel(
                 table,
-                title="[bold cyan]Target[/bold cyan]",
+                title="Target",
                 border_style="cyan",
                 padding=(1, 2),
             ))
-         except (BrokenPipeError, OSError):
-             pass
+        except (BrokenPipeError, OSError):
+            pass
     except (BrokenPipeError, OSError):
         pass
+
+
+def _mask_header_value(key: str, value: str) -> str:
+    """Mask sensitive header values for display."""
+    sensitive_keys = ["authorization", "x-api-key", "api-key", "token", "secret"]
+    if any(s in key.lower() for s in sensitive_keys):
+        return value[:10] + "..." + value[-4:] if len(value) > 14 else "***"
+    return value
 
 
 def print_tool_info(name: str, description: str, params: dict):
@@ -117,7 +134,6 @@ def print_finding(severity: str, scanner: str, tool_name: str, title: str, detai
     """Print a vulnerability finding."""
     sev_style = f"vuln.{severity.lower()}"
     sev_label = severity.upper().ljust(8)
-    # Use ASCII icons for better compatibility
     icon = {"critical": "[!]", "high": "[!]", "medium": "[!]", "low": "[?]", "info": "[i]"}.get(
         severity.lower(), "[i]"
     )

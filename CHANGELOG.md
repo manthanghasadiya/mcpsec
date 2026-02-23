@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a robust retry loop for tool discovery in AI fuzzing, allowing slow-starting servers up to 3 attempts to initialize before skipping.
 - Enhanced tool discovery by storing result schemas; the fuzzer now dynamically replaces generic tool names and parameter keys in injection payloads with real-world target data discovered from the server.
 - Improved initialization handshake for "auto" framing mode to gracefully handle servers that close the pipe on incorrect framing by automatically restarting the process.
+- **[Phase 1]** Added support for custom HTTP headers via `--header` / `-H` flags in `scan` and `fuzz` commands. Essential for OAuth/Bearer authentication.
+- **[Phase 1]** Implemented sensitive header masking in UI output to protect tokens and API keys.
+- **[Phase 2]** Introduced `rogue-server` command to launch a malicious MCP server for testing client-side vulnerabilities (Memory exhaustion, XSS, Proto Pollution, Terminal injection).
+- **[Phase 2]** Added `aiohttp` optional dependency for the rogue server and HTTP fuzzing.
 
 ## [1.0.1] - 2026-02-22
 

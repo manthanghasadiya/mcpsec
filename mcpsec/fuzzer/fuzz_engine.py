@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List
 
 from mcpsec.fuzzer.transport.stdio_fuzzer import StdioFuzzer, FuzzResult
+from mcpsec.fuzzer.transport.http_fuzzer import HttpFuzzer
 from mcpsec.fuzzer.generators.base import FuzzCase
 from mcpsec.fuzzer.generators import (
     malformed_json,
@@ -32,7 +33,7 @@ from mcpsec.ui import console, print_section, get_progress
 class FuzzEngine:
     """Orchestrates the fuzzing campaign."""
     
-    def __init__(self, command: str, timeout: float = 2.0, startup_timeout: float = 15.0, framing: str = "auto", debug: bool = False, intensity: str = "medium", ai: bool = False):
+    def __init__(self, command: str, timeout: float = 2.0, startup_timeout: float = 15.0, framing: str = "auto", debug: bool = False, intensity: str = "medium", ai: bool = False, headers: dict | None = None):
         self.command = command
         self.timeout = timeout
         self.startup_timeout = startup_timeout
@@ -40,6 +41,7 @@ class FuzzEngine:
         self.debug = debug
         self.intensity = intensity
         self.ai = ai
+        self.headers = headers
         self.results: List[FuzzResult] = []
         self.interesting: List[tuple[FuzzCase, FuzzResult]] = []
         self._discovered_tools: list[dict] = []
@@ -52,7 +54,10 @@ class FuzzEngine:
         console.print()
         
         # 1. Start server and initialize (detect framing)
-        fuzzer = StdioFuzzer(self.command, self.timeout, debug=self.debug)
+        if self.command.startswith(("http://", "https://")):
+            fuzzer = HttpFuzzer(self.command, self.timeout, debug=self.debug, headers=self.headers)
+        else:
+            fuzzer = StdioFuzzer(self.command, self.timeout, debug=self.debug)
         
         if self.debug:
             console.print("  [dim]Starting server...[/dim]")
@@ -148,7 +153,11 @@ class FuzzEngine:
                             }
                         }
                         # Just send it, relying on detected framing
-                        fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
+                        if fuzzer.process and fuzzer.process.stdin:
+                            fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
+                        else:
+                            # For HTTP, just send regular request
+                            fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
                         
                     except Exception as e:
                         if self.debug:
@@ -329,16 +338,19 @@ class FuzzEngine:
                 # But we do need to tell the fuzzer to keep using it.
                 # fuzzer.framing is already set.
                 
-                # Send initialized notification — write directly to stdin
-                # (send_raw blocks reading a response, but notifications have none)
+                # Send initialized notification
                 notif_json = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
                 if getattr(fuzzer, "framing", None) == "jsonl":
                     notif_payload = (notif_json + "\n").encode("utf-8")
                 else:
                     body = notif_json.encode("utf-8")
                     notif_payload = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
-                fuzzer.process.stdin.write(notif_payload)
-                fuzzer.process.stdin.flush()
+                
+                if fuzzer.process and fuzzer.process.stdin:
+                    fuzzer.process.stdin.write(notif_payload)
+                    fuzzer.process.stdin.flush()
+                else:
+                    fuzzer.send_raw(notif_payload)
                 return result
             
             if self.debug:
@@ -381,16 +393,19 @@ class FuzzEngine:
                 init_result = fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
                 if not init_result or init_result.crashed:
                     continue
-                # Send initialized notification — write directly to stdin
-                # (send_raw blocks reading a response, but notifications have none)
+                # Send initialized notification
                 notif_json = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
                 if framing == "jsonl":
                     notif_payload = (notif_json + "\n").encode("utf-8")
                 else:
                     body = notif_json.encode("utf-8")
                     notif_payload = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
-                fuzzer.process.stdin.write(notif_payload)
-                fuzzer.process.stdin.flush()
+                
+                if fuzzer.process and fuzzer.process.stdin:
+                    fuzzer.process.stdin.write(notif_payload)
+                    fuzzer.process.stdin.flush()
+                else:
+                    fuzzer.send_raw(notif_payload)
                 time.sleep(0.5)
             
             result = fuzzer.send_mcp_message_with_timeout(tools_msg, self.startup_timeout)
@@ -413,7 +428,7 @@ class FuzzEngine:
             resp_text = result.response.decode("utf-8", errors="replace")
             # Handle CLRF framing: extract JSON from headers
             if "\r\n\r\n" in resp_text:
-                resp_text = resp_text.split("\r\n\r\n", 1)[-1]
+                resp_text = resp_text.split("\r\n\r\n", 1)[1]
             resp_data = json.loads(resp_text)
             tools = resp_data.get("result", {}).get("tools", [])
         except Exception as e:

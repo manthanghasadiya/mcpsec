@@ -43,6 +43,12 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "ruff>=0.4.0",
 ]
+rogue = [
+    "aiohttp>=3.9.0",
+]
+all = [
+    "mcpsec[ai,rogue]",
+]
 
 [project.scripts]
 mcpsec = "mcpsec.cli:app"

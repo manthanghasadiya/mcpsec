@@ -52,11 +52,13 @@ pip install mcpsec
 # Scan an MCP server running via stdio
 mcpsec scan --stdio "npx @modelcontextprotocol/server-filesystem /tmp"
 
-# 💥 Run Mega Fuzzer (500+ security test cases)
-mcpsec fuzz --stdio "python my_server.py" --intensity high
+# 💥 Run Mega Fuzzer with Custom Headers
+mcpsec fuzz --http http://localhost:8080/mcp -H "Authorization: Bearer <token>"
 
-# 🧠 Run AI-Powered Fuzzing (Context-aware adversarial payloads)
-# Requires OPENAI_API_KEY
+# 🎭 Launch a Rogue Server to test your client (Cursor/Claude)
+mcpsec rogue-server --port 9999 --attack all
+
+# 🧠 Run AI-Powered Fuzzing
 mcpsec fuzz --stdio "python my_server.py" --ai
 
 # Enumerate attack surface
@@ -69,14 +71,15 @@ mcpsec audit --path . --ai
 mcpsec list-scanners
 ```
 
-## Mega Fuzzer (New in v1.0.1)
+## Mega Fuzzer (v1.0.2)
 
-`mcpsec` v1.0.1 introduces a significantly expanded fuzzing engine designed to find edge cases in MCP protocol handlers and tool implementations, along with critical fixes for OS-level buffer deadlocks preventing deep scanning of huge target stacks like the Kubernetes server.
+`mcpsec` v1.0.2 introduces the **Rogue MCP Server**, a powerful framework for testing client-side vulnerabilities, along with support for custom HTTP headers to audit authenticated servers.
 
-- **500+ Security Test Cases**: Exhaustive coverage for malformed JSON, protocol violations, type confusion, boundary values, and encoding attacks.
-- **AI-Powered Payloads**: Use `--ai` to leverage LLMs to generate context-aware adversarial payloads based on your server's specific tool schemas.
-- **Enhanced Reliability**: Completely resolved a major "Fuzzer State Desync" bug that caused pipe deadlocks when target servers crashed under intense payloads.
-- **Custom Timeouts**: Use `--timeout` (default 5.0s) to accommodate slower target servers like Puppeteer without triggering premature hang detections.
+- **🎭 Rogue MCP Server**: Launch a malicious server with `--attack` vectors targeting Claude Desktop, Cursor, and VS Code. (Memory bombs, XSS, Proto Pollution, etc.)
+- **🔐 Custom Headers**: Pass any token or cookie via `--header` / `-H`. Essential for protected Supabase, Slack, or GitHub deployments.
+- **500+ Security Test Cases**: Exhaustive coverage for malformed JSON, protocol violations, and memory exhaustion.
+- **AI-Powered Payloads**: Context-aware adversarial payloads tailored to your server's specific tool schemas.
+- **Improved Compatibility**: Optimized for Windows (Proactor loop fixes) and strict protocol clients (Claude Desktop handshake).
 - **Refined Intensity Tiers**:
   - `low`: Core protocol smoke tests (~65 cases)
   - `medium`: Standard security baseline (~150 cases)

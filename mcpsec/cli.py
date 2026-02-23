@@ -47,6 +47,21 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
+def _parse_headers(header_list: list[str]) -> dict[str, str]:
+    """Parse list of 'Key: Value' strings into a dictionary."""
+    headers = {}
+    for h in header_list:
+        if ":" in h:
+            key, value = h.split(":", 1)
+            headers[key.strip()] = value.strip()
+        else:
+            # Invalid format, warn user
+            console.print(
+                f"[yellow]Warning: Invalid header format '{h}', expected 'Key: Value'[/yellow]"
+            )
+    return headers
+
+
 def _version_callback(value: bool):
     if value:
         console.print(f"mcpsec v{__version__}")
@@ -74,7 +89,7 @@ def scan(
     ),
     http: Optional[str] = typer.Option(
         None,
-        "--http", "-H",
+        "--http",
         help="MCP server HTTP URL (e.g. 'http://localhost:3000/mcp')",
     ),
     scanners: Optional[str] = typer.Option(
@@ -96,6 +111,12 @@ def scan(
         False,
         "--ai",
         help="Use AI to generate custom payloads per tool",
+    ),
+    header: list[str] = typer.Option(
+        [],
+        "--header",
+        "-H",
+        help="HTTP header in 'Key: Value' format. Can be repeated. Example: -H 'Authorization: Bearer token123'",
     ),
 ):
     """
@@ -121,6 +142,7 @@ def scan(
         output_path=output,
         quiet=quiet,
         ai=ai,
+        headers=_parse_headers(header),
     ))
 
 
@@ -131,6 +153,7 @@ async def _scan_async(
     output_path: str | None,
     quiet: bool,
     ai: bool = False,
+    headers: dict[str, str] | None = None,
 ):
     from mcpsec.client.mcp_client import MCPSecClient
     from mcpsec.engine import run_scan
@@ -145,6 +168,7 @@ async def _scan_async(
         target_type="MCP Server",
         target=target[:80],
         transport=transport.value,
+        headers=headers,
     )
 
     # ── Connect ──────────────────────────────────────────────────────────
@@ -159,7 +183,7 @@ async def _scan_async(
             else:
                 with get_progress() as p:
                     task = p.add_task("Connecting via HTTP...", total=None)
-                    profile = await client.connect_http(http_url)
+                    profile = await client.connect_http(http_url, headers=headers)
                     p.update(task, completed=True)
         except Exception as e:
             console.print(f"\n  [danger]✗ Connection failed: {e}[/danger]")
@@ -373,7 +397,7 @@ async def _run_connection_diagnostics(command: str):
 @app.command()
 def info(
     stdio: Optional[str] = typer.Option(None, "--stdio", "-s", help="MCP server stdio command"),
-    http: Optional[str] = typer.Option(None, "--http", "-H", help="MCP server HTTP URL"),
+    http: Optional[str] = typer.Option(None, "--http", help="MCP server HTTP URL"),
 ):
     """
     ℹ️  Enumerate an MCP server's tools, resources, and prompts (no scanning).
@@ -644,7 +668,7 @@ def _print_finding_detail(f):
 
 @app.command()
 def fuzz(
-    stdio: str = typer.Option(..., "--stdio", "-s", help="MCP server command"),
+    stdio: Optional[str] = typer.Option(None, "--stdio", "-s", help="MCP server command"),
     timeout: float = typer.Option(5.0, "--timeout", "-t", help="Per-test response timeout in seconds"),
     startup_timeout: float = typer.Option(15.0, "--startup-timeout", help="Server startup/initialization timeout in seconds"),
     framing: str = typer.Option("auto", "--framing", "-f", help="Message framing: 'auto', 'jsonl' (Python), or 'clrf' (Node)"),
@@ -653,6 +677,8 @@ def fuzz(
     debug: bool = typer.Option(False, "--debug", "-d", help="Print raw responses for debugging"),
     intensity: str = typer.Option("medium", "--intensity", "-i", help="Fuzzing intensity: low, medium, high, insane"),
     ai: bool = typer.Option(False, "--ai", help="Generate custom AI-powered fuzz payloads per tool"),
+    http: Optional[str] = typer.Option(None, "--http", help="MCP server HTTP URL"),
+    header: list[str] = typer.Option([], "--header", "-H", help="HTTP header in 'Key: Value' format"),
 ):
     """
     🔥 Fuzz an MCP server with malformed protocol messages.
@@ -671,11 +697,18 @@ def fuzz(
     from mcpsec.fuzzer.fuzz_engine import FuzzEngine
     
     print_banner()
-    print_target_info("MCP Server (Fuzz)", stdio[:80], "stdio")
+    target = stdio or http or ""
+    transport = "stdio" if stdio else "http"
+    parsed_headers = _parse_headers(header)
+    print_target_info("MCP Server (Fuzz)", target[:80], transport, headers=parsed_headers)
+    
+    if not stdio and not http:
+        console.print("[danger]Error: Specify either --stdio or --http[/danger]")
+        raise typer.Exit(1)
     
     gen_list = [g.strip() for g in generators.split(",")] if generators else None
     
-    engine = FuzzEngine(stdio, timeout, startup_timeout, framing, debug, intensity=intensity, ai=ai)
+    engine = FuzzEngine(target, timeout, startup_timeout, framing, debug, intensity=intensity, ai=ai, headers=parsed_headers)
     summary = engine.run(gen_list)
     
     # Print results
@@ -707,6 +740,59 @@ def fuzz(
         import json
         Path(output).write_text(json.dumps(summary, indent=2))
         console.print(f"  [success]✔ Results saved to {output}[/success]")
+
+
+# ─── ROGUE-SERVER COMMAND ───────────────────────────────────────────────────
+
+@app.command("rogue-server")
+def rogue_server(
+    port: int = typer.Option(8080, "--port", "-p", help="Port to listen on (HTTP mode)"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to (HTTP mode)"),
+    stdio: bool = typer.Option(False, "--stdio", help="Use stdio transport instead of HTTP"),
+    attack: str = typer.Option(
+        "all",
+        "--attack",
+        "-a",
+        help="Attack type(s), comma-separated. Use 'all' for all attacks."
+    ),
+    auth: Optional[str] = typer.Option(None, "--auth", help="Require Bearer token for HTTP mode"),
+    list_attacks: bool = typer.Option(False, "--list", "-l", help="List available attack types"),
+):
+    """
+    🎭 Start a ROGUE MCP server to test CLIENT security.
+    
+    This flips the attack model: instead of testing MCP servers,
+    this tests MCP CLIENTS like Claude Desktop, Cursor, and VS Code.
+    """
+    from mcpsec.rogue.payloads import ATTACK_TYPES
+    from mcpsec.rogue.server import RogueMCPServer
+
+    # Handle --list flag
+    if list_attacks:
+        print_section("Available Attacks", "🎭")
+        for name, func in ATTACK_TYPES.items():
+            doc = func.__doc__ or "No description"
+            console.print(f"  [accent]{name:<16}[/accent] [muted]{doc}[/muted]")
+        console.print()
+        return
+
+    # Parse attack types
+    if attack == "all":
+        attacks = list(ATTACK_TYPES.keys())
+    else:
+        attacks = [a.strip() for a in attack.split(",")]
+        # Validate
+        invalid = [a for a in attacks if a not in ATTACK_TYPES]
+        if invalid:
+            console.print(f"[danger]Error: Invalid attack types: {', '.join(invalid)}[/danger]")
+            raise typer.Exit(1)
+
+    server = RogueMCPServer(attacks=attacks, stdio=stdio, auth_token=auth)
+
+    if stdio:
+        _run_async(server.run_stdio())
+    else:
+        _run_async(server.run_http(host, port))
 
 # ─── ENTRY POINT ─────────────────────────────────────────────────────────────
 
