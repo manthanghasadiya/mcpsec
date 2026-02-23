@@ -711,7 +711,14 @@ def fuzz(
     
     if chained:
         # Delegate to chained engine
-        _run_async(_chained_fuzz_async(target, transport, parsed_headers, intensity, ai))
+        _run_async(_chained_fuzz_async(
+            target=target,
+            transport_type=transport,
+            headers=parsed_headers,
+            intensity=intensity,
+            use_ai=ai,
+            verbose=debug, # Map debug to verbose
+        ))
         return
 
     engine = FuzzEngine(target, timeout, startup_timeout, framing, debug, intensity=intensity, ai=ai, headers=parsed_headers)
