@@ -54,6 +54,11 @@ class StdioFuzzer:
         """Alias for restart_server."""
         self.restart_server()
 
+    async def restart_async(self):
+        """Async-friendly restart."""
+        import asyncio
+        await asyncio.to_thread(self.restart_server)
+
     def start_server(self):
         """Spawn the MCP server subprocess."""
         import shlex

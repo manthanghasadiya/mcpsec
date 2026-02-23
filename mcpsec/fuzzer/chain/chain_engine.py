@@ -242,11 +242,14 @@ class ChainEngine:
             console.print(f"  Connected to: [dim]{http_url}[/dim]")
     
     async def _discover_tools(self) -> None:
-        """Discover all tools from the server."""
+        """Discover all tools from the server with automatic framing detection."""
         console.print("  Discovering tools...")
         
-        # Send initialize
-        init_response = await self._transport.send_request_async({
+        # Try JSONL framing first (Python servers)
+        if hasattr(self._transport, "framing"):
+            self._transport.framing = "jsonl"
+        
+        init_msg = {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "initialize",
@@ -255,9 +258,39 @@ class ChainEngine:
                 "capabilities": {},
                 "clientInfo": {"name": "mcpsec-chained", "version": "1.0.0"}
             }
-        })
+        }
         
-        # Send initialized notification
+        init_response = await self._transport.send_request_async(init_msg)
+        
+        # If JSONL didn't work, try CRLF framing (Node servers)
+        if not init_response or "result" not in init_response:
+            if self.config.verbose:
+                console.print("  [dim]JSONL framing failed, trying CRLF...[/dim]")
+            
+            # Restart server to reset state
+            if hasattr(self._transport, "restart_async"):
+                await self._transport.restart_async()
+            else:
+                # Fallback to thread for non-async transporters if they have restart
+                restart_fn = getattr(self._transport, "restart", None)
+                if restart_fn:
+                    await asyncio.to_thread(restart_fn)
+            
+            await asyncio.sleep(1.0)
+            
+            if hasattr(self._transport, "framing"):
+                self._transport.framing = "crlf"
+            init_response = await self._transport.send_request_async(init_msg)
+        
+        if not init_response or "result" not in init_response:
+            console.print("[yellow]  Warning: Server did not respond to initialize[/yellow]")
+            return
+        
+        if self.config.verbose:
+            framing = getattr(self._transport, "framing", "unknown")
+            console.print(f"  [dim]Using framing: {framing}[/dim]")
+        
+        # Send initialized notification (no ID!)
         await self._transport.send_notification_async({
             "jsonrpc": "2.0",
             "method": "notifications/initialized",
@@ -282,6 +315,8 @@ class ChainEngine:
                     console.print(f"    • {tool.get('name')}")
         else:
             console.print("[yellow]  Warning: Could not retrieve tools list[/yellow]")
+            if self.config.verbose and tools_response:
+                console.print(f"  [dim]Response: {tools_response}[/dim]")
     
     async def _execute_all_chains(self) -> None:
         """Execute all attack chains with payloads."""
