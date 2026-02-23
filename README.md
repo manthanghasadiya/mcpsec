@@ -71,12 +71,13 @@ mcpsec audit --path . --ai
 mcpsec list-scanners
 ```
 
-## Mega Fuzzer (v1.0.3)
+## Mega Fuzzer (v1.0.4)
 
-`mcpsec` v1.0.3 introduces the **Rogue MCP Server**, a powerful framework for testing client-side vulnerabilities, along with support for custom HTTP headers to audit authenticated servers.
+`mcpsec` v1.0.4 introduces the **Rogue MCP Server**, a powerful framework for testing client-side vulnerabilities, along with support for custom HTTP headers and **diagnostic fuzzer logging** to pinpoint server crashes.
 
 - **🎭 Rogue MCP Server**: Launch a malicious server with `--attack` vectors targeting Claude Desktop, Cursor, and VS Code. (Memory bombs, XSS, Proto Pollution, etc.)
 - **🔐 Custom Headers**: Pass any token or cookie via `--header` / `-H`. Essential for protected Supabase, Slack, or GitHub deployments.
+- **📊 Diagnostic Logs**: Automatically capture the exact payload that crashed a server in `mcpsec_fuzz_http.log` or `mcpsec_fuzz_stderr.log`.
 - **500+ Security Test Cases**: Exhaustive coverage for malformed JSON, protocol violations, and memory exhaustion.
 - **AI-Powered Payloads**: Context-aware adversarial payloads tailored to your server's specific tool schemas.
 - **Improved Compatibility**: Optimized for Windows (Proactor loop fixes) and strict protocol clients (Claude Desktop handshake).

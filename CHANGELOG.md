@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-02-23
+### Added
+- **Diagnostic Fuzz Logging**: New logging system for identifying exactly which payloads crash an MCP server.
+- **HTTP Transport Logs**: Captures full request/response context for status 500 errors and timeouts in `mcpsec_fuzz_http.log`.
+- **Trigger Payload Capture**: Stdio fuzzer now logs the specific malformed message that caused a process crash in `mcpsec_fuzz_stderr.log`.
+
 ## [1.0.3] - 2026-02-23
 
 ### Added

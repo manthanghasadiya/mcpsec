@@ -229,6 +229,7 @@ class StdioFuzzer:
             is_crash, crash_reason = self._check_real_crash()
             if is_crash:
                 self.crash_count += 1
+                self._log_crash(crash_reason, payload)
             
             return FuzzResult(
                 test_id=self.test_count,
@@ -251,6 +252,7 @@ class StdioFuzzer:
             is_crash, crash_reason = self._check_real_crash()
             if is_crash:
                 self.crash_count += 1
+                self._log_crash(crash_reason or "timeout_crash", payload)
                 return FuzzResult(
                     test_id=self.test_count,
                     generator="",
@@ -274,6 +276,7 @@ class StdioFuzzer:
             )
         except (BrokenPipeError, OSError) as e:
             self.crash_count += 1
+            self._log_crash(str(e), payload)
             return FuzzResult(
                 test_id=self.test_count,
                 generator="",
@@ -284,6 +287,31 @@ class StdioFuzzer:
                 timeout=False,
                 error_message=str(e),
             )
+
+    def _log_crash(self, reason: str, payload: bytes):
+        """Log the triggering payload of a crash to the error log."""
+        from datetime import datetime
+        timestamp = datetime.now().isoformat()
+        
+        try:
+            with open(self.error_log_path, "a", encoding="utf-8", errors="replace") as f:
+                f.write(f"\n{'!'*80}\n")
+                f.write(f"TIMESTAMP:    {timestamp}\n")
+                f.write(f"CRASH REASON: {reason}\n")
+                f.write("-" * 40 + " [TRIGGERING PAYLOAD] " + "-" * 40 + "\n")
+                try:
+                    # Attempt to pretty print JSON if it looks like one
+                    if b"Content-Length:" in payload:
+                        body = payload.split(b"\r\n\r\n", 1)[1]
+                    else:
+                        body = payload.strip()
+                    msg = json.loads(body)
+                    f.write(json.dumps(msg, indent=2))
+                except:
+                    f.write(payload.decode(errors="replace"))
+                f.write(f"\n{'!'*80}\n")
+        except:
+            pass # Don't crash the fuzzer if logging fails
 
     def _read_response(self) -> bytes | None:
         """Read a complete MCP response synchronously."""

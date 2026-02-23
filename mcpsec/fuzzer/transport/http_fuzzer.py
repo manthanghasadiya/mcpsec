@@ -1,4 +1,5 @@
 import time
+import json
 import httpx
 from typing import Optional
 from mcpsec.fuzzer.transport.stdio_fuzzer import FuzzResult
@@ -77,6 +78,7 @@ class HttpFuzzer:
             crashed = response.status_code >= 500
             if crashed:
                  self.crash_count += 1
+                 self._log_event("CRASH", body, response.content, response.status_code)
 
             return FuzzResult(
                 test_id=self.test_count,
@@ -91,6 +93,7 @@ class HttpFuzzer:
             
         except httpx.TimeoutException:
             self.timeout_count += 1
+            self._log_event("TIMEOUT", body)
             return FuzzResult(
                 test_id=self.test_count,
                 generator="",
@@ -102,6 +105,7 @@ class HttpFuzzer:
                 error_message="HTTP Timeout"
             )
         except Exception as e:
+            self._log_event("ERROR", body, error=str(e))
             return FuzzResult(
                 test_id=self.test_count,
                 generator="",
@@ -112,6 +116,40 @@ class HttpFuzzer:
                 timeout=False,
                 error_message=str(e)
             )
+
+    def _log_event(self, event_type: str, request_body: bytes, response_body: bytes | None = None, status_code: int | None = None, error: str | None = None):
+        """Log a fuzzer event to the log file."""
+        from datetime import datetime
+        timestamp = datetime.now().isoformat()
+        
+        with open(self.error_log_path, "a", encoding="utf-8", errors="replace") as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"TIMESTAMP: {timestamp}\n")
+            f.write(f"EVENT:     {event_type}\n")
+            f.write(f"URL:       {self.url}\n")
+            if status_code:
+                f.write(f"STATUS:    {status_code}\n")
+            if error:
+                f.write(f"ERROR:     {error}\n")
+            
+            f.write("-" * 40 + " [REQUEST] " + "-" * 40 + "\n")
+            try:
+                # Attempt to pretty print JSON
+                req_json = json.loads(request_body)
+                f.write(json.dumps(req_json, indent=2))
+            except:
+                f.write(request_body.decode(errors="replace"))
+            f.write("\n")
+            
+            if response_body:
+                f.write("-" * 40 + " [RESPONSE] " + "-" * 40 + "\n")
+                try:
+                    resp_json = json.loads(response_body)
+                    f.write(json.dumps(resp_json, indent=2))
+                except:
+                    f.write(response_body.decode(errors="replace"))
+                f.write("\n")
+            f.write(f"{'='*80}\n")
 
     def send_mcp_message_with_timeout(self, msg: dict, timeout: float) -> FuzzResult:
         """Helper to send a JSON-RPC message."""
