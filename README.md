@@ -71,7 +71,7 @@ mcpsec audit --path . --ai
 mcpsec list-scanners
 ```
 
-## Mega Fuzzer (v1.0.2)
+## Mega Fuzzer (v1.0.3)
 
 `mcpsec` v1.0.2 introduces the **Rogue MCP Server**, a powerful framework for testing client-side vulnerabilities, along with support for custom HTTP headers to audit authenticated servers.
 
