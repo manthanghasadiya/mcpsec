@@ -1,0 +1,105 @@
+rules:
+  # ===========================================
+  # Overly Permissive Capabilities
+  # ===========================================
+  - id: mcp-all-capabilities-enabled
+    message: >-
+      Server enables all capabilities. This increases attack surface.
+      Only enable capabilities that are actually needed.
+    severity: WARNING
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern: |
+          capabilities: {
+            tools: { ... },
+            resources: { ... },
+            prompts: { ... },
+            logging: { ... },
+            ...
+          }
+    metadata:
+      category: security
+      technology:
+        - mcp
+      remediation: Only declare capabilities your server actually implements and needs.
+
+  - id: mcp-listchanged-enabled
+    message: >-
+      Server enables listChanged notification for tools/resources.
+      This allows dynamic modification of available tools/resources,
+      which could be abused for tool injection attacks.
+    severity: INFO
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern-either:
+          - pattern: |
+              tools: { listChanged: true }
+          - pattern: |
+              resources: { listChanged: true }
+    metadata:
+      category: security
+      technology:
+        - mcp
+      remediation: >-
+        Only enable listChanged if your server genuinely needs to
+        dynamically modify tools/resources. Monitor for unexpected changes.
+
+  # ===========================================
+  # Capability Check Bypass
+  # ===========================================
+  - id: mcp-missing-capability-check
+    message: >-
+      Handler responds to method without checking if capability was declared.
+      Clients trust capability declarations - responding to undeclared
+      capabilities violates the trust model.
+    severity: WARNING
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern: |
+          server.setRequestHandler($METHOD, async ($REQ) => {
+            ...
+          })
+      - pattern-not-inside: |
+          if ($CAPABILITIES.$CAP) { ... }
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: "(tools/list|tools/call|resources/list|resources/read|prompts/list|prompts/get)"
+    metadata:
+      category: security
+      technology:
+        - mcp
+      remediation: >-
+        Before handling capability-specific methods, verify the capability
+        was declared in the server's capabilities during initialization.
+
+  # ===========================================
+  # Python Capability Issues
+  # ===========================================
+  - id: mcp-python-unprotected-tool
+    message: >-
+      Tool handler may lack input validation.
+      Consider adding validation for tool arguments.
+    severity: INFO
+    languages:
+      - python
+    patterns:
+      - pattern: |
+          @server.tool()
+          async def $FUNC($ARGS):
+              $BODY
+      - pattern-not-inside: |
+          @server.tool()
+          async def $FUNC($ARGS):
+              if not $VALIDATE:
+                  ...
+    metadata:
+      category: security
+      technology:
+        - mcp
+      remediation: Add input validation at the start of tool handlers.

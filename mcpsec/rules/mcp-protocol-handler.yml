@@ -1,0 +1,193 @@
+rules:
+  # ===========================================
+  # Unsafe Message Handling
+  # ===========================================
+  - id: mcp-eval-on-message
+    message: >-
+      eval() or Function() called on data from MCP message.
+      This is a critical code injection vulnerability.
+    severity: ERROR
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern-either:
+          - pattern: |
+              eval($MSG.$FIELD)
+          - pattern: |
+              new Function($MSG.$FIELD)
+          - pattern: |
+              eval($PARAMS.$FIELD)
+          - pattern: |
+              vm.runInContext($MSG.$FIELD, ...)
+      - pattern-inside: |
+          $HANDLER($MSG) {
+            ...
+          }
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-94"
+      remediation: Never use eval() on message data. Parse and validate all inputs.
+
+  - id: mcp-python-exec-on-message
+    message: >-
+      exec() or eval() called on MCP message data.
+      This is a critical code injection vulnerability.
+    severity: ERROR
+    languages:
+      - python
+    patterns:
+      - pattern-either:
+          - pattern: |
+              eval($ARGS["$KEY"])
+          - pattern: |
+              exec($ARGS["$KEY"])
+          - pattern: |
+              eval($ARGS.get("$KEY"))
+          - pattern: |
+              exec($ARGS.get("$KEY"))
+      - pattern-inside: |
+          @server.tool()
+          async def $FUNC($ARGS):
+              ...
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-94"
+      remediation: Never use eval/exec on user input. Use safe parsing methods.
+
+  # ===========================================
+  # Missing Request ID Validation
+  # ===========================================
+  - id: mcp-request-id-no-validation
+    message: >-
+      Request ID used without type validation.
+      Invalid ID types could cause crashes or undefined behavior.
+    severity: INFO
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern: |
+          $MSG.id
+      - pattern-not-inside: |
+          if (typeof $MSG.id === "number" || typeof $MSG.id === "string") { ... }
+      - pattern-inside: |
+          $HANDLER($MSG) {
+            ...
+          }
+    metadata:
+      category: security
+      technology:
+        - mcp
+      remediation: Validate that request IDs are numbers or strings before using.
+
+  # ===========================================
+  # Unsafe Error Handling
+  # ===========================================
+  - id: mcp-error-leaks-stack
+    message: >-
+      Error response includes stack trace.
+      This could leak sensitive information about server internals.
+    severity: WARNING
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern-either:
+          - pattern: |
+              error: { ..., data: { stack: $ERR.stack } }
+          - pattern: |
+              error: { ..., message: $ERR.stack }
+          - pattern: |
+              { error: $ERR.toString() }
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-209"
+      remediation: Don't include stack traces in error responses. Log them server-side instead.
+
+  - id: mcp-python-error-detail-leak
+    message: >-
+      Exception details sent directly to client.
+      This could leak sensitive server information.
+    severity: WARNING
+    languages:
+      - python
+    patterns:
+      - pattern-either:
+          - pattern: |
+              return {"error": str($E)}
+          - pattern: |
+              raise McpError(str($E))
+          - pattern: |
+              return {"error": traceback.format_exc()}
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-209"
+      remediation: Return generic error messages. Log details server-side.
+
+  # ===========================================
+  # Protocol Version Issues
+  # ===========================================
+  - id: mcp-protocol-version-not-checked
+    message: >-
+      Initialize handler should validate protocol version.
+    severity: INFO
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern: |
+          server.setRequestHandler("initialize", async ($REQ) => {
+            $BODY
+          })
+      - pattern-not: |
+          server.setRequestHandler("initialize", async ($REQ) => {
+            ...
+            $REQ.params.protocolVersion
+            ...
+          })
+    metadata:
+      category: security
+      technology:
+        - mcp
+      remediation: Validate protocolVersion in initialize handler and reject incompatible versions.
+
+  # ===========================================
+  # Dangerous Tool Implementations
+  # ===========================================
+  - id: mcp-tool-shell-command
+    message: >-
+      Tool executes shell commands. Ensure all arguments are properly
+      sanitized to prevent command injection.
+    severity: WARNING
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern-either:
+          - pattern: |
+              exec($CMD, ...)
+          - pattern: |
+              execSync($CMD)
+          - pattern: |
+              spawn($CMD, { shell: true })
+      - pattern-inside: |
+          server.setRequestHandler("tools/call", async ($REQ) => {
+            ...
+          })
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-78"
+      remediation: >-
+        Use execFile/spawn without shell option. Pass arguments as arrays.
+        Validate and sanitize all user input before use in commands.

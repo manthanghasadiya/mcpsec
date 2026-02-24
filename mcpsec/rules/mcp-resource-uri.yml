@@ -1,0 +1,150 @@
+rules:
+  # ===========================================
+  # Resource URI Without Validation
+  # ===========================================
+  - id: mcp-resource-uri-no-validation
+    message: >-
+      Resource URI used directly without validation.
+      This could allow SSRF or local file access attacks.
+    severity: ERROR
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern-either:
+          # Direct fetch with URI
+          - pattern: |
+              fetch($URI)
+          - pattern: |
+              axios.get($URI)
+          - pattern: |
+              http.get($URI, ...)
+          - pattern: |
+              request($URI, ...)
+      - pattern-inside: |
+          async $FUNC({ uri: $URI, ... }) {
+            ...
+          }
+      - pattern-not-inside: |
+          if ($VALIDATE($URI)) { ... }
+      - pattern-not-inside: |
+          $VALIDATED = $VALIDATE($URI);
+          ...
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-918"
+      owasp: "A10:2021 - SSRF"
+      remediation: >-
+        Validate URIs before fetching. Check scheme (https only),
+        block internal IPs (127.x, 10.x, 192.168.x, 169.254.x),
+        use URL allowlists where possible.
+
+  - id: mcp-resource-file-uri
+    message: >-
+      Resource handler processes file:// URIs.
+      This could allow arbitrary file read attacks.
+    severity: ERROR
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern-either:
+          - pattern: |
+              if ($URI.startsWith("file://")) { ... }
+          - pattern: |
+              $PROTOCOL === "file"
+          - pattern: |
+              new URL($URI).protocol === "file:"
+          - pattern: |
+              fs.readFile($PATH, ...)
+      - pattern-inside: |
+          $RESOURCE_HANDLER
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-22"
+      remediation: >-
+        Block file:// URIs in resource handlers unless explicitly needed.
+        If needed, implement strict path validation and sandboxing.
+
+  # ===========================================
+  # Python Resource URI Issues
+  # ===========================================
+  - id: mcp-python-resource-urllib
+    message: >-
+      Resource URI passed directly to urllib without validation.
+      This allows SSRF attacks.
+    severity: ERROR
+    languages:
+      - python
+    patterns:
+      - pattern-either:
+          - pattern: |
+              urllib.request.urlopen($URI)
+          - pattern: |
+              requests.get($URI)
+          - pattern: |
+              httpx.get($URI)
+          - pattern: |
+              aiohttp.ClientSession().get($URI)
+      - pattern-inside: |
+          async def $FUNC(..., uri: str, ...):
+              ...
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-918"
+      remediation: Validate and sanitize URIs before making requests.
+
+  - id: mcp-python-resource-open
+    message: >-
+      Resource handler uses open() with URI-derived path.
+      This could allow path traversal or arbitrary file access.
+    severity: ERROR
+    languages:
+      - python
+    patterns:
+      - pattern-either:
+          - pattern: |
+              open($URI.replace("file://", ""), ...)
+          - pattern: |
+              open($PATH, ...)
+      - pattern-inside: |
+          @server.resource(...)
+          async def $FUNC(...):
+              ...
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-22"
+      remediation: >-
+        Use pathlib with strict path validation. Ensure paths
+        stay within allowed directories using resolve() and
+        is_relative_to() checks.
+
+  # ===========================================
+  # URI Template Injection
+  # ===========================================
+  - id: mcp-resource-uri-template-injection
+    message: >-
+      URI template constructed from user input.
+      Attackers could manipulate the template to access unintended resources.
+    severity: WARNING
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern: |
+          uriTemplate: `${$VAR}...`
+      - pattern: |
+          uriTemplate: $A + $B
+    metadata:
+      category: security
+      technology:
+        - mcp
+      remediation: Use static URI templates. Parameterize only the values, not the template structure.

@@ -1,0 +1,175 @@
+rules:
+  # ===========================================
+  # Tool Description Injection (JavaScript/TypeScript)
+  # ===========================================
+  - id: mcp-tool-description-from-user-input
+    message: >-
+      Tool description constructed from potentially untrusted input.
+      If user-controlled data reaches tool descriptions, attackers could
+      inject instructions that manipulate LLM behavior.
+    severity: ERROR
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern-either:
+          # Template literal in description
+          - pattern: |
+              {
+                name: $NAME,
+                description: `$...TEMPLATE`,
+                ...
+              }
+          # Concatenation in description
+          - pattern: |
+              {
+                name: $NAME,
+                description: $A + $B,
+                ...
+              }
+          # Variable description
+          - pattern: |
+              {
+                name: $NAME,
+                description: $VAR,
+                ...
+              }
+      - pattern-not: |
+          {
+            name: $NAME,
+            description: "...",
+            ...
+          }
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-94"
+      owasp: "A03:2021 - Injection"
+      remediation: >-
+        Use static string literals for tool descriptions. Never include
+        user input or dynamic data in descriptions that will be sent to LLMs.
+
+  - id: mcp-tool-description-from-database
+    message: >-
+      Tool description loaded from database or external source.
+      Stored data could be poisoned to inject malicious instructions.
+    severity: WARNING
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern-either:
+          - pattern: |
+              description: await $DB.get(...)
+          - pattern: |
+              description: $DB.query(...)
+          - pattern: |
+              description: await fetch(...).then($F)
+          - pattern: |
+              description: $CONFIG[$KEY]
+          - pattern: |
+              description: process.env.$VAR
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-94"
+      remediation: >-
+        If descriptions must be dynamic, validate and sanitize them.
+        Consider using an allowlist of permitted descriptions.
+
+  # ===========================================
+  # Input Schema Description Injection
+  # ===========================================
+  - id: mcp-schema-description-dynamic
+    message: >-
+      JSON Schema description field constructed dynamically.
+      Schema descriptions are fed to LLMs and could be injection vectors.
+    severity: WARNING
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern-inside: |
+          inputSchema: { ... }
+      - pattern-either:
+          - pattern: |
+              description: `$...TEMPLATE`
+          - pattern: |
+              description: $A + $B
+    metadata:
+      category: security
+      technology:
+        - mcp
+      remediation: Use static description strings in JSON schemas.
+
+  # ===========================================
+  # Python Tool Description Injection
+  # ===========================================
+  - id: mcp-python-tool-description-fstring
+    message: >-
+      Tool description uses f-string or format(). This could allow
+      injection if the interpolated values come from untrusted sources.
+    severity: WARNING
+    languages:
+      - python
+    patterns:
+      - pattern-either:
+          - pattern: |
+              Tool(
+                  name=$NAME,
+                  description=f"...",
+                  ...
+              )
+          - pattern: |
+              Tool(
+                  name=$NAME,
+                  description="...".format(...),
+                  ...
+              )
+          - pattern: |
+              Tool(
+                  name=$NAME,
+                  description="..." % $VAR,
+                  ...
+              )
+          - pattern: |
+              @server.tool(description=f"...")
+              def $FUNC(...):
+                  ...
+    metadata:
+      category: security
+      technology:
+        - mcp
+      cwe: "CWE-94"
+      remediation: Use static strings for tool descriptions.
+
+  # ===========================================
+  # Tool Return Value in Description
+  # ===========================================
+  - id: mcp-tool-returns-in-description
+    message: >-
+      Tool appears to include its return value in description/response.
+      This could create an injection loop if the tool output is malicious.
+    severity: INFO
+    languages:
+      - javascript
+      - typescript
+    patterns:
+      - pattern: |
+          return {
+            content: [
+              {
+                type: "text",
+                text: `...${$RESULT}...instructions...`,
+              }
+            ]
+          }
+    metadata:
+      category: security
+      technology:
+        - mcp
+      remediation: >-
+        Separate tool output from any instructional text.
+        Don't mix user data with LLM instructions in responses.
