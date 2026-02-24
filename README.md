@@ -1,167 +1,199 @@
-# ⚡ mcpsec
+# mcpsec
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-cyan.svg)](https://opensource.org/licenses/MIT)
+<div align="center">
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/mcpsec)](https://pypi.org/project/mcpsec/)
-[![Found Bugs](https://img.shields.io/badge/bugs_found-5-red)]()
-[![Servers Tested](https://img.shields.io/badge/servers_tested-10+-blue)]()
-[![Fuzz Cases](https://img.shields.io/badge/fuzz_cases-600+-orange)]()
+[![Bugs Found](https://img.shields.io/badge/bugs%20reported-5-red)](https://github.com/manthanghasadiya/mcpsec)
+[![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-700+-orange)](https://github.com/manthanghasadiya/mcpsec)
+[![Semgrep Rules](https://img.shields.io/badge/semgrep%20rules-49-purple)](https://github.com/manthanghasadiya/mcpsec)
 
-**Security scanner for MCP (Model Context Protocol) server implementations.**
+**Security scanner and protocol fuzzer for MCP servers.**
 
-MCP is the universal protocol connecting AI agents (Claude, ChatGPT, Gemini, Cursor) to external tools and data sources. It's adopted by every major AI company — Anthropic, OpenAI, Google, Microsoft. Its security is broken. `mcpsec` finds the vulnerabilities.
+Most MCP security tools do static analysis. mcpsec connects to live servers and proves exploitation.
 
-```
-  ███╗   ███╗ ██████╗██████╗ ███████╗███████╗ ██████╗
-  ████╗ ████║██╔════╝██╔══██╗██╔════╝██╔════╝██╔════╝
-  ██╔████╔██║██║     ██████╔╝███████╗█████╗  ██║     
-  ██║╚██╔╝██║██║     ██╔═══╝ ╚════██║██╔══╝  ██║     
-  ██║ ╚═╝ ██║╚██████╗██║     ███████║███████╗╚██████╗
-  ╚═╝     ╚═╝ ╚═════╝╚═╝     ╚══════╝╚══════╝ ╚═════╝
-```
+[Installation](#installation) • [Usage](#usage) • [Scanners](#scanners) • [Fuzzing](#fuzz-generators)
 
-## Why?
+</div>
 
-- **82%** of MCP implementations have path traversal vulnerabilities ([Endor Labs](https://www.endorlabs.com/learn/classic-vulnerabilities-meet-ai-infrastructure-why-mcp-needs-appsec))
-- **67%** are vulnerable to code injection
-- **~2,000** internet-exposed MCP servers found with **zero authentication** ([Knostic](https://www.descope.com/learn/post/mcp))
-- Anthropic's own Git MCP server had **3 critical RCE vulnerabilities** (CVE-2025-68143/44/45)
-- Nobody built an open-source scanner for this. Until now.
+---
 
-## Proven Results
+## Why mcpsec?
 
-mcpsec has been used to discover and responsibly report multiple vulnerabilities across official MCP implementations by major technology companies. Findings include transport-layer crashes, unhandled exception panics, and protocol-level denial of service issues affecting the Python SDK, TypeScript SDK, and Go SDK ecosystems.
+MCP is the protocol connecting AI agents (Claude, Cursor, VS Code) to external tools. Every major AI company uses it. Its security is often overlooked.
 
-- **5 bugs reported** across Anthropic and GitHub MCP implementations
-- **3 SDK ecosystems affected** (Python, TypeScript, Go)
-- **Fixes submitted within hours** of initial reports
-- **Reproduced known CVEs**: CVE-2025-53967 (Figma MCP), CVE-2025-53818 (Kanban MCP)
-- **SQL injection confirmed** in community MCP servers via static analysis
+- **82%** of MCP implementations have path traversal vulnerabilities
+- **67%** are vulnerable to code injection  
+- **~2,000** internet-exposed MCP servers found with zero authentication
+- Anthropic's own Git MCP server had 3 critical RCE vulnerabilities
 
-> Details will be published following responsible disclosure timelines.
+mcpsec has been used to discover and report **5 vulnerabilities** across Anthropic and GitHub MCP implementations, affecting Python, TypeScript, and Go SDK ecosystems.
 
-## Install
+---
+
+## Installation
 
 ```bash
 pip install mcpsec
 ```
 
-## Quick Start
+For AI-powered features:
+```bash
+pip install mcpsec[ai]
+```
+
+---
+
+## Usage
+
+### Runtime Scanning
 
 ```bash
-# Scan an MCP server running via stdio
+# Scan via stdio
 mcpsec scan --stdio "npx @modelcontextprotocol/server-filesystem /tmp"
 
-# 💥 Run Mega Fuzzer with Custom Headers
-mcpsec fuzz --http http://localhost:8080/mcp -H "Authorization: Bearer <token>"
-
-# 🎭 Launch a Rogue Server to test your client (Cursor/Claude)
-mcpsec rogue-server --port 9999 --attack all
-
-# 🧠 Run AI-Powered Fuzzing
-mcpsec fuzz --stdio "python my_server.py" --ai
+# Scan via HTTP with auth
+mcpsec scan --http http://localhost:8080/mcp -H "Authorization: Bearer TOKEN"
 
 # Enumerate attack surface
 mcpsec info --stdio "python my_server.py"
-
-# Static Audit (Source Code Analysis)
-mcpsec audit --path . --ai
-
-# List available scanners
-mcpsec list-scanners
 ```
 
-## Mega Fuzzer (v1.0.4)
+### Protocol Fuzzing
 
-`mcpsec` v1.0.4 introduces the **Rogue MCP Server**, a powerful framework for testing client-side vulnerabilities, along with support for custom HTTP headers and **diagnostic fuzzer logging** to pinpoint server crashes.
+```bash
+# Standard fuzzing (150+ cases)
+mcpsec fuzz --stdio "python my_server.py"
 
-- **🎭 Rogue MCP Server**: Launch a malicious server with `--attack` vectors targeting Claude Desktop, Cursor, and VS Code. (Memory bombs, XSS, Proto Pollution, etc.)
-- **🔐 Custom Headers**: Pass any token or cookie via `--header` / `-H`. Essential for protected Supabase, Slack, or GitHub deployments.
-- **📊 Diagnostic Logs**: Automatically capture the exact payload that crashed a server in `mcpsec_fuzz_http.log` or `mcpsec_fuzz_stderr.log`.
-- **500+ Security Test Cases**: Exhaustive coverage for malformed JSON, protocol violations, and memory exhaustion.
-- **AI-Powered Payloads**: Context-aware adversarial payloads tailored to your server's specific tool schemas.
-- **Improved Compatibility**: Optimized for Windows (Proactor loop fixes) and strict protocol clients (Claude Desktop handshake).
-- **Refined Intensity Tiers**:
-  - `low`: Core protocol smoke tests (~65 cases)
-  - `medium`: Standard security baseline (~150 cases)
-  - `high`: Full regression suite (500+ cases)
-  - `insane`: Includes resource exhaustion and DoS patterns
-  - `ai`: High intensity + AI-generated payloads
+# High intensity (500+ cases)
+mcpsec fuzz --stdio "python my_server.py" --intensity high
 
-## Protocol & ID Fuzzer (v2.0.0)
+# Target specific attack class
+mcpsec fuzz --stdio "python my_server.py" -g protocol_state_machine
+mcpsec fuzz --stdio "python my_server.py" -g id_confusion
 
-`mcpsec` v2.0 introduces deep protocol testing with the **Protocol State Machine** and **ID Confusion** generators. This phase focuses on vulnerabilities that arise from violating the MCP ritual and abusing JSON-RPC message ID handling.
+# AI-powered payload generation
+mcpsec fuzz --stdio "python my_server.py" --ai
+```
 
--   **🔄 Protocol State Machine**: Violate the MCP "ritual" by calling methods before initialization, double-initializing, using incorrect protocol versions, or calling methods after shutdown.
--   **🆔 ID Confusion**: Test edge cases in JSON-RPC ID handling, including large integers, floats, null IDs, and ID collisions to find parser and logic bugs.
--   **🧪 Advanced Execution Flags**: New state-management flags for `FuzzCase`:
-    -   `skip_init`: Bypass the standard handshake to test pre-init vulnerabilities.
-    -   `send_after_init`: Specifically target the post-initialization state.
-    -   `send_shutdown_first`: Automatically handshake, then shutdown before sending the payload.
-    -   `repeat` & `delay_between`: Send sequences of payloads with precise timing for collision testing.
+### Static Analysis
 
-## Chained Fuzzing Engine (v1.0.5)
+```bash
+# Local source
+mcpsec audit --path ./my-mcp-server
 
-`mcpsec` v1.0.5 introduces **Chained Fuzzing**, a stateful execution engine designed to find vulnerabilities in complex MCP servers that require multiple tool calls in a specific order.
+# GitHub repository
+mcpsec audit --github https://github.com/user/mcp-server
 
-- **🔗 Multi-Step Attack Chains**: Automatically builds sequences like `navigate` -> `snapshot` -> `click`.
-- **🧠 Dependency Analysis**: Uses AI to automatically discover which tools provide state (refs, IDs) and which require it.
-- **💉 Stateful Payload Injection**: Injects adversarial payloads into the correct tool parameters while maintaining a valid session state.
-- **📄 SARIF Reporting**: Export findings to standard SARIF format for integration with GitHub Actions, GitLab CI, and other DevSecOps tools.
-- **🚀 New Commands**: Use `mcpsec chained` for full analysis, or `mcpsec fuzz --chained` for stateful fuzzing.
+# With AI validation
+mcpsec audit --github https://github.com/user/mcp-server --ai
+```
+
+### Rogue Server (Client Testing)
+
+```bash
+# Test MCP clients for vulnerabilities
+mcpsec rogue-server --port 9999 --attack all
+```
+
+---
 
 ## Scanners
 
-| Scanner | Type | What It Detects |
-|---------|------|----------------|
-| `prompt-injection` | Static | Hidden instructions, base64-encoded payloads, cross-tool manipulation, data exfiltration indicators in tool descriptions |
-| `auth-audit` | Static | Missing authentication, over-permissioned tools, dangerous tool combinations, misleading annotations |
-| `path-traversal` | Dynamic | File path traversal via `../../` payloads — **proves exploitation** with actual file contents |
-| `command-injection` | Dynamic | OS command injection via shell escape characters — **proves exploitation** with command output |
-| `ssrf` | Dynamic | Server-Side Request Forgery targeting cloud metadata endpoints and internal services |
-| `protocol-fuzzer` | Dynamic | **(500+ Cases)** Malformed JSON-RPC, boundary testing, state-machine violations, type confusion to find crashes |
-| `ai-payloads` | Dynamic | **(New)** Context-aware payloads generated by LLMs (SQLi, Logic bugs, Edge cases) |
+| Scanner | Description |
+|---------|-------------|
+| `prompt-injection` | Hidden instructions in tool descriptions |
+| `command-injection` | OS command injection with proof of exploitation |
+| `path-traversal` | File traversal with proof of exploitation |
+| `ssrf` | Server-Side Request Forgery to internal services |
+| `auth-audit` | Missing auth, dangerous tool combinations |
+| `description-prompt-injection` | LLM manipulation via descriptions |
+| `resource-ssrf` | SSRF via MCP resource URIs |
+| `capability-escalation` | Undeclared capability abuse |
+
+---
+
+## Fuzz Generators
+
+| Generator | Description |
+|-----------|-------------|
+| `malformed_json` | Invalid JSON structures |
+| `protocol_violation` | JSON-RPC spec violations |
+| `type_confusion` | Type mismatch attacks |
+| `unicode_attacks` | Encoding edge cases |
+| `injection_payloads` | SQLi, XSS, command injection |
+| `protocol_state_machine` | MCP state violations |
+| `id_confusion` | JSON-RPC ID edge cases |
+
+---
+
+## Semgrep Rules
+
+49 MCP-specific rules:
+
+- Command injection (`exec`, `spawn`, `child_process`)
+- SQL injection (raw queries, ORM bypass)
+- Path traversal (`path.join` with unsanitized input)
+- Description injection (dynamic tool descriptions)
+- Resource URI issues (SSRF vectors)
+- Protocol handler vulnerabilities
+
+---
+
+## Configuration
+
+### AI Provider Setup
+
+```bash
+mcpsec setup
+```
+
+Supports: OpenAI, Anthropic, Google, Groq, DeepSeek, Ollama
+
+### Output Formats
+
+```bash
+# JSON
+mcpsec scan --stdio "server" --output results.json
+
+# SARIF (CI/CD)
+mcpsec fuzz --stdio "server" --output results.sarif
+```
+
+---
 
 ## How It Works
 
 ```
 ┌─────────┐     MCP Protocol      ┌────────────┐
-│ mcpsec  │ ◄──── JSON-RPC ────►  │ Target MCP │
-│ client  │    (stdio or HTTP)    │   Server   │
+│ mcpsec  │ ◄──── JSON-RPC ────►  │   Target   │
+│         │    (stdio / HTTP)     │   Server   │
 └────┬────┘                       └────────────┘
      │
-     ├── 1. Connect (stdio subprocess or HTTP)
-     ├── 2. Enumerate tools, resources, prompts  
-     ├── 3. Run static scanners (analyze descriptions)
-     ├── 4. Generate & Run dynamic payloads (Fuzzing + AI)
-     └── 5. Report findings with evidence + remediation
+     ├── Connect & enumerate attack surface
+     ├── Run static scanners
+     ├── Generate dynamic payloads  
+     ├── Execute fuzzing campaigns
+     └── Report findings with evidence
 ```
-
-## Features
-
-- ✅ Prompt injection scanner
-- ✅ Authentication & authorization audit
-- ✅ Path traversal scanner (dynamic proof-of-exploitation)
-- ✅ Command injection scanner (dynamic proof-of-exploitation)
-- ✅ SSRF scanner
-- ✅ JSON report output
-- ✅ Static source code analysis with Semgrep rules
-- ✅ Protocol Fuzzer (500+ adversarial test cases)
-- ✅ AI-Powered Fuzzing (LLM-generated payloads per tool schema)
-- ✅ Custom timeouts for slow targets (`--timeout`)
-
-## Contributing
-
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to set up your environment and add new scanners.
-
-## Disclaimer
-
-This tool is intended for authorized security testing only. Only scan MCP servers you own or have explicit permission to test. The authors are not responsible for misuse.
-
-## License
-
-[MIT](LICENSE)
 
 ---
 
-*Built by [Manthan](https://www.linkedin.com/in/man-ghasadiya) — because your AI agents deserve a pentest too.*
+## Disclaimer
+
+For authorized security testing only. Only scan servers you own or have permission to test.
+
+---
+
+## License
+
+MIT
+
+---
+
+<div align="center">
+
+Built by [Manthan Ghasadiya](https://www.linkedin.com/in/man-ghasadiya)
+
+</div>
