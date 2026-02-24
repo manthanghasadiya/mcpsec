@@ -36,6 +36,7 @@ class AttackChain:
     setup_steps: list[ChainStep]
     target_arguments: dict[str, Any]
     description: str
+    requires_state: list[str] = field(default_factory=list)  # NEW: State keys required
     
     @property
     def depth(self) -> int:
@@ -71,30 +72,18 @@ class ChainBuilder:
         self,
         tools: list[dict],
         dependency_graph: dict[str, ToolDependency],
-        injection_points: dict[str, list[str]],
+        injection_points: dict[str, list[str]] = None, # Not strictly needed if in dep
         max_depth: int = 5,
         max_chains_per_tool: int = 10,
     ) -> list[AttackChain]:
-        """
-        Build attack chains for all identified injection points.
-        
-        Args:
-            tools: List of MCP tool definitions
-            dependency_graph: Tool dependency analysis
-            injection_points: Mapping of tool names to injection point parameter names
-            max_depth: Maximum chain depth
-            max_chains_per_tool: Maximum chains to generate per tool
-            
-        Returns:
-            List of AttackChain objects ready for execution
-        """
+        """Build attack chains for all identified injection points."""
         chains = []
         tools_by_name = {t["name"]: t for t in tools}
         
         for tool_name, dep in dependency_graph.items():
             if tool_name not in tools_by_name:
                 continue
-                
+            
             tool = tools_by_name[tool_name]
             tool_injection_points = getattr(dep, 'injection_points', [])
             injection_types = getattr(dep, 'injection_point_types', {})
@@ -108,18 +97,50 @@ class ChainBuilder:
                 if chains_for_tool >= max_chains_per_tool:
                     break
                 
-                # Build the setup chain for this tool
-                setup_steps = self._build_setup_chain(
-                    tool_name=tool_name,
-                    tools_by_name=tools_by_name,
-                    dependency_graph=dependency_graph,
-                    max_depth=max_depth,
-                )
+                # Skip if injection point is a STATE FIELD (like ref, id)
+                # We want to inject into OTHER fields while using valid state
+                if injection_point.lower() in ['ref', 'element', 'id', 'node', 'handle', 'cursor', 'token', 'session']:
+                    continue
                 
-                # Create target arguments template
+                # Build setup steps to satisfy this tool's requirements
+                setup_steps = []
+                requires_state = list(dep.requires) if dep.requires else []
+                
+                # Find tools that PROVIDE what this tool REQUIRES
+                if requires_state:
+                    for state_key in requires_state:
+                        provider_tool = self._find_state_provider(state_key, dependency_graph, tools_by_name)
+                        if provider_tool:
+                            # Check if provider itself needs setup
+                            provider_dep = dependency_graph.get(provider_tool)
+                            if provider_dep and provider_dep.requires:
+                                # Add provider's dependencies first (recursive)
+                                for sub_req in provider_dep.requires:
+                                    sub_provider = self._find_state_provider(sub_req, dependency_graph, tools_by_name)
+                                    if sub_provider and sub_provider != provider_tool:
+                                        setup_steps.append(ChainStep(
+                                            tool_name=sub_provider,
+                                            arguments=self._create_argument_template(tools_by_name[sub_provider], dependency_graph.get(sub_provider)),
+                                            purpose="setup",
+                                            expected_state_keys=[sub_req],
+                                        ))
+                            
+                            # Add the provider tool
+                            setup_steps.append(ChainStep(
+                                tool_name=provider_tool,
+                                arguments=self._create_argument_template(tools_by_name[provider_tool], provider_dep),
+                                purpose="extract_state",
+                                expected_state_keys=[state_key],
+                            ))
+                
+                # Create target arguments with state placeholders
                 target_args = self._create_argument_template(tool, dep)
                 
-                # Create the attack chain
+                # Replace required state fields with $state.X placeholders
+                for state_key in requires_state:
+                    if state_key in target_args:
+                        target_args[state_key] = f"$state.{state_key}"
+                
                 chain = AttackChain(
                     chain_id=f"chain_{self._chain_counter}",
                     target_tool=tool_name,
@@ -127,7 +148,8 @@ class ChainBuilder:
                     injection_point_type=injection_types.get(injection_point, "text"),
                     setup_steps=setup_steps,
                     target_arguments=target_args,
-                    description=f"Attack {tool_name}.{injection_point} ({injection_types.get(injection_point, 'unknown')} type)"
+                    description=f"Chain: {' → '.join([s.tool_name for s in setup_steps] + [tool_name])} | Inject: {injection_point}",
+                    requires_state=requires_state,
                 )
                 
                 chains.append(chain)
@@ -135,56 +157,25 @@ class ChainBuilder:
                 chains_for_tool += 1
         
         return chains
-    
-    def _build_setup_chain(
+
+    def _find_state_provider(
         self,
-        tool_name: str,
-        tools_by_name: dict[str, dict],
+        state_key: str,
         dependency_graph: dict[str, ToolDependency],
-        max_depth: int,
-        visited: set | None = None,
-    ) -> list[ChainStep]:
-        """Build the setup steps needed before calling the target tool."""
-        if visited is None:
-            visited = set()
-        
-        if tool_name in visited or len(visited) >= max_depth:
-            return []
-        
-        visited.add(tool_name)
-        
-        dep = dependency_graph.get(tool_name)
-        if not dep:
-            return []
-        
-        setup_steps = []
-        
-        # Recursively build setup for required tools
-        for required_tool in dep.required_tools:
-            if required_tool in tools_by_name and required_tool not in visited:
-                # Get setup for the required tool first
-                sub_steps = self._build_setup_chain(
-                    tool_name=required_tool,
-                    tools_by_name=tools_by_name,
-                    dependency_graph=dependency_graph,
-                    max_depth=max_depth,
-                    visited=visited.copy(),
-                )
-                setup_steps.extend(sub_steps)
-                
-                # Add the required tool itself
-                required_dep = dependency_graph.get(required_tool)
-                required_tool_def = tools_by_name[required_tool]
-                
-                step = ChainStep(
-                    tool_name=required_tool,
-                    arguments=self._create_argument_template(required_tool_def, required_dep),
-                    purpose="setup",
-                    expected_state_keys=required_dep.provides if required_dep else [],
-                )
-                setup_steps.append(step)
-        
-        return setup_steps
+        tools_by_name: dict[str, dict],
+    ) -> str | None:
+        """Find a tool that provides the given state key."""
+        for tool_name, dep in dependency_graph.items():
+            if tool_name not in tools_by_name:
+                continue
+            provides = dep.provides if dep.provides else []
+            # Check if this tool provides what we need
+            if state_key in provides:
+                return tool_name
+            # Also check for generic ref/id providers
+            if state_key in ['ref', 'element', 'id', 'node'] and any(p in ['ref', 'id', 'node', 'element'] for p in provides):
+                return tool_name
+        return None
     
     def _create_argument_template(
         self, 
@@ -194,7 +185,6 @@ class ChainBuilder:
         """Create an argument template for a tool."""
         schema = tool.get("inputSchema", {})
         properties = schema.get("properties", {})
-        required = schema.get("required", [])
         
         args = {}
         

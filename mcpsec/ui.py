@@ -60,8 +60,9 @@ def print_banner(small: bool = False):
         # Fallback for legacy Windows consoles
         try:
             console.print(f"--- mcpsec v{__version__} ---")
-        except (BrokenPipeError, OSError):
-            pass
+        except Exception:
+            # Ultimate plain print fallback
+            print(f"--- mcpsec v{__version__} ---")
     except (BrokenPipeError, OSError):
         # Pipe closed early
         pass
@@ -156,8 +157,8 @@ def print_section(title: str, icon: str = "-"):
     except UnicodeEncodeError:
         try:
             console.print(f"--- {title} ---")
-        except (BrokenPipeError, OSError):
-            pass
+        except Exception:
+            print(f"--- {title} ---")
     except (BrokenPipeError, OSError):
         pass
     console.print()

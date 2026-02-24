@@ -188,6 +188,14 @@ Analyze ALL tools provided. Be thorough - missing a dependency will cause attack
         
         result = {}
         
+        # Known patterns for browser/playwright MCP servers
+        BROWSER_SETUP_TOOLS = ['browser_navigate', 'browser_snapshot']
+        BROWSER_STATE_CONSUMERS = ['browser_click', 'browser_type', 'browser_hover', 
+                                   'browser_drag', 'browser_select_option', 'browser_evaluate']
+        
+        tool_names = [t.get("name", "") for t in tools]
+        is_browser_server = any("browser_" in name for name in tool_names)
+        
         # Keywords that indicate state requirements
         ref_keywords = ["ref", "reference", "element", "node"]
         id_keywords = ["id", "identifier", "handle", "cursor", "token", "session"]
@@ -210,6 +218,23 @@ Analyze ALL tools provided. Be thorough - missing a dependency will cause attack
             injection_point_types = {}
             execution_order = 1
             
+            # Browser-specific handling
+            if is_browser_server:
+                if name in BROWSER_STATE_CONSUMERS:
+                    # These tools almost always need a selector or ref from a snapshot
+                    if "selector" in properties or "ref" in properties:
+                        requires.extend([p for p in ["selector", "ref"] if p in properties])
+                        if "browser_snapshot" in tool_names:
+                            required_tools.append("browser_snapshot")
+                        execution_order = max(execution_order, 3)
+                
+                if name == "browser_snapshot":
+                    # Snapshot needs a page to be navigated first
+                    if "browser_navigate" in tool_names:
+                        required_tools.append("browser_navigate")
+                    provides.extend(["ref", "element", "id", "node"])
+                    execution_order = max(execution_order, 2)
+            
             # Analyze each parameter
             for param_name, param_def in properties.items():
                 param_desc = param_def.get("description", "").lower()
@@ -217,12 +242,14 @@ Analyze ALL tools provided. Be thorough - missing a dependency will cause attack
                 
                 # Check if this param requires state from another tool
                 if any(kw in param_name.lower() or kw in param_desc for kw in ref_keywords):
-                    requires.append(param_name)
+                    if param_name not in requires:
+                        requires.append(param_name)
                     execution_order = max(execution_order, 2)
                     
                 if any(kw in param_name.lower() or kw in param_desc for kw in id_keywords):
                     if "from" in param_desc or "returned" in param_desc or "snapshot" in param_desc:
-                        requires.append(param_name)
+                        if param_name not in requires:
+                            requires.append(param_name)
                         execution_order = max(execution_order, 2)
                 
                 # Check if this param is an injection point
@@ -246,7 +273,7 @@ Analyze ALL tools provided. Be thorough - missing a dependency will cause attack
                 provides.append(f"{name}_result")
                 # Add specific common state keys based on tool type
                 if "snapshot" in name.lower() or "list" in name.lower():
-                    provides.extend(["ref", "id", "node", "element"])
+                    provides.extend([p for p in ["ref", "id", "node", "element"] if p not in provides])
                 execution_order = 1
             
             # Look for tools this one might depend on
@@ -257,7 +284,8 @@ Analyze ALL tools provided. Be thorough - missing a dependency will cause attack
                     
                 # Check if description mentions needing another tool
                 if other_name.lower() in description:
-                    required_tools.append(other_name)
+                    if other_name not in required_tools:
+                        required_tools.append(other_name)
                     execution_order = max(execution_order, 2)
                 
                 # Heuristic: if we require something like 'ref' and other tool provides it

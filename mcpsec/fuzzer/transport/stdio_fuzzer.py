@@ -40,7 +40,7 @@ class StdioFuzzer:
         self.crash_count = 0
         self.timeout_count = 0
         self.stderr_lines: list[str] = []
-        self.framing = "clrf" # Default to content-length framing
+        self.framing = "crlf" # Default to content-length framing
 
     def start(self):
         """Alias for start_server."""
@@ -390,7 +390,7 @@ class StdioFuzzer:
         if self.framing == "jsonl":
             return self._read_jsonl_response()
         else:
-            return self._read_clrf_response()
+            return self._read_crlf_response()
             
     def _read_jsonl_response(self) -> bytes | None:
         """Read a single JSON line synchronously."""
@@ -402,7 +402,7 @@ class StdioFuzzer:
         except:
             return None
 
-    def _read_clrf_response(self) -> bytes | None:
+    def _read_crlf_response(self) -> bytes | None:
         """Read Content-Length framed response synchronously."""
         proc = self.process
         if not proc or not proc.stdout:

@@ -308,14 +308,13 @@ class ChainEngine:
         
         if tools_response and "result" in tools_response:
             self._tools = tools_response["result"].get("tools", [])
-            console.print(f"  Discovered [cyan]{len(self._tools)}[/cyan] tools")
+            console.print(f"  Discovered [cyan]{len(self._tools)}[/cyan] tools:")
             
-            if self.config.verbose:
-                for tool in self._tools:
-                    console.print(f"    • {tool.get('name')}")
+            for tool in self._tools:
+                console.print(f"    • {tool.get('name')}")
         else:
             console.print("[yellow]  Warning: Could not retrieve tools list[/yellow]")
-            if self.config.verbose and tools_response:
+            if tools_response:
                 console.print(f"  [dim]Response: {tools_response}[/dim]")
     
     async def _execute_all_chains(self) -> None:
@@ -379,8 +378,12 @@ class ChainEngine:
             # Reset state for this chain
             self.state_manager.reset()
             
-            # Execute setup steps
+            # PHASE 1: Execute ALL setup steps and extract state
             for i, setup_step in enumerate(chain.setup_steps):
+                if self.config.verbose:
+                    console.print(f"    [dim]Setup {i+1}: {setup_step.tool_name}[/dim]")
+                
+                # Resolve any $state.X placeholders with current state
                 step_args = self._resolve_arguments(setup_step.arguments, self.state_manager)
                 
                 response = await self._transport.send_request_async({
@@ -396,26 +399,41 @@ class ChainEngine:
                 if response is None:
                     result.status = ChainExecutionStatus.CRASH_DETECTED
                     result.crash_detected = True
+                    result.error_message = f"Server crashed during setup step: {setup_step.tool_name}"
                     return result
                 
                 result.setup_responses.append(response)
                 
-                # Check for errors
+                # Check for errors in setup
                 if "error" in response:
                     result.status = ChainExecutionStatus.SETUP_FAILED
-                    result.error_message = str(response.get("error"))
+                    result.error_message = f"Setup failed at {setup_step.tool_name}: {response.get('error')}"
                     return result
                 
-                # Extract state from response
+                # CRITICAL: Extract state from this response
                 extracted = self.extractor.extract(response)
+                if self.config.verbose and extracted:
+                    console.print(f"    [dim]  Extracted state: {list(extracted.keys())}[/dim]")
                 self.state_manager.update(extracted, tool_name=setup_step.tool_name)
                 result.extracted_state.update(extracted)
                 
                 await asyncio.sleep(self.config.delay_between_steps)
             
-            # Execute target step with payload injection
+            # PHASE 2: Check if we have required state for target tool
+            # If the target tool needs a ref and we don't have one, skip this chain
+            if getattr(chain, "requires_state", []):
+                for required_key in chain.requires_state:
+                    if not self.state_manager.has(required_key):
+                        result.status = ChainExecutionStatus.STATE_EXTRACTION_FAILED
+                        result.error_message = f"Missing required state: {required_key}"
+                        return result
+            
+            # PHASE 3: Execute target tool with payload injection
             target_args = self._resolve_arguments(chain.target_arguments, self.state_manager)
             target_args = self._inject_payload(target_args, chain.injection_point, payload)
+            
+            if self.config.verbose:
+                console.print(f"    [dim]Target: {chain.target_tool}({chain.injection_point}={payload[:30]}...)[/dim]")
             
             target_response = await self._transport.send_request_async({
                 "jsonrpc": "2.0",
@@ -434,8 +452,8 @@ class ChainEngine:
             
             result.target_response = target_response
             
-            # Analyze response for exploitation evidence
-            evidence = self._check_exploitation_evidence(target_response, payload)
+            # PHASE 4: Analyze response for REAL exploitation evidence
+            evidence = self._check_exploitation_evidence(target_response, payload, chain)
             if evidence:
                 result.exploitation_evidence = evidence
             
@@ -522,67 +540,235 @@ class ChainEngine:
     def _check_exploitation_evidence(
         self, 
         response: dict, 
-        payload: str
+        payload: str,
+        chain: AttackChain,
     ) -> str | None:
-        """Check if the response contains evidence of successful exploitation."""
-        response_str = str(response).lower()
+        """
+        Check if the response contains evidence of SUCCESSFUL exploitation.
         
-        # Command injection evidence
-        command_indicators = [
-            "root:", "uid=", "gid=", "/bin/bash", "/bin/sh",
-            "windows", "system32", "program files",
-            "volume serial", "directory of",
+        Key principle: We're looking for DATA that shouldn't be there,
+        not error messages that echo our payload back.
+        """
+        if not response:
+            return None
+        
+        response_str = str(response)
+        response_lower = response_str.lower()
+        
+        # STEP 1: Filter out obvious non-exploits
+        # If response is an error that just echoes our payload, it's NOT a finding
+        error_patterns = [
+            "not found",
+            "invalid",
+            "does not exist", 
+            "no such",
+            "cannot find",
+            "unable to",
+            "failed to",
+            "permission denied",
+            "access denied",
+            "not allowed",
+            "not in allowed",
+            "outside of",
+            "err_name_not_resolved",
+            "enoent",
+            "is not a valid",
         ]
         
-        # Path traversal evidence
-        path_indicators = [
-            "[extensions]",  # win.ini
-            "root:x:0:0",    # /etc/passwd
-            "localhost",      # /etc/hosts
-            "# /etc/fstab",
-            "ssh-rsa",        # SSH keys
+        # Check if this looks like a rejection/error
+        is_error_response = "error" in response_lower or any(p in response_lower for p in error_patterns)
+        
+        # If it's an error AND our payload appears in the error message, it's just being echoed
+        payload_lower = payload.lower()[:50]  # First 50 chars of payload
+        if is_error_response and payload_lower in response_lower:
+            return None  # Payload echoed in error = NOT a finding
+        
+        # STEP 2: Check for REAL exploitation evidence
+        
+        # === Command Injection Evidence ===
+        # These indicate actual command execution, not just payload echo
+        command_execution_evidence = [
+            # Unix command output patterns
+            ("uid=", r"uid=\d+"),                    # id command output
+            ("gid=", r"gid=\d+"),                    # id command output  
+            ("groups=", r"groups=\d+"),              # id command output
+            ("root:x:0:0", None),                    # /etc/passwd entry
+            ("/bin/bash", None),                     # Shell path in passwd
+            ("/bin/sh", None),                       # Shell path
+            ("daemon:x:", None),                     # passwd entry
+            ("nobody:x:", None),                     # passwd entry
+            
+            # Windows command output patterns
+            ("volume serial number", None),         # dir command
+            ("directory of c:\\", None),            # dir command
+            ("nt authority\\system", None),         # whoami on system
+            ("nt authority\\network", None),        # whoami network service
+            (" domain\\", r"\w+\\[\w]+"),           # domain\user format
         ]
         
-        # SSRF evidence
-        ssrf_indicators = [
-            "ami-",           # AWS metadata
-            "instance-id",
-            "security-credentials",
-            "metadata.google",
+        for indicator, regex in command_execution_evidence:
+            if indicator in response_lower:
+                # Extra validation with regex if provided
+                if regex:
+                    import re
+                    if re.search(regex, response_lower):
+                        return self._extract_evidence_context(response_str, indicator)
+                else:
+                    return self._extract_evidence_context(response_str, indicator)
+        
+        # === Path Traversal Evidence ===
+        # Actual file CONTENTS, not just path names in errors
+        file_content_evidence = [
+            # /etc/passwd contents (NOT the path, the CONTENTS)
+            ("root:x:0:0:root:", None),             # Full passwd line
+            ("daemon:x:1:1:", None),                # Another passwd line
+            ("bin:x:2:2:", None),                   # Another passwd line
+            
+            # /etc/shadow indicators
+            ("$6$", None),                          # SHA-512 hash prefix
+            ("$y$", None),                          # yescrypt hash prefix
+            ("$5$", None),                          # SHA-256 hash prefix
+            
+            # Windows file contents
+            ("[extensions]", None),                 # win.ini section
+            ("[mci extensions]", None),             # win.ini section
+            ("[fonts]", None),                      # win.ini/system.ini
+            ("for 16-bit app support", None),       # system.ini comment
+            
+            # SSH keys
+            ("ssh-rsa aaaa", None),                 # SSH public key
+            ("ssh-ed25519 aaaa", None),             # SSH public key
+            ("-----begin rsa private", None),       # Private key header
+            ("-----begin openssh private", None),   # Private key header
+            
+            # Configuration files
+            ("<?xml version=", None),               # XML config
+            ("jdbc:", None),                        # Database connection string
+            ("password=", None),                    # Leaked credential (if NOT in our payload)
+            ("api_key=", None),                     # Leaked API key
+            ("secret_key=", None),                  # Leaked secret
         ]
         
-        # SQL injection evidence
-        sql_indicators = [
-            "sql syntax",
-            "mysql",
-            "sqlite",
-            "postgresql",
-            "syntax error",
-            "unclosed quotation",
+        for indicator, regex in file_content_evidence:
+            if indicator in response_lower:
+                # Make sure it's not just our payload being echoed
+                if indicator not in payload_lower:
+                    return self._extract_evidence_context(response_str, indicator)
+        
+        # === SSRF Evidence ===
+        # Actual cloud metadata responses
+        ssrf_evidence = [
+            # AWS metadata
+            ("ami-", r"ami-[a-f0-9]{8,17}"),        # AMI ID format
+            ("i-", r"i-[a-f0-9]{8,17}"),            # Instance ID format
+            ("arn:aws:", None),                     # AWS ARN
+            ("accesskeyid", None),                  # AWS credentials
+            ("secretaccesskey", None),              # AWS credentials
+            
+            # GCP metadata
+            ("project-id", None),                   # GCP project
+            ("instance-id", None),                  # GCP instance
+            ("service-accounts", None),             # GCP service accounts
+            
+            # Azure metadata  
+            ("subscriptionid", None),               # Azure subscription
+            ("vmid", None),                         # Azure VM ID
         ]
         
-        # Generic success/finding indicators
-        generic_indicators = [
-            "exploited", "vulnerable", "success", "executed", "inject", "attack", "hacked",
+        for indicator, regex in ssrf_evidence:
+            if indicator in response_lower:
+                if regex:
+                    import re
+                    if re.search(regex, response_lower):
+                        return self._extract_evidence_context(response_str, indicator)
+                else:
+                    return self._extract_evidence_context(response_str, indicator)
+        
+        # === SQL Injection Evidence ===
+        # Actual database errors revealing structure (not generic errors)
+        sqli_evidence = [
+            ("you have an error in your sql syntax", None),  # MySQL specific
+            ("postgresql", r"(?:syntax error|column).+(?:at or near|does not exist)"),
+            ("sqlite3.operationalerror", None),     # Python SQLite error
+            ("ora-", r"ora-\d{5}"),                 # Oracle error codes
+            ("sql server", r"sql server.+(?:error|exception)"),
+            ("unclosed quotation mark", None),      # SQL Server specific
+            ("quoted string not properly terminated", None),  # Oracle
         ]
         
-        all_indicators = (
-            command_indicators + 
-            path_indicators + 
-            ssrf_indicators + 
-            sql_indicators +
-            generic_indicators
-        )
+        for indicator, regex in sqli_evidence:
+            if indicator in response_lower:
+                if regex:
+                    import re
+                    if re.search(regex, response_lower):
+                        return self._extract_evidence_context(response_str, indicator)
+                else:
+                    return self._extract_evidence_context(response_str, indicator)
         
-        for indicator in all_indicators:
-            if indicator in response_str:
-                # Extract relevant portion of response
-                idx = response_str.find(indicator)
-                start = max(0, idx - 50)
-                end = min(len(response_str), idx + len(indicator) + 100)
-                return response_str[start:end]
+        # === Stack Trace / Internal Path Disclosure ===
+        # Only flag if it reveals INTERNAL paths, not our payload paths
+        if "traceback" in response_lower or "stack trace" in response_lower:
+            # Check for internal path disclosure
+            internal_paths = [
+                "/home/", "/var/", "/opt/", "/usr/",  # Unix internal
+                "c:\\program files", "c:\\users\\", "c:\\windows",  # Windows internal
+                "node_modules", "site-packages", ".venv",  # Dependencies
+            ]
+            for path in internal_paths:
+                if path in response_lower and path not in payload_lower:
+                    return self._extract_evidence_context(response_str, path)
         
+        # === Server Crash / DoS Evidence ===
+        # These are always findings
+        crash_indicators = [
+            "panic:", "segmentation fault", "sigsegv", "sigabrt",
+            "fatal error", "unhandled exception", "core dumped",
+        ]
+        for indicator in crash_indicators:
+            if indicator in response_lower:
+                return self._extract_evidence_context(response_str, indicator)
+        
+        # === Generic Success/Finding Indicators ===
+        # These are kept for cases where a server explicitly says "Exploited!"
+        # or other high-confidence anomalies.
+        generic_evidence = [
+            ("exploited!", None),
+            ("vulnerable!", None),
+            ("hacked!", None),
+            ("injected!", None),
+            ("command successful", None),
+        ]
+        
+        for indicator, regex in generic_evidence:
+            if indicator in response_lower:
+                if regex:
+                    import re
+                    if re.search(regex, response_lower):
+                        return self._extract_evidence_context(response_str, indicator)
+                else:
+                    return self._extract_evidence_context(response_str, indicator)
+
         return None
+
+    def _extract_evidence_context(self, response: str, indicator: str, context_chars: int = 150) -> str:
+        """Extract context around the evidence indicator."""
+        response_lower = response.lower()
+        indicator_lower = indicator.lower()
+        
+        idx = response_lower.find(indicator_lower)
+        if idx == -1:
+            return indicator
+        
+        start = max(0, idx - 50)
+        end = min(len(response), idx + len(indicator) + context_chars)
+        
+        context = response[start:end]
+        if start > 0:
+            context = "..." + context
+        if end < len(response):
+            context = context + "..."
+        
+        return context
     
     async def _restart_server(self) -> None:
         """Restart the server after a crash."""

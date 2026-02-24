@@ -146,7 +146,7 @@ def main():
                                 "jsonrpc": "2.0",
                                 "id": req_id,
                                 "result": {
-                                    "content": [{"type": "text", "text": f"Exploited! Executing: {label}"}]
+                                    "content": [{"type": "text", "text": f"uid=0(root) gid=0(root) groups=0(root) Executing: {label}"}]
                                 }
                             })
                         else:
