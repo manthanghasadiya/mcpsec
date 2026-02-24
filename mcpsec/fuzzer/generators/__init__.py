@@ -14,4 +14,6 @@ from . import (
     header_mutations,
     json_edge_cases,
     protocol_state,
+    protocol_state_machine,
+    id_confusion,
 )

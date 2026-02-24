@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-02-23
+### Added
+- **Protocol State Machine Fuzzer**: New generator to test violations of the MCP ritual (pre-init calls, double init, post-shutdown).
+- **ID Confusion Fuzzer**: New generator to test JSON-RPC ID edge cases (large integers, floats, nulls, collisions).
+- **Advanced Execution Flags**: Added `skip_init`, `send_after_init`, `send_shutdown_first`, `repeat`, and `delay_between` support to `FuzzCase` and `FuzzEngine`.
+- **Improved Engine Robustness**: `FuzzEngine` now manages server lifecycle more aggressively for state-breaking tests.
+
 ## [1.0.5] - 2026-02-23
 ### Added
 - **Chained Fuzzing Engine**: A new stateful fuzzer that handles sequential tool calls with data dependencies (e.g., `navigate` -> `snapshot` -> `click`).

@@ -88,6 +88,18 @@ mcpsec list-scanners
   - `insane`: Includes resource exhaustion and DoS patterns
   - `ai`: High intensity + AI-generated payloads
 
+## Protocol & ID Fuzzer (v2.0.0)
+
+`mcpsec` v2.0 introduces deep protocol testing with the **Protocol State Machine** and **ID Confusion** generators. This phase focuses on vulnerabilities that arise from violating the MCP ritual and abusing JSON-RPC message ID handling.
+
+-   **🔄 Protocol State Machine**: Violate the MCP "ritual" by calling methods before initialization, double-initializing, using incorrect protocol versions, or calling methods after shutdown.
+-   **🆔 ID Confusion**: Test edge cases in JSON-RPC ID handling, including large integers, floats, null IDs, and ID collisions to find parser and logic bugs.
+-   **🧪 Advanced Execution Flags**: New state-management flags for `FuzzCase`:
+    -   `skip_init`: Bypass the standard handshake to test pre-init vulnerabilities.
+    -   `send_after_init`: Specifically target the post-initialization state.
+    -   `send_shutdown_first`: Automatically handshake, then shutdown before sending the payload.
+    -   `repeat` & `delay_between`: Send sequences of payloads with precise timing for collision testing.
+
 ## Chained Fuzzing Engine (v1.0.5)
 
 `mcpsec` v1.0.5 introduces **Chained Fuzzing**, a stateful execution engine designed to find vulnerabilities in complex MCP servers that require multiple tool calls in a specific order.
