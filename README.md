@@ -111,6 +111,7 @@ mcpsec rogue-server --port 9999 --attack all
 | `description-prompt-injection` | LLM manipulation via descriptions |
 | `resource-ssrf` | SSRF via MCP resource URIs |
 | `capability-escalation` | Undeclared capability abuse |
+| `sql-rce` | SQL Injection to RCE/File access (SQLite, PG, MySQL, MSSQL) |
 
 ---
 

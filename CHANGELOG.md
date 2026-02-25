@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-02-25
+
+### Added
+
+**Advanced SQL Injection to RCE Scanner**
+- New `sql-rce` scanner for detecting and escalating SQL injection
+- Multi-phase detection: Error-based, Union-based, Stacked-query, and WAF bypass
+- Database-specific RCE escalation (SQLite `load_extension`, Postgres `COPY TO PROGRAM`, MSSQL `xp_cmdshell`)
+- Automatic DB fingerprinting and smart false-positive filtering for restricted environments
+
+### Changed
+
+- **Refactored Scanner Engine**: Support for dynamic scanner registration via decorators
+- **Scanner Metadata**: Improved evidence reporting and severity classification
+
+---
+
 ## [2.0.0] - 2026-02-25
 
 ### Added
