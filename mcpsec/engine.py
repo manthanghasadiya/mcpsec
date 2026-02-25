@@ -10,29 +10,13 @@ from datetime import datetime, timezone
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import ScanResult, ServerProfile, TransportType
 from mcpsec.scanners.base import BaseScanner
-from mcpsec.scanners.prompt_injection import PromptInjectionScanner
-from mcpsec.scanners.auth_audit import AuthAuditScanner
-from mcpsec.scanners.path_traversal import PathTraversalScanner
-from mcpsec.scanners.command_injection import CommandInjectionScanner
-from mcpsec.scanners.ssrf import SSRFScanner
-from mcpsec.scanners.description_prompt_injection import DescriptionPromptInjectionScanner
-from mcpsec.scanners.resource_ssrf import ResourceSSRFScanner
-from mcpsec.scanners.capability_escalation import CapabilityEscalationScanner
+from mcpsec.scanners import SCANNERS
 from mcpsec.ui import console, print_finding, print_section, print_summary, get_progress
 
 
 # ── Scanner Registry ─────────────────────────────────────────────────────────
 
-ALL_SCANNERS: list[BaseScanner] = [
-    PromptInjectionScanner(),
-    AuthAuditScanner(),
-    PathTraversalScanner(),
-    CommandInjectionScanner(),
-    SSRFScanner(),
-    DescriptionPromptInjectionScanner(),
-    ResourceSSRFScanner(),
-    CapabilityEscalationScanner(),
-]
+ALL_SCANNERS: list[BaseScanner] = [scanner_class() for scanner_class in SCANNERS.values()]
 
 SCANNER_MAP: dict[str, BaseScanner] = {s.name: s for s in ALL_SCANNERS}
 
