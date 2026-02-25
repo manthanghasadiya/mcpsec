@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/mcpsec)](https://pypi.org/project/mcpsec/)
-[![Bugs Found](https://img.shields.io/badge/bugs%20reported-5-red)](https://github.com/manthanghasadiya/mcpsec)
+[![Bugs Found](https://img.shields.io/badge/bugs%20reported-7-red)](https://github.com/manthanghasadiya/mcpsec)
 [![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-700+-orange)](https://github.com/manthanghasadiya/mcpsec)
 [![Semgrep Rules](https://img.shields.io/badge/semgrep%20rules-49-purple)](https://github.com/manthanghasadiya/mcpsec)
 
@@ -28,7 +28,7 @@ MCP is the protocol connecting AI agents (Claude, Cursor, VS Code) to external t
 - **~2,000** internet-exposed MCP servers found with zero authentication
 - Anthropic's own Git MCP server had 3 critical RCE vulnerabilities
 
-mcpsec has been used to discover and report **5 vulnerabilities** across Anthropic and GitHub MCP implementations, affecting Python, TypeScript, and Go SDK ecosystems.
+mcpsec has been used to discover and report **7 vulnerabilities** across Anthropic and GitHub MCP implementations, affecting Python, TypeScript, and Go SDK ecosystems.
 
 ---
 
@@ -189,7 +189,7 @@ For authorized security testing only. Only scan servers you own or have permissi
 
 ## License
 
-MIT
+[MIT](LICENSE)
 
 ---
 
