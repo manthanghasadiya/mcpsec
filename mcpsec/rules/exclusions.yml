@@ -1,0 +1,44 @@
+# Central exclusion patterns for mcpsec static analysis
+# Only excludes obvious non-production code paths
+
+paths:
+  include:
+    - "**/*.ts"
+    - "**/*.js"
+    - "**/*.py"
+    - "**/*.go"
+  exclude:
+    # Test files
+    - "**/*.test.*"
+    - "**/*.spec.*"
+    - "**/tests/**"
+    - "**/__tests__/**"
+    - "**/test/**"
+    - "**/*_test.*"
+    - "**/*_spec.*"
+    
+    # Type definitions (no runtime code)
+    - "**/*.d.ts"
+    
+    # Dependencies
+    - "**/node_modules/**"
+    - "**/vendor/**"
+    - "**/.venv/**"
+    - "**/venv/**"
+    
+    # Build configuration (not MCP server code)
+    - "**/vite.config.*"
+    - "**/webpack.config.*"
+    - "**/rollup.config.*"
+    - "**/jest.config.*"
+    - "**/tsconfig.*"
+    - "**/babel.config.*"
+    
+    # CI/CD and scripts
+    - "**/.github/**"
+    - "**/scripts/**"
+    - "**/ci/**"
+    
+    # Documentation
+    - "**/docs/**"
+    - "**/*.md"

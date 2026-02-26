@@ -31,7 +31,8 @@ from mcpsec.ui import (
     print_section,
     get_progress,
 )
-from mcpsec.models import TransportType
+from mcpsec.models import TransportType, Severity
+from mcpsec.sql_scanner import SQLScanner
 
 app = typer.Typer(
     name="mcpsec",
@@ -392,31 +393,61 @@ async def _run_connection_diagnostics(command: str):
         console.print(f"  [muted]Diagnostics failed: {diag_err}[/muted]")
 
 
-# ─── INFO COMMAND ────────────────────────────────────────────────────────────
+# ─── SQL COMMAND ─────────────────────────────────────────────────────────────
 
 @app.command()
-def info(
+def sql(
     stdio: Optional[str] = typer.Option(None, "--stdio", "-s", help="MCP server stdio command"),
     http: Optional[str] = typer.Option(None, "--http", help="MCP server HTTP URL"),
+    tool: Optional[str] = typer.Option(None, "--tool", help="Specific tool to test (optional)"),
+    level: int = typer.Option(1, "--level", help="Scan depth: 1=quick, 2=thorough, 3=aggressive"),
+    fingerprint: bool = typer.Option(False, "--fingerprint", "-f", help="Fingerprint DB type"),
+    exploit: bool = typer.Option(False, "--exploit", "-e", help="Attempt data extraction"),
+    timeout: float = typer.Option(10.0, "--timeout", help="Request timeout"),
 ):
     """
-    ℹ️  Enumerate an MCP server's tools, resources, and prompts (no scanning).
+    💉 SQL injection scanner for MCP database servers.
     """
     if not stdio and not http:
         console.print("[danger]Error: Specify either --stdio or --http[/danger]")
         raise typer.Exit(1)
 
-    _run_async(_info_async(stdio_cmd=stdio, http_url=http))
+    _run_async(_sql_async(
+        stdio_cmd=stdio, 
+        http_url=http, 
+        tool_name=tool, 
+        level=level, 
+        fingerprint=fingerprint, 
+        exploit=exploit, 
+        timeout=timeout
+    ))
 
 
-async def _info_async(stdio_cmd: str | None, http_url: str | None):
+async def _sql_async(
+    stdio_cmd: str | None, 
+    http_url: str | None, 
+    tool_name: str | None,
+    level: int,
+    fingerprint: bool,
+    exploit: bool,
+    timeout: float
+):
     from mcpsec.client.mcp_client import MCPSecClient
+    from rich.panel import Panel
+    from rich.columns import Columns
 
     print_banner(small=True)
 
     target = stdio_cmd or http_url or ""
     transport = "stdio" if stdio_cmd else "http"
-    print_target_info("MCP Server", target[:80], transport)
+    
+    console.print(Panel(
+        f"[bold white]Target:[/bold white] [cyan]{target}[/cyan]\n"
+        f"[bold white]Transport:[/bold white] [muted]{transport}[/muted]",
+        title="[bold blue]SQL Injection Scan[/bold blue]",
+        border_style="blue",
+        box=box.ROUNDED
+    ))
 
     async with MCPSecClient() as client:
         try:
@@ -428,47 +459,146 @@ async def _info_async(stdio_cmd: str | None, http_url: str | None):
             console.print(f"\n  [danger]✗ Connection failed: {e}[/danger]")
             raise typer.Exit(1)
 
-        # ── Tools ────────────────────────────────────────────────────────────
-        print_section("Tools", "🔧")
-        if profile.tools:
-            for tool in profile.tools:
-                print_tool_info(tool.name, tool.description, tool.parameters)
-                if tool.annotations:
-                    ann_str = "  ".join(f"{k}={v}" for k, v in tool.annotations.items())
-                    console.print(f"    [muted]annotations: {ann_str}[/muted]")
-                console.print()
-        else:
-            console.print("  [muted]No tools exposed.[/muted]")
+        scanner = SQLScanner(client)
+        
+        # Filter profile.tools if tool_name is provided
+        if tool_name:
+            original_tools = profile.tools
+            profile.tools = [t for t in profile.tools if t.name == tool_name]
+            if not profile.tools:
+                console.print(f"[danger]Error: Tool '{tool_name}' not found on server.[/danger]")
+                return
 
-        # ── Resources ────────────────────────────────────────────────────────
-        print_section("Resources", "📄")
-        if profile.resources:
-            for res in profile.resources:
-                console.print(f"  [param]{res.uri}[/param]")
-                if res.description:
-                    console.print(f"    [muted]{res.description}[/muted]")
-        else:
-            console.print("  [muted]No resources exposed.[/muted]")
+        console.print(f"  [cyan]🔍 Scanning {len(profile.tools)} tools...[/cyan]")
+        
+        findings = await scanner.scan_server(profile, level=level, fingerprint=fingerprint)
+        
+        # Track which tools were scanned and which are vulnerable
+        scanned_tools = [t.name for t in profile.tools]
+        vulnerable_tool_names = set(f.tool for f in findings)
+        
+        for tool_name in scanned_tools:
+            tool_findings = [f for f in findings if f.tool == tool_name]
+            if tool_findings:
+                for f in tool_findings:
+                    console.print(f"\n[bold red]🔴 CRITICAL: SQL Injection in tool '{f.tool}'[/bold red]")
+                    console.print(f"   [white]Parameter:[/white]   [yellow]{f.parameter}[/yellow]")
+                    console.print(f"   [white]Technique:[/white]   [yellow]{f.technique}[/yellow]")
+                    console.print(f"   [white]Payload:[/white]     [dim white]{f.payload}[/dim white]")
+                    if f.evidence:
+                         console.print(f"   [white]Evidence:[/white]    [dim cyan]\"{f.evidence}\"[/dim cyan]")
+                    
+                    if f.db_type:
+                        console.print(f"\n   [white]Database:[/white]    [bold green]{f.db_type.upper()} (fingerprinted)[/bold green]")
+                        
+                        # RCE Hint based on DB type (v1.2 preview)
+                        if f.db_type == "mysql":
+                            console.print("   [bold red]💀 RCE Possible: INTO OUTFILE available[/bold red]")
+                        elif f.db_type == "postgres":
+                            console.print("   [bold red]💀 RCE Possible: COPY FROM PROGRAM available[/bold red]")
+            else:
+                console.print(f"[bold green]🟢 SECURE:[/bold green] Tool '{tool_name}' - No injection found")
 
-        # ── Prompts ──────────────────────────────────────────────────────────
-        print_section("Prompts", "💬")
-        if profile.prompts:
-            for prompt in profile.prompts:
-                args_str = ", ".join(a["name"] for a in prompt.arguments) if prompt.arguments else "none"
-                console.print(f"  [tool_name]{prompt.name}[/tool_name]  args=({args_str})")
-                if prompt.description:
-                    console.print(f"    [muted]{prompt.description}[/muted]")
-        else:
-            console.print("  [muted]No prompts exposed.[/muted]")
+        console.print("\n" + "─" * 60)
+        critical_count = len(findings)
+        summary_color = "red" if critical_count > 0 else "green"
+        console.print(f"[{summary_color}]Summary: {critical_count} CRITICAL, 0 HIGH, 0 MEDIUM | {len(vulnerable_tool_names)}/{len(scanned_tools)} tools vulnerable[/{summary_color}]")
 
-        # ── Stats ────────────────────────────────────────────────────────────
-        console.print()
-        console.print(
-            f"  [accent]Total attack surface:[/accent] "
-            f"{len(profile.tools)} tools, "
-            f"{len(profile.resources)} resources, "
-            f"{len(profile.prompts)} prompts"
-        )
+
+@app.command()
+def chains(
+    stdio: Optional[str] = typer.Option(None, "--stdio", "-s", help="MCP server stdio command"),
+    http: Optional[str] = typer.Option(None, "--http", help="MCP server HTTP URL"),
+    output: str = typer.Option("table", "--output", "-o", help="Output format: table, json"),
+    min_severity: str = typer.Option("MEDIUM", "--min-severity", help="Minimum severity to report"),
+):
+    """
+    🔗 Analyze MCP server for dangerous tool combinations (attack chains).
+    """
+    if not stdio and not http:
+        console.print("[danger]Error: Specify either --stdio or --http[/danger]")
+        raise typer.Exit(1)
+
+    _run_async(_chains_async(stdio_cmd=stdio, http_url=http, output_format=output, min_severity=min_severity))
+
+
+async def _chains_async(stdio_cmd: str | None, http_url: str | None, output_format: str, min_severity: str):
+    from mcpsec.client.mcp_client import MCPSecClient
+    from mcpsec.scanners.toolchain_analyzer import ToolChainAnalyzer
+    from rich.panel import Panel
+
+    print_banner(small=True)
+
+    target = stdio_cmd or http_url or ""
+    transport = "stdio" if stdio_cmd else "http"
+    
+    console.print(Panel(
+        f"[bold white]Target:[/bold white] [cyan]{target}[/cyan]\n"
+        f"[bold white]Transport:[/bold white] [muted]{transport}[/muted]",
+        title="[bold blue]Tool Chain Analysis[/bold blue]",
+        border_style="blue",
+        box=box.ROUNDED
+    ))
+
+    async with MCPSecClient() as client:
+        try:
+            if stdio_cmd:
+                profile = await client.connect_stdio(stdio_cmd)
+            else:
+                profile = await client.connect_http(http_url)
+        except Exception as e:
+            console.print(f"\n  [danger]✗ Connection failed: {e}[/danger]")
+            raise typer.Exit(1)
+
+        analyzer = ToolChainAnalyzer()
+        report = analyzer.analyze_server(profile)
+
+        console.print(f"  [cyan]🔍 Analyzed {report.total_tools} tools...[/cyan]\n")
+
+        if report.capabilities_found:
+            console.print("📊 [bold]Capabilities Detected:[/bold]")
+            for cap in sorted(report.capabilities_found):
+                console.print(f" • [dim cyan]{cap}[/dim cyan]")
+            console.print()
+
+        severity_rank = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
+        min_rank = severity_rank.get(min_severity.upper(), 1)
+
+        findings_shown = 0
+        for finding in report.chain_findings:
+            if severity_rank.get(finding.severity.upper(), 0) < min_rank:
+                continue
+            
+            findings_shown += 1
+            sev_color = "red" if finding.severity == "CRITICAL" else "orange3" if finding.severity == "HIGH" else "yellow"
+            console.print(f"[bold {sev_color}]{finding.severity}: {finding.name.replace('_', ' ').title()} ({finding.chain_id})[/bold {sev_color}]")
+            
+            tool_paths = []
+            for cap, tools in finding.matching_tools.items():
+                tool_paths.append(f"[cyan]{tools[0]}[/cyan]")
+            
+            console.print(f"Tools:     {' → '.join(tool_paths)}")
+            if finding.mitre_attack:
+                console.print(f"MITRE:     [dim white]{', '.join(finding.mitre_attack)}[/dim white]")
+            if finding.example_attack:
+                console.print(f"Attack:    [dim]{finding.example_attack}[/dim]")
+            console.print()
+
+        console.print("─" * 60)
+        risk_color = "red" if report.risk_score >= 9.0 else "orange3" if report.risk_score >= 7.0 else "yellow" if report.risk_score >= 4.0 else "green"
+        risk_label = "CRITICAL" if report.risk_score >= 9.0 else "HIGH" if report.risk_score >= 7.0 else "MEDIUM" if report.risk_score >= 4.0 else "LOW"
+        
+        console.print(f"Risk Score: [{risk_color}]{report.risk_score:.1f}/10 ({risk_label})[/{risk_color}]")
+        
+        crit_count = sum(1 for f in report.chain_findings if f.severity == "CRITICAL")
+        high_count = sum(1 for f in report.chain_findings if f.severity == "HIGH")
+        med_count = sum(1 for f in report.chain_findings if f.severity == "MEDIUM")
+        
+        console.print(f"Findings: {crit_count} CRITICAL, {high_count} HIGH, {med_count} MEDIUM")
+        
+        if report.risk_score >= 7.0:
+            console.print("\n[bold yellow]Recommendation:[/bold yellow] This server has excessive capabilities. Apply")
+            console.print("principle of least privilege.")
         console.print()
 
 

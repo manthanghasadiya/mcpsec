@@ -28,7 +28,7 @@ MCP is the protocol connecting AI agents (Claude, Cursor, VS Code) to external t
 - **~2,000** internet-exposed MCP servers found with zero authentication
 - Anthropic's own Git MCP server had 3 critical RCE vulnerabilities
 
-mcpsec has been used to discover and report **7 vulnerabilities** across Anthropic and GitHub MCP implementations, affecting Python, TypeScript, and Go SDK ecosystems.
+mcpsec has been used to discover and report **12+ vulnerabilities** across Anthropic and GitHub MCP implementations, affecting Python, TypeScript, and Go SDK ecosystems.
 
 ---
 
@@ -58,6 +58,12 @@ mcpsec scan --http http://localhost:8080/mcp -H "Authorization: Bearer TOKEN"
 
 # Enumerate attack surface
 mcpsec info --stdio "python my_server.py"
+
+# Advanced SQL Injection Discovery
+mcpsec sql --stdio "npx @benborla29/mcp-server-mysql" --fingerprint
+
+# Attack Chain Analysis (Priority 0)
+mcpsec chains --stdio "npx @example/complex-server"
 ```
 
 ### Protocol Fuzzing
@@ -111,7 +117,9 @@ mcpsec rogue-server --port 9999 --attack all
 | `description-prompt-injection` | LLM manipulation via descriptions |
 | `resource-ssrf` | SSRF via MCP resource URIs |
 | `capability-escalation` | Undeclared capability abuse |
-| `sql-rce` | SQL Injection to RCE/File access (SQLite, PG, MySQL, MSSQL) |
+| `sql` | Modular SQL Injection (Error, Time, Boolean, Stacked) |
+| `chains` | Tool Chain Analysis (Dangerous combinations detection) |
+| `sql-rce` | SQL Injection to RCE/File access (Legacy) |
 
 ---
 
@@ -184,6 +192,24 @@ mcpsec fuzz --stdio "server" --output results.sarif
 ## Disclaimer
 
 For authorized security testing only. Only scan servers you own or have permission to test.
+
+---
+
+## Changelog
+
+### v2.0.2 (2026-02-26)
+- **Tool Chain Analysis**: Detect dangerous tool combinations (read+exec, sql+exfil).
+- **Cross-Platform Priority**: Robust Windows support for `npx`, modern path resolution.
+- **Improved UI**: Refined terminal output and error reporting.
+
+### v2.0.1 (2026-02-25)
+- **Advanced SQL Scanner**: Modular architecture with error/time/boolean detection.
+- **DB Fingerprinting**: Automated identification of MySQL, Postgres, MSSQL, and SQLite.
+- **Enhanced Heuristics**: Better tool and parameter surface discovery.
+
+### v2.0.0 (2026-02-24)
+- **Fuzzing Engine v2**: Chained fuzzer for deep state-machine exploration.
+- **AI-Powered Validation**: LLM verification of potential security findings.
 
 ---
 

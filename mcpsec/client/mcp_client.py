@@ -43,25 +43,25 @@ class MCPSecClient:
     async def connect_stdio(self, command: str, args: list[str] | None = None, env: dict | None = None) -> ServerProfile:
         """Connect to an MCP server via stdio transport."""
         if not args:
+            parts = shlex.split(command, posix=(sys.platform != "win32"))
+            executable = parts[0]
+            
+            # Cross-platform executable resolution
+            resolved = None
             if sys.platform == "win32":
-                # Windows: handle .cmd extensions and backslash paths
-                parts = shlex.split(command, posix=False)
-                executable = parts[0]
-                # Auto-fix common Windows command names
-                if executable.lower() in ("npx", "node", "npm") and not executable.lower().endswith(".cmd"):
-                    executable = executable + ".cmd"
-                
-                # Resolve full path if possible
-                resolved = shutil.which(executable)
-                if resolved:
-                    executable = resolved
-                
-                command = executable
-                args = parts[1:] if len(parts) > 1 else []
+                # Windows: check for .cmd, .exe, .bat
+                for ext in [".cmd", ".exe", ".bat", ""]:
+                    resolved = shutil.which(executable + ext)
+                    if resolved:
+                        break
             else:
-                parts = shlex.split(command)
-                command = parts[0]
-                args = parts[1:] if len(parts) > 1 else []
+                resolved = shutil.which(executable)
+            
+            if resolved:
+                executable = resolved
+            
+            command = executable
+            args = parts[1:] if len(parts) > 1 else []
 
         console.print(f"  [dim]Debug: Executing {command} with args {args}[/dim]")
 
