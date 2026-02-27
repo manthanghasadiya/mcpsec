@@ -119,10 +119,15 @@ def scan(
         "-H",
         help="HTTP header in 'Key: Value' format. Can be repeated. Example: -H 'Authorization: Bearer token123'",
     ),
+    exploit: bool = typer.Option(
+        False,
+        "--exploit",
+        help="Automatically launch interactive exploit session after scanning",
+    ),
 ):
     """
     🔍 Scan an MCP server for security vulnerabilities.
-
+    
     Connect to a running MCP server, enumerate its tools/resources/prompts,
     and run security scanners against them.
     """
@@ -144,6 +149,7 @@ def scan(
         quiet=quiet,
         ai=ai,
         headers=_parse_headers(header),
+        exploit=exploit,
     ))
 
 
@@ -155,6 +161,7 @@ async def _scan_async(
     quiet: bool,
     ai: bool = False,
     headers: dict[str, str] | None = None,
+    exploit: bool = False,
 ):
     from mcpsec.client.mcp_client import MCPSecClient
     from mcpsec.engine import run_scan
@@ -343,16 +350,82 @@ async def _scan_async(
         if findings:
             scan_result.findings.extend(findings)
 
-        if output_path:
-            from mcpsec.reporters.json_report import generate_json_report
-            if generate_json_report(scan_result, output_path):
-                console.print(f"  [success]✔ Report saved to {output_path}[/success]")
-            else:
-                console.print(f"  [danger]✗ Failed to save report to {output_path}[/danger]")
+        if not output_path:
+            output_path = "findings.json"
+            
+        from mcpsec.reporters.json_report import generate_json_report
+        if generate_json_report(scan_result, output_path):
+            console.print(f"  [success]✔ Report saved to {output_path}[/success]")
+        else:
+            console.print(f"  [danger]✗ Failed to save report to {output_path}[/danger]")
+            
+        if exploit:
+            from mcpsec.exploit.session import ExploitSession
+            console.print("\n[bold green]Launching Interactive Exploit Session...[/bold green]")
+            session = ExploitSession(
+                target=target,
+                transport=transport,
+                findings=scan_result.findings,
+                use_ai=ai,
+                headers=headers,
+                client=client,
+                profile=profile
+            )
+            await session.start()            
 
     # Exit with non-zero if critical/high findings
-    if scan_result.critical_count > 0 or scan_result.high_count > 0:
+    if not exploit and (scan_result.critical_count > 0 or scan_result.high_count > 0):
         raise typer.Exit(1)
+
+# ─── EXPLOIT COMMAND ─────────────────────────────────────────────────────────
+
+@app.command()
+def exploit(
+    stdio: Optional[str] = typer.Option(None, "--stdio", "-s", help="MCP server stdio command"),
+    http: Optional[str] = typer.Option(None, "--http", help="MCP server HTTP URL"),
+    from_scan: Optional[str] = typer.Option(None, "--from-scan", help="Load findings from JSON report"),
+    ai: bool = typer.Option(False, "--ai", help="Enable AI payload recommendations"),
+    header: list[str] = typer.Option([], "--header", "-H", help="HTTP headers"),
+):
+    """
+    🎯 Interactive MCP Exploitation Session.
+    
+    Launch a REPL to manually or semi-automatically exploit a running MCP server.
+    """
+    if not stdio and not http:
+        console.print("[danger]Error: Specify either --stdio or --http[/danger]")
+        raise typer.Exit(1)
+        
+    findings = []
+    if from_scan:
+        try:
+            from mcpsec.models import ScanResult
+            with open(from_scan, "r") as f:
+                data = f.read()
+                sr = ScanResult.model_validate_json(data)
+                findings = sr.findings
+        except Exception as e:
+            console.print(f"[danger]Failed to load scan results: {e}[/danger]")
+            raise typer.Exit(1)
+
+    _run_async(_exploit_async(stdio, http, findings, ai, _parse_headers(header)))
+
+async def _exploit_async(stdio_cmd: str | None, http_url: str | None, findings: list, ai: bool, headers: dict):
+    from mcpsec.exploit.session import ExploitSession
+    from mcpsec.models import TransportType
+    
+    target = stdio_cmd or http_url or ""
+    transport = TransportType.STDIO if stdio_cmd else TransportType.HTTP
+    
+    session = ExploitSession(
+        target=target,
+        transport=transport,
+        findings=findings,
+        use_ai=ai,
+        headers=headers
+    )
+    await session.start()
+
 
 
 async def _run_connection_diagnostics(command: str):

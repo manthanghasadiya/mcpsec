@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcpsec"
-version = "2.0.2"
+version = "2.0.3"
 description = "Security scanner and protocol fuzzer for MCP (Model Context Protocol) servers. Found and reported vulnerabilities in official Anthropic and GitHub MCP implementations."
 readme = "README.md"
 license = {text = "MIT"}
@@ -46,8 +46,11 @@ dev = [
 rogue = [
     "aiohttp>=3.9.0",
 ]
+exploit = [
+    "prompt_toolkit>=3.0.0",
+]
 all = [
-    "mcpsec[ai,rogue]",
+    "mcpsec[ai,rogue,exploit]",
 ]
 
 [project.scripts]

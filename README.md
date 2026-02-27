@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/mcpsec)](https://pypi.org/project/mcpsec/)
-[![Bugs Found](https://img.shields.io/badge/bugs%20reported-7-red)](https://github.com/manthanghasadiya/mcpsec)
+[![Bugs Found](https://img.shields.io/badge/bugs%20reported-10+-red)](https://github.com/manthanghasadiya/mcpsec)
 [![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-700+-orange)](https://github.com/manthanghasadiya/mcpsec)
 [![Semgrep Rules](https://img.shields.io/badge/semgrep%20rules-49-purple)](https://github.com/manthanghasadiya/mcpsec)
 
@@ -196,6 +196,12 @@ For authorized security testing only. Only scan servers you own or have permissi
 ---
 
 ## Changelog
+
+### v2.0.3 (2026-02-26)
+- **Interactive Exploitation (MCP Repeater)**: New REPL for manual/semi-auto validation of findings.
+- **AI Payload Engine**: Context-aware payload recommendations integrated into playbooks.
+- **Exploit Playbooks**: Structured attack sequences for SQLi, RCE, SSRF, and more.
+- **Evidence Capture**: Automated request/response logging and standalone PoC script generation.
 
 ### v2.0.2 (2026-02-26)
 - **Tool Chain Analysis**: Detect dangerous tool combinations (read+exec, sql+exfil).

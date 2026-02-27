@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-02-26
+
+### Added
+- **MCP Repeater**: Interactive terminal-based exploitation session manager.
+- **`mcpsec exploit` command**: Direct access to the exploitation REPL.
+- **`--exploit` flag for `scan`**: Seamless transition from vulnerability discovery to exploitation.
+- **Attack Playbooks**: Predefined stages for Path Traversal, SQLi, Command Injection, SSRF, and Sandbox Escape.
+- **AI Payload Recommendations**: Real-time payload suggestions based on server behavior and tool schema.
+- **Evidence Bundle & PoC Generator**: Export session history as JSON/Markdown or generate standalone Python PoCs.
+
+### Changed
+- Refined session state tracking with `ExploitState` and `AttemptRecord`.
+- Enhanced terminal autocompletion for MCP tools and findings.
+
+---
+
+## [2.0.2] - 2026-02-26
+
+### Added
+- **Tool Chain Analysis**: Heuristic-based detection of dangerous tool combinations across resources.
+- **Windows Priority Support**: Improved `npx` execution and executable resolution on Windows.
+- **Enhanced UI**: Improved status reporting and transport diagnostic output.
+
+---
+
 ## [2.0.1] - 2026-02-25
 
 ### Added
