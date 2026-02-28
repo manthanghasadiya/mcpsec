@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-02-27
+
+### Added
+- **AI-Powered Exploitation Assistant**: Interactive commands `select`, `run`, `next`, `verdict`, and `auto` for guided vulnerability validation.
+- **Advanced REPL UX**: New commands `edit`, `aggressive`, and `hint` for precise control over AI payload generation.
+- **Manual Payload Integration**: Manual `call` commands are now tracked in suggestion history, allowing the AI to learn from user-guided attempts.
+- **Finding Integration**: Fixes and improvements to `--from-scan` parsing, supporting raw JSON arrays and ScanResult objects.
+
+### Fixed
+- Missing `parameter` field in `Finding` model which caused errors during some scanner integrations.
+- `--from-scan` parsing logic to handle diverse JSON report structures.
+- Exploit session stability when AI is disabled.
+
 ## [2.0.3] - 2026-02-26
 
 ### Added

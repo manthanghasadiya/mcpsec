@@ -399,10 +399,22 @@ def exploit(
     findings = []
     if from_scan:
         try:
-            from mcpsec.models import ScanResult
+            import json as _json
+            from mcpsec.models import Finding, ScanResult
             with open(from_scan, "r") as f:
-                data = f.read()
-                sr = ScanResult.model_validate_json(data)
+                data = _json.load(f)
+            
+            # Handle both formats: raw array or ScanResult wrapper
+            if isinstance(data, list):
+                findings = [Finding.model_validate(item) for item in data]
+            elif isinstance(data, dict) and "findings" in data:
+                try:
+                    sr = ScanResult.model_validate(data)
+                    findings = sr.findings
+                except Exception:
+                    findings = [Finding.model_validate(item) for item in data["findings"]]
+            else:
+                sr = ScanResult.model_validate(data)
                 findings = sr.findings
         except Exception as e:
             console.print(f"[danger]Failed to load scan results: {e}[/danger]")

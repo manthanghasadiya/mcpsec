@@ -201,11 +201,17 @@ For authorized security testing only. Only scan servers you own or have permissi
 
 ## Changelog
 
+### v2.1.0 (2026-02-27)
+- **AI Exploitation Assistant**: New REPL commands (`select`, `run`, `next`, `verdict`, `auto`) for interactive AI-led testing.
+- **Expert Controls**: Added `edit`, `aggressive`, and `hint` to guide AI toward complex bypasses.
+- **Feedback Loop**: AI now learns from manual `call` commands and response history.
+- **Robustness**: Fixed `Finding` model schema and improved `--from-scan` report ingestion.
+
 ### v2.0.3 (2026-02-26)
 - **Interactive Exploitation (MCP Repeater)**: New REPL for manual/semi-auto validation of findings.
 - **AI Payload Engine**: Context-aware payload recommendations integrated into playbooks.
-- **Exploit Playbooks**: Structured attack sequences for SQLi, RCE, SSRF, and more.
-- **Evidence Capture**: Automated request/response logging and standalone PoC script generation.
+- **Exploit Playbooks**: Attack sequences for SQLi, RCE, SSRF, and more.
+- **Evidence Capture**: Automated logging and PoC script generation.
 
 ### v2.0.2 (2026-02-26)
 - **Tool Chain Analysis**: Detect dangerous tool combinations (read+exec, sql+exfil).

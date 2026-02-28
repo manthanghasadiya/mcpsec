@@ -68,6 +68,7 @@ class Finding(BaseModel):
     severity: Severity
     scanner: str
     tool_name: str = ""
+    parameter: str = ""
     title: str
     description: str = ""
     detail: str = ""
