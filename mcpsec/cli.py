@@ -101,7 +101,12 @@ def scan(
     output: Optional[str] = typer.Option(
         None,
         "--output", "-o",
-        help="Output file path for JSON report",
+        help="Output file path for report",
+    ),
+    format: str = typer.Option(
+        "json",
+        "--format", "-f",
+        help="Output format: json, sarif",
     ),
     quiet: bool = typer.Option(
         False,
@@ -146,6 +151,7 @@ def scan(
         http_url=http,
         scanner_names=scanner_names,
         output_path=output,
+        output_format=format.lower(),
         quiet=quiet,
         ai=ai,
         headers=_parse_headers(header),
@@ -158,7 +164,8 @@ async def _scan_async(
     http_url: str | None,
     scanner_names: list[str] | None,
     output_path: str | None,
-    quiet: bool,
+    output_format: str = "json",
+    quiet: bool = False,
     ai: bool = False,
     headers: dict[str, str] | None = None,
     exploit: bool = False,
@@ -351,13 +358,20 @@ async def _scan_async(
             scan_result.findings.extend(findings)
 
         if not output_path:
-            output_path = "findings.json"
-            
-        from mcpsec.reporters.json_report import generate_json_report
-        if generate_json_report(scan_result, output_path):
-            console.print(f"  [success]✔ Report saved to {output_path}[/success]")
+            output_path = "findings.sarif" if output_format == "sarif" else "findings.json"
+
+        if output_format == "sarif":
+            from mcpsec.reporters.sarif_report import save_sarif_report
+            if save_sarif_report(scan_result, output_path):
+                console.print(f"  [success]✔ SARIF report saved to {output_path}[/success]")
+            else:
+                console.print(f"  [danger]✗ Failed to save SARIF report to {output_path}[/danger]")
         else:
-            console.print(f"  [danger]✗ Failed to save report to {output_path}[/danger]")
+            from mcpsec.reporters.json_report import generate_json_report
+            if generate_json_report(scan_result, output_path):
+                console.print(f"  [success]✔ Report saved to {output_path}[/success]")
+            else:
+                console.print(f"  [danger]✗ Failed to save report to {output_path}[/danger]")
             
         if exploit:
             from mcpsec.exploit.session import ExploitSession
@@ -775,6 +789,8 @@ def audit(
     npm: Optional[str] = typer.Option(None, "--npm", help="NPM package to audit"),
     github: Optional[str] = typer.Option(None, "--github", help="GitHub repository URL to audit"),
     path: Optional[str] = typer.Option(None, "--path", help="Local directory path to audit"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path for report"),
+    format: str = typer.Option("json", "--format", "-f", help="Output format: json, sarif"),
     ai: bool = typer.Option(
         False,
         "--ai",
@@ -792,12 +808,12 @@ def audit(
         console.print("[danger]Error: Specify only one source (npm, github, or path)[/danger]")
         raise typer.Exit(1)
 
-    _run_async(_audit_async(npm, github, path, ai))
+    _run_async(_audit_async(npm, github, path, ai, output, format.lower()))
 
 
-async def _audit_async(npm: str | None, github: str | None, path: str | None, ai: bool = False):
+async def _audit_async(npm: str | None, github: str | None, path: str | None, ai: bool = False, output_path: str | None = None, output_format: str = "json"):
     from mcpsec.static.audit_engine import run_audit
-    from mcpsec.models import Finding
+    from mcpsec.models import Finding, ScanResult
     
     print_banner(small=True)
     print_section("Static Audit", "🔬")
@@ -846,7 +862,30 @@ async def _audit_async(npm: str | None, github: str | None, path: str | None, ai
     # Display findings
     for f in findings:
         _print_finding_detail(f)
-        
+
+    # Save report if output path specified
+    if output_path:
+        target = npm or github or path or ""
+        scan_result = ScanResult(
+            target=target,
+            findings=findings,
+            scanners_run=["semgrep", "ai-taint"] if ai else ["semgrep"],
+        )
+        scan_result.mark_complete()
+
+        if output_format == "sarif":
+            from mcpsec.reporters.sarif_report import save_sarif_report
+            if save_sarif_report(scan_result, output_path):
+                console.print(f"  [success]✔ SARIF report saved to {output_path}[/success]")
+            else:
+                console.print(f"  [danger]✗ Failed to save SARIF report[/danger]")
+        else:
+            from mcpsec.reporters.json_report import generate_json_report
+            if generate_json_report(scan_result, output_path):
+                console.print(f"  [success]✔ Report saved to {output_path}[/success]")
+            else:
+                console.print(f"  [danger]✗ Failed to save report[/danger]")
+
     if critical_count > 0 or high_count > 0:
         raise typer.Exit(1)
 
@@ -888,13 +927,14 @@ def fuzz(
     startup_timeout: float = typer.Option(15.0, "--startup-timeout", help="Server startup/initialization timeout in seconds"),
     framing: str = typer.Option("auto", "--framing", "-f", help="Message framing: 'auto', 'jsonl' (Python), or 'clrf' (Node)"),
     generators: str = typer.Option(None, "--generators", "-g", help="Comma-separated generator names"),
-    output: str = typer.Option(None, "--output", "-o", help="Save results to JSON"),
+    output: str = typer.Option(None, "--output", "-o", help="Save results to file"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Print raw responses for debugging"),
     intensity: str = typer.Option("medium", "--intensity", "-i", help="Fuzzing intensity: low, medium, high, insane"),
     ai: bool = typer.Option(False, "--ai", help="Generate custom AI-powered fuzz payloads per tool"),
     http: Optional[str] = typer.Option(None, "--http", help="MCP server HTTP URL"),
     header: list[str] = typer.Option([], "--header", "-H", help="HTTP header in 'Key: Value' format"),
     chained: bool = typer.Option(False, "--chained", help="Use stateful attack chains (discovery & dependency analysis)"),
+    format: str = typer.Option("json", "--format", help="Output format: json, sarif"),
 ):
     """
     🔥 Fuzz an MCP server with malformed protocol messages.
@@ -965,9 +1005,16 @@ def fuzz(
             console.print()
     
     if output:
-        import json
-        Path(output).write_text(json.dumps(summary, indent=2))
-        console.print(f"  [success]✔ Results saved to {output}[/success]")
+        if format.lower() == "sarif":
+            from mcpsec.reporters.sarif_report import save_sarif_from_fuzz
+            if save_sarif_from_fuzz(summary, target, output):
+                console.print(f"  [success]✔ SARIF report saved to {output}[/success]")
+            else:
+                console.print(f"  [danger]✗ Failed to save SARIF report[/danger]")
+        else:
+            import json
+            Path(output).write_text(json.dumps(summary, indent=2))
+            console.print(f"  [success]✔ Results saved to {output}[/success]")
 
 
 # ─── CHAINED COMMAND ─────────────────────────────────────────────────────────

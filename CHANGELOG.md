@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-02-28
+
+### Added
+- **SARIF 2.1.0 Output**: Production-quality SARIF reports for CI/CD integration with GitHub Code Scanning, GitLab SAST, and Azure DevOps.
+- **`--format sarif` flag**: Available on `scan`, `fuzz`, and `audit` commands. Default remains `json` for backward compatibility.
+- **`--output` and `--format` for `audit`**: Static analysis results can now be saved as JSON or SARIF reports.
+- **CWE Mapping**: Automatic CWE classification for all scanner types (CWE-78, CWE-89, CWE-22, CWE-918, CWE-94, etc.).
+- **Security-Severity Scores**: GitHub-compatible severity scoring for Code Scanning integration.
+- **Fingerprint Deduplication**: SHA-256 fingerprints for stable finding deduplication across runs.
+- **Code Flows**: Taint analysis findings include SARIF code flow data.
+- **Fuzz SARIF**: Fuzzer crashes, timeouts, and anomalies mapped to SARIF rule categories.
+
+### Fixed
+- Exploit `run` command now resolves parameter names from tool schema instead of using hardcoded fallback.
+- AI client import corrected from non-existent `mcpsec.ai.client` to `mcpsec.ai.llm_client.LLMClient`.
+
 ## [2.1.0] - 2026-02-27
 
 ### Added

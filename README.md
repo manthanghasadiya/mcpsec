@@ -201,6 +201,12 @@ For authorized security testing only. Only scan servers you own or have permissi
 
 ## Changelog
 
+### v2.2.0 (2026-02-28)
+- **SARIF 2.1.0 Output**: `--format sarif` flag on `scan`, `fuzz`, and `audit` for GitHub/GitLab/Azure DevOps CI/CD integration.
+- **CWE Mapping & Severity Scores**: Automatic CWE classification and GitHub-compatible security-severity scoring.
+- **Audit Report Export**: New `--output` and `--format` flags for `mcpsec audit`.
+- **Bugfixes**: Fixed exploit `run` parameter resolution and AI client import.
+
 ### v2.1.0 (2026-02-27)
 - **AI Exploitation Assistant**: New REPL commands (`select`, `run`, `next`, `verdict`, `auto`) for interactive AI-led testing.
 - **Expert Controls**: Added `edit`, `aggressive`, and `hint` to guide AI toward complex bypasses.
