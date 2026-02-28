@@ -1,0 +1,146 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # Python Async — Subprocess Injection
+  # ═══════════════════════════════════════════════════════════════
+  - id: python-mcp-async-subprocess-shell
+    message: >-
+      asyncio.create_subprocess_shell() with variable input allows
+      command injection. Use create_subprocess_exec() with explicit
+      argument list instead.
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern: await asyncio.create_subprocess_shell($CMD, ...)
+      - pattern-not: await asyncio.create_subprocess_shell("...", ...)
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      category: security
+      technology:
+        - python
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  - id: python-mcp-async-subprocess-exec
+    message: >-
+      asyncio.create_subprocess_exec() with variable command name.
+      Ensure the command is hardcoded and only arguments vary.
+    severity: WARNING
+    languages: [python]
+    patterns:
+      - pattern: await asyncio.create_subprocess_exec($CMD, ...)
+      - pattern-not: await asyncio.create_subprocess_exec("...", ...)
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      category: security
+      technology:
+        - python
+        - mcp
+      confidence: MEDIUM
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # Python Async — Path Traversal (aiofiles)
+  # ═══════════════════════════════════════════════════════════════
+  - id: python-mcp-aiofiles-traversal
+    message: >-
+      aiofiles.open() with potentially user-controlled path.
+      Resolve with pathlib.Path.resolve() and verify with
+      is_relative_to() before opening.
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern: await aiofiles.open($PATH, ...)
+      - pattern-not-inside: |
+          ... = pathlib.Path(...).resolve()
+          ...
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      category: security
+      technology:
+        - python
+        - mcp
+      confidence: MEDIUM
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # Python — Pickle Deserialization
+  # ═══════════════════════════════════════════════════════════════
+  - id: python-mcp-pickle-load
+    message: >-
+      Pickle deserialization is unsafe with untrusted data.
+      pickle.loads() can execute arbitrary code during deserialization.
+      Use json.loads() or a safe alternative instead.
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: pickle.load(...)
+          - pattern: pickle.loads(...)
+          - pattern: _pickle.loads(...)
+          - pattern: dill.load(...)
+          - pattern: dill.loads(...)
+          - pattern: shelve.open(...)
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      category: security
+      technology:
+        - python
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # Python — Async HTTP SSRF
+  # ═══════════════════════════════════════════════════════════════
+  - id: python-mcp-aiohttp-ssrf
+    message: >-
+      aiohttp request with user-controlled URL.
+      Validate URLs against an allowlist and block internal addresses.
+    severity: WARNING
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: await $SESSION.get($URL, ...)
+          - pattern: await $SESSION.post($URL, ...)
+          - pattern: await $SESSION.request("...", $URL, ...)
+          - pattern: await aiohttp.ClientSession().get($URL, ...)
+    metadata:
+      cwe:
+        - "CWE-918: Server-Side Request Forgery"
+      category: security
+      technology:
+        - python
+        - mcp
+      confidence: MEDIUM
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # Python — eval/exec
+  # ═══════════════════════════════════════════════════════════════
+  - id: python-mcp-eval-exec
+    message: >-
+      eval() or exec() with potentially user-controlled input.
+      These functions execute arbitrary Python code.
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: eval($INPUT)
+          - pattern: exec($INPUT)
+          - pattern: compile($INPUT, ...)
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
+    metadata:
+      cwe:
+        - "CWE-94: Improper Control of Generation of Code"
+      category: security
+      technology:
+        - python
+        - mcp
+      confidence: HIGH
+      impact: HIGH

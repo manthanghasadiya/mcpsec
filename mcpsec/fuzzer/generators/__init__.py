@@ -16,4 +16,10 @@ from . import (
     protocol_state,
     protocol_state_machine,
     id_confusion,
+    # Nuclear expansion generators
+    integer_boundaries,
+    concurrency_attacks,
+    memory_exhaustion_v2,
+    regex_dos,
+    deserialization,
 )

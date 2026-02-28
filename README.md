@@ -201,6 +201,12 @@ For authorized security testing only. Only scan servers you own or have permissi
 
 ## Changelog
 
+### v2.3.0 (2026-02-28)
+- **Scanner Nuclear Expansion**: CmdInj 138, PathTrav 104, SSRF 81 payloads — encoding bypasses, protocol smuggling, shell-specific evasion.
+- **Confirmation-Based Detection**: Regex matching with CONFIRMED/LIKELY confidence scoring.
+- **5 New Fuzzer Generators**: Integer boundaries, concurrency attacks, memory exhaustion, regex DoS, deserialization (187+ new test cases).
+- **SDK Audit Rules**: New Semgrep rules for Go, Rust, Python async, and .NET MCP servers.
+
 ### v2.2.0 (2026-02-28)
 - **SARIF 2.1.0 Output**: `--format sarif` flag on `scan`, `fuzz`, and `audit` for GitHub/GitLab/Azure DevOps CI/CD integration.
 - **CWE Mapping & Severity Scores**: Automatic CWE classification and GitHub-compatible security-severity scoring.

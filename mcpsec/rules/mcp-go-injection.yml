@@ -1,0 +1,131 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # Go MCP Server — Command Injection
+  # ═══════════════════════════════════════════════════════════════
+  - id: go-mcp-exec-command
+    message: >-
+      User input from MCP tool handler flows to exec.Command().
+      This allows arbitrary command execution.
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-either:
+          - pattern: exec.Command($CMD, ...)
+          - pattern: exec.CommandContext($CTX, $CMD, ...)
+      - pattern-not: exec.Command("...", ...)
+      - pattern-not: exec.CommandContext($CTX, "...", ...)
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      category: security
+      technology:
+        - go
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  - id: go-mcp-exec-command-shell
+    message: >-
+      Shell command execution via sh -c or bash -c with variable input.
+      Prevents proper argument escaping.
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-either:
+          - pattern: exec.Command("sh", "-c", $CMD)
+          - pattern: exec.Command("bash", "-c", $CMD)
+          - pattern: exec.Command("/bin/sh", "-c", $CMD)
+          - pattern: exec.Command("/bin/bash", "-c", $CMD)
+      - pattern-not: exec.Command("...", "-c", "...")
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      category: security
+      technology:
+        - go
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # Go MCP Server — SQL Injection
+  # ═══════════════════════════════════════════════════════════════
+  - id: go-mcp-sql-concatenation
+    message: >-
+      SQL query built via string concatenation. Use parameterized queries
+      ($1, $2) or prepared statements instead.
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-either:
+          - pattern: $DB.Query($FMT + $INPUT, ...)
+          - pattern: $DB.Exec($FMT + $INPUT, ...)
+          - pattern: $DB.QueryRow($FMT + $INPUT, ...)
+          - pattern: $DB.Query(fmt.Sprintf("...", $INPUT), ...)
+          - pattern: $DB.Exec(fmt.Sprintf("...", $INPUT), ...)
+          - pattern: $DB.QueryRow(fmt.Sprintf("...", $INPUT), ...)
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      category: security
+      technology:
+        - go
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # Go MCP Server — Path Traversal
+  # ═══════════════════════════════════════════════════════════════
+  - id: go-mcp-path-traversal
+    message: >-
+      File operation with user-controlled path. Validate with
+      filepath.Clean() and verify the resolved path is within
+      the allowed directory.
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-either:
+          - pattern: os.Open($PATH)
+          - pattern: os.ReadFile($PATH)
+          - pattern: os.Create($PATH)
+          - pattern: os.WriteFile($PATH, ...)
+          - pattern: os.OpenFile($PATH, ...)
+      - pattern-not-inside: |
+          $CLEAN := filepath.Clean(...)
+          ...
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      category: security
+      technology:
+        - go
+        - mcp
+      confidence: MEDIUM
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # Go MCP Server — SSRF
+  # ═══════════════════════════════════════════════════════════════
+  - id: go-mcp-ssrf
+    message: >-
+      HTTP request with user-controlled URL. Validate the URL against
+      an allowlist and block internal/metadata addresses.
+    severity: WARNING
+    languages: [go]
+    patterns:
+      - pattern-either:
+          - pattern: http.Get($URL)
+          - pattern: http.Post($URL, ...)
+          - pattern: http.NewRequest("...", $URL, ...)
+          - pattern: $CLIENT.Get($URL)
+          - pattern: $CLIENT.Post($URL, ...)
+    metadata:
+      cwe:
+        - "CWE-918: Server-Side Request Forgery"
+      category: security
+      technology:
+        - go
+        - mcp
+      confidence: MEDIUM
+      impact: HIGH

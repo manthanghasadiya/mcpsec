@@ -29,6 +29,12 @@ from mcpsec.fuzzer.generators import (
     protocol_state,
     protocol_state_machine,
     id_confusion,
+    # Nuclear expansion generators
+    integer_boundaries,
+    concurrency_attacks,
+    memory_exhaustion_v2,
+    regex_dos,
+    deserialization,
 )
 from mcpsec.ui import console, print_section, get_progress
 
@@ -133,12 +139,13 @@ class FuzzEngine:
             "boundary": boundary_testing.generate,
             "unicode": unicode_attacks.generate,
         }
-        # Medium: + session + encoding (~150 cases)
+        # Medium: + session + encoding + integer boundaries (~200 cases)
         medium_gens = {
             "session_attacks": session_attacks.generate,
             "encoding_attacks": encoding_attacks.generate,
+            "integer_boundaries": integer_boundaries.generate,
         }
-        # High: + method/param/timing/header/json/protocol (~500 cases)
+        # High: + method/param/timing/header/json/protocol/concurrency/regex/deser (~800 cases)
         high_gens = {
             "injection_payloads": injection_payloads.generate,
             "method_mutations": method_mutations.generate,
@@ -149,10 +156,14 @@ class FuzzEngine:
             "protocol_state": protocol_state.generate,
             "protocol_state_machine": protocol_state_machine.generate,
             "id_confusion": id_confusion.generate,
+            "concurrency_attacks": concurrency_attacks.generate,
+            "regex_dos": regex_dos.generate,
+            "deserialization": deserialization.generate,
         }
-        # Insane: all of the above + resource exhaustion (~550+ cases)
+        # Insane: all of the above + resource exhaustion + memory exhaustion (~1500+ cases)
         insane_gens = {
             "resource_exhaustion": resource_exhaustion.generate,
+            "memory_exhaustion_v2": memory_exhaustion_v2.generate,
         }
         
         gen_map = dict(low_gens)

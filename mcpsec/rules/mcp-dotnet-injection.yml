@@ -1,0 +1,189 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # .NET MCP Server — Process.Start Injection
+  # ═══════════════════════════════════════════════════════════════
+  - id: dotnet-mcp-process-start
+    message: >-
+      Process.Start() with non-literal argument allows command injection.
+      Hardcode the executable path and pass arguments separately.
+    severity: ERROR
+    languages: [csharp]
+    patterns:
+      - pattern-either:
+          - pattern: Process.Start($CMD, ...)
+          - pattern: Process.Start($CMD)
+      - pattern-not: Process.Start("...", ...)
+      - pattern-not: Process.Start("...")
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      category: security
+      technology:
+        - dotnet
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  - id: dotnet-mcp-process-startinfo
+    message: >-
+      ProcessStartInfo with user-controlled FileName or Arguments.
+      Hardcode the executable and validate arguments.
+    severity: ERROR
+    languages: [csharp]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $PSI.FileName = $INPUT;
+          - pattern: |
+              $PSI.Arguments = $INPUT;
+          - pattern: |
+              new ProcessStartInfo($CMD, ...)
+      - pattern-not: |
+          $PSI.FileName = "...";
+      - pattern-not: |
+          $PSI.Arguments = "...";
+      - pattern-not: new ProcessStartInfo("...", ...)
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      category: security
+      technology:
+        - dotnet
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # .NET MCP Server — SQL Injection
+  # ═══════════════════════════════════════════════════════════════
+  - id: dotnet-mcp-sql-interpolation
+    message: >-
+      SQL query built via string interpolation or concatenation.
+      Use parameterized queries with SqlParameter instead.
+    severity: ERROR
+    languages: [csharp]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $"SELECT ... {$INPUT} ..."
+          - pattern: |
+              "SELECT ..." + $INPUT + ...
+          - pattern: |
+              String.Format("SELECT ... {0} ...", $INPUT)
+          - pattern: |
+              $"INSERT ... {$INPUT} ..."
+          - pattern: |
+              $"UPDATE ... {$INPUT} ..."
+          - pattern: |
+              $"DELETE ... {$INPUT} ..."
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      category: security
+      technology:
+        - dotnet
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # .NET MCP Server — Path Traversal
+  # ═══════════════════════════════════════════════════════════════
+  - id: dotnet-mcp-path-traversal
+    message: >-
+      File operation with potentially user-controlled path.
+      Use Path.GetFullPath() and verify the resolved path
+      starts with the intended base directory.
+    severity: ERROR
+    languages: [csharp]
+    patterns:
+      - pattern-either:
+          - pattern: File.ReadAllText($PATH)
+          - pattern: File.ReadAllBytes($PATH)
+          - pattern: File.WriteAllText($PATH, ...)
+          - pattern: File.WriteAllBytes($PATH, ...)
+          - pattern: new FileStream($PATH, ...)
+          - pattern: Directory.GetFiles($PATH, ...)
+          - pattern: File.Open($PATH, ...)
+      - pattern-not-inside: |
+          ... = Path.GetFullPath(...);
+          ...
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      category: security
+      technology:
+        - dotnet
+        - mcp
+      confidence: MEDIUM
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # .NET MCP Server — Unsafe Deserialization
+  # ═══════════════════════════════════════════════════════════════
+  - id: dotnet-mcp-binary-formatter
+    message: >-
+      BinaryFormatter.Deserialize() is unsafe and can lead to
+      remote code execution. Use System.Text.Json or a safe
+      serializer instead.
+    severity: ERROR
+    languages: [csharp]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              new BinaryFormatter().Deserialize(...)
+          - pattern: |
+              $BF.Deserialize(...)
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      category: security
+      technology:
+        - dotnet
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  - id: dotnet-mcp-json-typenamehandling
+    message: >-
+      JsonConvert with TypeNameHandling enabled allows type confusion attacks.
+      Set TypeNameHandling = TypeNameHandling.None or use System.Text.Json.
+    severity: ERROR
+    languages: [csharp]
+    patterns:
+      - pattern: |
+          JsonConvert.DeserializeObject<$TYPE>($INPUT, new JsonSerializerSettings { TypeNameHandling = ... })
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      category: security
+      technology:
+        - dotnet
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # .NET MCP Server — SSRF
+  # ═══════════════════════════════════════════════════════════════
+  - id: dotnet-mcp-ssrf
+    message: >-
+      HTTP request with user-controlled URL. Validate URLs
+      against an allowlist and block internal addresses.
+    severity: WARNING
+    languages: [csharp]
+    patterns:
+      - pattern-either:
+          - pattern: await $CLIENT.GetAsync($URL)
+          - pattern: await $CLIENT.PostAsync($URL, ...)
+          - pattern: await $CLIENT.SendAsync(new HttpRequestMessage(..., $URL))
+          - pattern: new HttpRequestMessage(..., $URL)
+    metadata:
+      cwe:
+        - "CWE-918: Server-Side Request Forgery"
+      category: security
+      technology:
+        - dotnet
+        - mcp
+      confidence: MEDIUM
+      impact: HIGH

@@ -1,0 +1,131 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # Rust MCP Server — Command Injection
+  # ═══════════════════════════════════════════════════════════════
+  - id: rust-mcp-command-injection
+    message: >-
+      Command::new() with non-literal argument. If the command name or
+      arguments come from user input, this is a command injection vulnerability.
+    severity: ERROR
+    languages: [rust]
+    patterns:
+      - pattern-either:
+          - pattern: std::process::Command::new($CMD)
+          - pattern: Command::new($CMD)
+      - pattern-not: Command::new("...")
+      - pattern-not: std::process::Command::new("...")
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      category: security
+      technology:
+        - rust
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  - id: rust-mcp-shell-injection
+    message: >-
+      Shell execution via Command::new("sh").arg("-c") with variable input.
+      Use Command::new(binary).arg(argument) for safe argument passing.
+    severity: ERROR
+    languages: [rust]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              Command::new("sh").arg("-c").arg($CMD)
+          - pattern: |
+              Command::new("bash").arg("-c").arg($CMD)
+          - pattern: |
+              Command::new("/bin/sh").arg("-c").arg($CMD)
+      - pattern-not: |
+          Command::new("...").arg("-c").arg("...")
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      category: security
+      technology:
+        - rust
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # Rust MCP Server — SQL Injection
+  # ═══════════════════════════════════════════════════════════════
+  - id: rust-mcp-sql-format-string
+    message: >-
+      SQL query built with format!() macro. Use parameterized queries
+      with bind parameters ($1, $2) instead.
+    severity: ERROR
+    languages: [rust]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              sqlx::query(&format!(..., $INPUT, ...))
+          - pattern: |
+              sqlx::query_as(&format!(..., $INPUT, ...))
+          - pattern: |
+              conn.execute(&format!(..., $INPUT, ...))
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      category: security
+      technology:
+        - rust
+        - mcp
+      confidence: HIGH
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # Rust MCP Server — Path Traversal
+  # ═══════════════════════════════════════════════════════════════
+  - id: rust-mcp-path-traversal
+    message: >-
+      File operation with potentially user-controlled path. Canonicalize
+      the path and verify it stays within the allowed directory.
+    severity: ERROR
+    languages: [rust]
+    patterns:
+      - pattern-either:
+          - pattern: std::fs::read_to_string($PATH)
+          - pattern: std::fs::read($PATH)
+          - pattern: std::fs::write($PATH, ...)
+          - pattern: std::fs::File::open($PATH)
+          - pattern: std::fs::File::create($PATH)
+      - pattern-not-inside: |
+          ... .canonicalize() ...
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      category: security
+      technology:
+        - rust
+        - mcp
+      confidence: MEDIUM
+      impact: HIGH
+
+  # ═══════════════════════════════════════════════════════════════
+  # Rust MCP Server — Unsafe Deserialization
+  # ═══════════════════════════════════════════════════════════════
+  - id: rust-mcp-unsafe-deserialize
+    message: >-
+      Deserializing user input with serde_json. Ensure the target
+      type has proper validation and doesn't allow arbitrary type
+      instantiation.
+    severity: WARNING
+    languages: [rust]
+    patterns:
+      - pattern-either:
+          - pattern: serde_json::from_str($INPUT)
+          - pattern: serde_json::from_slice($INPUT)
+          - pattern: serde_json::from_value($INPUT)
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      category: security
+      technology:
+        - rust
+        - mcp
+      confidence: LOW
+      impact: HIGH

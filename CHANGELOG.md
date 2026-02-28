@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-02-28
+
+### Added
+- **Scanner Nuclear Expansion**: Command injection (11→138 payloads), path traversal (6→104 payloads), SSRF (6→81 payloads) with categorized attack vectors and encoding bypasses.
+- **Confirmation-Based Detection**: Regex pattern matching with confidence scoring (CONFIRMED vs LIKELY) across all expanded scanners.
+- **5 New Fuzzer Generators**: Integer boundaries, concurrency attacks, memory exhaustion v2, regex DoS, and deserialization — adding 187+ new test cases.
+- **Go Semgrep Rules**: `exec.Command`, SQL concatenation, `os.Open` path traversal, SSRF detection for Go MCP servers.
+- **Rust Semgrep Rules**: `Command::new`, `format!` SQL, unsafe deserialization for Rust MCP servers.
+- **Python Async Semgrep Rules**: `create_subprocess_shell`, `aiofiles.open` traversal, `pickle.loads`, `eval/exec` for async Python servers.
+- **.NET Semgrep Rules**: `Process.Start`, SQL interpolation, `BinaryFormatter`, `TypeNameHandling` deserialization for C# MCP servers.
+
 ## [2.2.0] - 2026-02-28
 
 ### Added
