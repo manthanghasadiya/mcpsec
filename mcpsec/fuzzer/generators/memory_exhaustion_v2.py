@@ -3,7 +3,7 @@ Memory Exhaustion Generator — Test resource limits and OOM handling.
 
 Tests how servers handle:
 - Large allocations
-- Deeply nested structures
+- Deeply nested structures (pre-serialized to avoid Python recursion limits)
 - Many small allocations (fragmentation)
 - Huge strings
 """
@@ -14,10 +14,25 @@ GENERATOR_NAME = "memory_exhaustion"
 GENERATOR_DESCRIPTION = "Tests memory limits and OOM handling"
 
 
+def _build_nested_object_json(depth: int) -> str:
+    """Build deeply nested JSON string manually to avoid Python recursion limits."""
+    # {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"a":{"a":...{"a":null}...}}}
+    prefix = '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":'
+    inner = '{"a":' * depth + 'null' + '}' * depth
+    return prefix + inner + '}'
+
+
+def _build_nested_array_json(depth: int) -> str:
+    """Build deeply nested JSON array string manually."""
+    prefix = '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"test","arguments":{"data":'
+    inner = '[' * depth + '"a"' + ']' * depth
+    return prefix + inner + '}}'
+
+
 def generate(intensity: str = "medium", **kwargs) -> list[dict]:
     cases = []
 
-    # ── Deeply nested JSON ───────────────────────────────────────
+    # ── Deeply nested JSON (pre-serialized as raw bytes) ─────────
     if intensity == "insane":
         depths = [100, 500, 1000, 5000]
     elif intensity == "high":
@@ -26,29 +41,21 @@ def generate(intensity: str = "medium", **kwargs) -> list[dict]:
         depths = [100, 500]
 
     for depth in depths:
-        nested = {"a": None}
-        current = nested
-        for _ in range(depth):
-            current["a"] = {"a": None}
-            current = current["a"]
-
+        raw_json = _build_nested_object_json(depth)
         cases.append({
             "name": f"nested_depth_{depth}",
             "description": f"JSON nested {depth} levels deep",
-            "payload": {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": nested},
+            "payload": raw_json.encode("utf-8"),  # Raw bytes — bypasses json.dumps
             "crash_indicates_bug": True,
         })
 
-    # ── Deeply nested arrays ─────────────────────────────────────
+    # ── Deeply nested arrays (pre-serialized) ────────────────────
     for depth in [100, 500]:
-        arr = ["a"]
-        for _ in range(depth):
-            arr = [arr]
+        raw_json = _build_nested_array_json(depth)
         cases.append({
             "name": f"nested_array_{depth}",
             "description": f"Array nested {depth} levels deep",
-            "payload": {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                        "params": {"name": "test", "arguments": {"data": arr}}},
+            "payload": raw_json.encode("utf-8"),
             "crash_indicates_bug": True,
         })
 

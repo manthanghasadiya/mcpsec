@@ -199,11 +199,21 @@ class FuzzEngine:
                         # Convert dict to FuzzCase and handle framing
                         raw_payload = item.get("payload")
                         if isinstance(raw_payload, dict):
-                            body = json.dumps(raw_payload).encode("utf-8")
+                            try:
+                                body = json.dumps(raw_payload).encode("utf-8")
+                            except (RecursionError, ValueError, OverflowError):
+                                # Skip payloads too deep/complex to serialize
+                                continue
                             if framing == "jsonl":
                                 payload = body + b"\n"
                             else:
                                 payload = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
+                        elif isinstance(raw_payload, (bytes, bytearray)):
+                            # Pre-serialized raw payload — just apply framing
+                            if framing == "jsonl":
+                                payload = raw_payload if raw_payload.endswith(b"\n") else raw_payload + b"\n"
+                            else:
+                                payload = f"Content-Length: {len(raw_payload)}\r\n\r\n".encode() + raw_payload
                         else:
                             payload = raw_payload
                         
