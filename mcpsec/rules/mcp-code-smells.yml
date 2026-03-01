@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # CODE SMELLS — Issues that indicate security problems
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # CODE SMELLS - Issues that indicate security problems
+  # 
 
   # --- Security-related TODO/FIXME ---
   - id: smell-todo-security
@@ -35,7 +35,7 @@ rules:
     languages: [typescript, javascript]
     severity: INFO
     message: >
-      Empty catch block — errors are silently swallowed. This can
+      Empty catch block - errors are silently swallowed. This can
       hide security-relevant failures and mask vulnerabilities.
     metadata:
       cwe: CWE-390
@@ -58,7 +58,7 @@ rules:
     languages: [python]
     severity: INFO
     message: >
-      Bare except with pass — errors silently swallowed. At minimum,
+      Bare except with pass - errors silently swallowed. At minimum,
       log the exception. This can hide security failures.
     metadata:
       cwe: CWE-390
@@ -134,13 +134,12 @@ rules:
   - id: smell-cors-allow-all
     patterns:
       - pattern-either:
-          - pattern: "Access-Control-Allow-Origin: *"
+          - pattern-regex: '(?i)Access-Control-Allow-Origin:\s*\*'
           - pattern: |
               cors({ origin: "*" })
           - pattern: |
               cors({ origin: true })
-          - pattern: |
-              res.header("Access-Control-Allow-Origin", "*")
+          - pattern: res.header("Access-Control-Allow-Origin", "*")
     languages: [typescript, javascript]
     severity: WARNING
     message: >

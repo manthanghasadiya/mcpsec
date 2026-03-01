@@ -42,7 +42,7 @@ rules:
       category: sql-injection
       confidence: HIGH
 
-  # ─── GENERAL PYTHON PATTERNS (MEDIUM CONFIDENCE) ──────────────────────
+  #  GENERAL PYTHON PATTERNS (MEDIUM CONFIDENCE) 
   - id: python-shell-true
     patterns:
       - pattern: subprocess.run(..., shell=True, ...)

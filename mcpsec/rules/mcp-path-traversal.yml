@@ -28,7 +28,7 @@ rules:
       category: path-traversal
       confidence: HIGH
 
-  # ─── GENERAL PATTERNS (MEDIUM CONFIDENCE) ─────────────────────────────
+  #  GENERAL PATTERNS (MEDIUM CONFIDENCE) 
   - id: general-readfile-concat
     patterns:
       - pattern: $FS.readFile($PATH + ..., ...)

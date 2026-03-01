@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # Python Async — Subprocess Injection
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Python Async - Subprocess Injection
+  # 
   - id: python-mcp-async-subprocess-shell
     message: >-
       asyncio.create_subprocess_shell() with variable input allows
@@ -41,9 +41,9 @@ rules:
       confidence: MEDIUM
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # Python Async — Path Traversal (aiofiles)
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Python Async - Path Traversal (aiofiles)
+  # 
   - id: python-mcp-aiofiles-traversal
     message: >-
       aiofiles.open() with potentially user-controlled path.
@@ -66,9 +66,9 @@ rules:
       confidence: MEDIUM
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # Python — Pickle Deserialization
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Python - Pickle Deserialization
+  # 
   - id: python-mcp-pickle-load
     message: >-
       Pickle deserialization is unsafe with untrusted data.
@@ -94,9 +94,9 @@ rules:
       confidence: HIGH
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # Python — Async HTTP SSRF
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Python - Async HTTP SSRF
+  # 
   - id: python-mcp-aiohttp-ssrf
     message: >-
       aiohttp request with user-controlled URL.
@@ -119,9 +119,9 @@ rules:
       confidence: MEDIUM
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # Python — eval/exec
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Python - eval/exec
+  # 
   - id: python-mcp-eval-exec
     message: >-
       eval() or exec() with potentially user-controlled input.

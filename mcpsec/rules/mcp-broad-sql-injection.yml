@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # BROAD SQL INJECTION — Catch every database call with user input
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # BROAD SQL INJECTION - Catch every database call with user input
+  # 
 
   # --- Template literal in ANY database method ---
   - id: broad-sql-template-any-db
@@ -17,7 +17,7 @@ rules:
     languages: [typescript, javascript]
     severity: ERROR
     message: >
-      SQL query with template literal interpolation — SQL injection risk.
+      SQL query with template literal interpolation - SQL injection risk.
       Use parameterized queries with $1/$2 or ? placeholders.
     metadata:
       cwe: CWE-89
@@ -88,7 +88,7 @@ rules:
     languages: [typescript, javascript]
     severity: ERROR
     message: >
-      SQL query with string concatenation — SQL injection vulnerability.
+      SQL query with string concatenation - SQL injection vulnerability.
     metadata:
       cwe: CWE-89
       category: sql-injection
@@ -126,7 +126,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: >
-      SQL query with f-string interpolation — SQL injection.
+      SQL query with f-string interpolation - SQL injection.
       Use parameterized queries: cursor.execute("SELECT * WHERE id=%s", (id,))
     metadata:
       cwe: CWE-89
@@ -144,7 +144,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: >
-      SQL query with .format() or % formatting — SQL injection.
+      SQL query with .format() or % formatting - SQL injection.
     metadata:
       cwe: CWE-89
       category: sql-injection

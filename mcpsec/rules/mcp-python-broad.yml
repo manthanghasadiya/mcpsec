@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # PYTHON BROAD PATTERNS — Common vulnerabilities in Python MCP servers
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # PYTHON BROAD PATTERNS - Common vulnerabilities in Python MCP servers
+  # 
 
   # --- open() with non-literal path ---
   - id: broad-python-open-non-literal
@@ -70,7 +70,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: >
-      subprocess with shell=True — high risk of command injection.
+      subprocess with shell=True - high risk of command injection.
       Use subprocess.run(["cmd", "arg"], shell=False) instead.
     metadata:
       cwe: CWE-78
@@ -106,7 +106,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: >
-      Command built with f-string and executed through shell — definite
+      Command built with f-string and executed through shell - definite
       command injection vulnerability.
     metadata:
       cwe: CWE-78
@@ -134,12 +134,11 @@ rules:
       - pattern-either:
           - pattern: assert isinstance($X, ...)
           - pattern: assert $X is not None
-          - pattern: assert len($X) ...
     languages: [python]
     severity: INFO
     message: >
       assert statements are removed with python -O. Do not use assert
-      for input validation — use if/raise instead.
+      for input validation - use if/raise instead.
     metadata:
       cwe: CWE-617
       category: input-validation

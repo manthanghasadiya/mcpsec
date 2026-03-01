@@ -42,7 +42,7 @@ rules:
       category: command-injection
       confidence: HIGH
 
-  # ─── GENERAL PATTERNS (MEDIUM CONFIDENCE) ─────────────────────────────
+  #  GENERAL PATTERNS (MEDIUM CONFIDENCE) 
   - id: general-exec-template-literal
     patterns:
       - pattern: exec(`...${$VAR}...`)

@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # .NET MCP Server — Process.Start Injection
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # .NET MCP Server - Process.Start Injection
+  # 
   - id: dotnet-mcp-process-start
     message: >-
       Process.Start() with non-literal argument allows command injection.
@@ -53,9 +53,9 @@ rules:
       confidence: HIGH
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # .NET MCP Server — SQL Injection
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # .NET MCP Server - SQL Injection
+  # 
   - id: dotnet-mcp-sql-interpolation
     message: >-
       SQL query built via string interpolation or concatenation.
@@ -86,9 +86,9 @@ rules:
       confidence: HIGH
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # .NET MCP Server — Path Traversal
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # .NET MCP Server - Path Traversal
+  # 
   - id: dotnet-mcp-path-traversal
     message: >-
       File operation with potentially user-controlled path.
@@ -105,8 +105,8 @@ rules:
           - pattern: new FileStream($PATH, ...)
           - pattern: Directory.GetFiles($PATH, ...)
           - pattern: File.Open($PATH, ...)
-      - pattern-not-inside: |
-          ... = Path.GetFullPath(...);
+      - pattern: |
+          $X = Path.GetFullPath(...);
           ...
     metadata:
       cwe:
@@ -118,9 +118,9 @@ rules:
       confidence: MEDIUM
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # .NET MCP Server — Unsafe Deserialization
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # .NET MCP Server - Unsafe Deserialization
+  # 
   - id: dotnet-mcp-binary-formatter
     message: >-
       BinaryFormatter.Deserialize() is unsafe and can lead to
@@ -163,9 +163,9 @@ rules:
       confidence: HIGH
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # .NET MCP Server — SSRF
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # .NET MCP Server - SSRF
+  # 
   - id: dotnet-mcp-ssrf
     message: >-
       HTTP request with user-controlled URL. Validate URLs

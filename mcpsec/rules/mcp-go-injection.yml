@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # Go MCP Server — Command Injection
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Go MCP Server - Command Injection
+  # 
   - id: go-mcp-exec-command
     message: >-
       User input from MCP tool handler flows to exec.Command().
@@ -47,9 +47,9 @@ rules:
       confidence: HIGH
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # Go MCP Server — SQL Injection
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Go MCP Server - SQL Injection
+  # 
   - id: go-mcp-sql-concatenation
     message: >-
       SQL query built via string concatenation. Use parameterized queries
@@ -74,9 +74,9 @@ rules:
       confidence: HIGH
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # Go MCP Server — Path Traversal
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Go MCP Server - Path Traversal
+  # 
   - id: go-mcp-path-traversal
     message: >-
       File operation with user-controlled path. Validate with
@@ -104,9 +104,9 @@ rules:
       confidence: MEDIUM
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # Go MCP Server — SSRF
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Go MCP Server - SSRF
+  # 
   - id: go-mcp-ssrf
     message: >-
       HTTP request with user-controlled URL. Validate the URL against

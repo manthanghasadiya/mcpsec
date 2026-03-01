@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # SSRF PATTERNS — HTTP requests with non-literal URLs
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # SSRF PATTERNS - HTTP requests with non-literal URLs
+  # 
 
   # --- JS/TS: fetch with non-literal URL ---
   - id: broad-ssrf-fetch
@@ -17,7 +17,7 @@ rules:
     severity: WARNING
     message: >
       fetch() with non-literal URL. If the URL is user-controlled, this
-      enables SSRF — accessing internal services, cloud metadata, etc.
+      enables SSRF - accessing internal services, cloud metadata, etc.
     metadata:
       cwe: CWE-918
       category: ssrf
@@ -31,9 +31,11 @@ rules:
           - pattern: axios.post($URL, ...)
           - pattern: axios.put($URL, ...)
           - pattern: axios.delete($URL, ...)
-          - pattern: axios.request({url: $URL, ...})
+          - pattern: |
+              axios.request({url: $URL, ...})
           - pattern: axios($URL)
-          - pattern: axios({url: $URL, ...})
+          - pattern: |
+              axios({url: $URL, ...})
           - pattern: $AXIOS.get($URL, ...)
           - pattern: $AXIOS.post($URL, ...)
       - pattern-not: axios.get("...", ...)
@@ -42,7 +44,7 @@ rules:
     languages: [typescript, javascript]
     severity: WARNING
     message: >
-      Axios request with non-literal URL — potential SSRF.
+      Axios request with non-literal URL - potential SSRF.
     metadata:
       cwe: CWE-918
       category: ssrf
@@ -61,7 +63,7 @@ rules:
     languages: [typescript, javascript]
     severity: WARNING
     message: >
-      Node http/https request with non-literal URL — potential SSRF.
+      Node http/https request with non-literal URL - potential SSRF.
     metadata:
       cwe: CWE-918
       category: ssrf
@@ -79,7 +81,7 @@ rules:
     languages: [typescript, javascript]
     severity: WARNING
     message: >
-      got() request with non-literal URL — potential SSRF.
+      got() request with non-literal URL - potential SSRF.
     metadata:
       cwe: CWE-918
       category: ssrf
@@ -113,7 +115,7 @@ rules:
     severity: INFO
     message: >
       URL constructed with variable input. The URL constructor doesn't
-      prevent SSRF — validate the result against an allowlist.
+      prevent SSRF - validate the result against an allowlist.
     metadata:
       cwe: CWE-918
       category: ssrf
@@ -138,7 +140,7 @@ rules:
     languages: [python]
     severity: WARNING
     message: >
-      HTTP request with non-literal URL — potential SSRF.
+      HTTP request with non-literal URL - potential SSRF.
       Validate URLs against an allowlist and block internal/metadata addresses.
     metadata:
       cwe: CWE-918
@@ -156,7 +158,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: >
-      HTTP request URL built with f-string — SSRF if user-controlled.
+      HTTP request URL built with f-string - SSRF if user-controlled.
     metadata:
       cwe: CWE-918
       category: ssrf

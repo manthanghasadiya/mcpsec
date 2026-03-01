@@ -42,3 +42,11 @@ paths:
     # Documentation
     - "**/docs/**"
     - "**/*.md"
+
+rules:
+  - id: mcpsec-dummy-rule
+    patterns:
+      - pattern: __mcpsec_dummy_never_match__()
+    message: Dummy rule to satisfy Semgrep YAML parser
+    severity: INFO
+    languages: [javascript]

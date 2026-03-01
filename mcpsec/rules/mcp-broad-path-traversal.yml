@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # BROAD PATH TRAVERSAL — Every FS operation with non-literal path
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # BROAD PATH TRAVERSAL - Every FS operation with non-literal path
+  # 
 
   # --- Read operations with non-literal path ---
   - id: broad-fs-read-non-literal
@@ -144,7 +144,7 @@ rules:
     severity: ERROR
     message: >
       File path taken directly from request parameter and passed to
-      filesystem operation — definite path traversal vulnerability.
+      filesystem operation - definite path traversal vulnerability.
     metadata:
       cwe: CWE-22
       category: path-traversal

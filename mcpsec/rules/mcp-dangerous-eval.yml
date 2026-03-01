@@ -1,5 +1,5 @@
 rules:
-  # ─── DANGEROUS EVAL ───────────────────────────────────────────────────
+  #  DANGEROUS EVAL 
   - id: general-eval
     patterns:
       - pattern: eval(...)

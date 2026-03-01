@@ -1,5 +1,5 @@
 rules:
-  # ─── TYPESCRIPT / JAVASCRIPT SQL INJECTION ─────────────────────────────
+  #  TYPESCRIPT / JAVASCRIPT SQL INJECTION 
   - id: ts-sql-template-literal
     patterns:
       - pattern: |
@@ -86,7 +86,7 @@ rules:
       category: sql-injection
       confidence: HIGH
 
-  # ─── PYTHON SQL INJECTION (GENERAL) ───────────────────────────────────
+  #  PYTHON SQL INJECTION (GENERAL) 
   - id: python-sql-fstring
     patterns:
       - pattern: $CURSOR.execute(f"...", ...)
@@ -102,7 +102,7 @@ rules:
       category: sql-injection
       confidence: MEDIUM
 
-  # ─── ORM RAW QUERY DETECTION ─────────────────────────────────────────
+  #  ORM RAW QUERY DETECTION 
   - id: general-sql-raw-query
     patterns:
       - pattern-either:

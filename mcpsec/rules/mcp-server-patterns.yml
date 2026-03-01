@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # MCP SERVER SPECIFIC PATTERNS — Issues unique to MCP architecture
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # MCP SERVER SPECIFIC PATTERNS - Issues unique to MCP architecture
+  # 
 
   # --- Tool handler doesn't validate input type ---
   - id: mcp-tool-no-type-check
@@ -13,9 +13,9 @@ rules:
             ...
           })
       - pattern-not-inside: |
-          if (typeof $VAR ...) { ... }
+          if (<... typeof $VAR ...>) { ... }
       - pattern-not-inside: |
-          if (!$VAR ...) { ... }
+          if (<... $VAR ...>) { ... }
     languages: [typescript, javascript]
     severity: INFO
     message: >
@@ -43,17 +43,7 @@ rules:
 
   # --- Error message leaks implementation details ---
   - id: mcp-error-stack-leak
-    patterns:
-      - pattern: |
-          catch ($ERR) {
-            ...
-            return { content: [{ ... text: $ERR.stack ... }] }
-          }
-      - pattern: |
-          catch ($ERR) {
-            ...
-            return { content: [{ ... text: $ERR.message ... }] }
-          }
+    mode: taint
     languages: [typescript, javascript]
     severity: WARNING
     message: >
@@ -63,19 +53,24 @@ rules:
       cwe: CWE-209
       category: information-disclosure
       confidence: MEDIUM
+    pattern-sources:
+      - pattern-inside: |
+          catch ($ERR) { ... }
+        pattern-either:
+          - pattern: $ERR.message
+          - pattern: $ERR.stack
+          - pattern: String($ERR)
+          - pattern: $ERR.toString()
+          - pattern: $ERR
+    pattern-sinks:
+      - patterns:
+          - pattern-inside: |
+              return { content: [...], ... }
+          - pattern: $SINK
 
   # --- Error with stack trace (Python) ---
   - id: mcp-python-error-leak
-    patterns:
-      - pattern-either:
-          - pattern: |
-              except $EX as $E:
-                  ...
-                  return ... traceback.format_exc() ...
-          - pattern: |
-              except $EX as $E:
-                  ...
-                  return ... str($E) ...
+    mode: taint
     languages: [python]
     severity: WARNING
     message: >
@@ -85,22 +80,42 @@ rules:
       cwe: CWE-209
       category: information-disclosure
       confidence: MEDIUM
+    pattern-sources:
+      - patterns:
+          - pattern-inside: |
+              try:
+                  ...
+              except $EX as $E:
+                  ...
+          - pattern-either:
+              - pattern: traceback.format_exc()
+              - pattern: str($E)
+              - pattern: $E
+    pattern-sinks:
+      - pattern: return <... $SINK ...>
 
   # --- No authentication check in tool handler ---
   - id: mcp-tool-no-auth-check
     patterns:
-      - pattern: |
-          server.tool($NAME, $DESC, $SCHEMA, async ($REQ) => {
-            ...
-          })
+      - pattern-either:
+          - pattern: |
+              server.tool(..., async (...) => {
+                ...
+              })
+          - pattern: |
+              server.tool(..., async function(...) {
+                ...
+              })
       - pattern-not-inside: |
-          ...auth...
+          <... auth ...>
       - pattern-not-inside: |
-          ...token...
+          <... token ...>
       - pattern-not-inside: |
-          ...authenticate...
+          <... authenticate ...>
       - pattern-not-inside: |
-          ...authorization...
+          <... authorization ...>
+      - pattern-not-inside: |
+          <... cred ...>
     languages: [typescript, javascript]
     severity: INFO
     message: >
@@ -155,7 +170,7 @@ rules:
     languages: [python]
     severity: WARNING
     message: >
-      MCP tool with dangerous name — ensure strict input validation.
+      MCP tool with dangerous name - ensure strict input validation.
     metadata:
       cwe: CWE-78
       category: command-injection
@@ -169,7 +184,7 @@ rules:
     languages: [typescript, javascript]
     severity: INFO
     message: >
-      MCP tool registered with empty schema — accepts any input.
+      MCP tool registered with empty schema - accepts any input.
       Define a strict schema to validate input types.
     metadata:
       cwe: CWE-20

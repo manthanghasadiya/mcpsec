@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # DESERIALIZATION & CODE EXECUTION — eval, vm, pickle, yaml
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # DESERIALIZATION & CODE EXECUTION - eval, vm, pickle, yaml
+  # 
 
   # --- JS: vm module (sandbox escapes) ---
   - id: broad-vm-run-unsafe
@@ -26,7 +26,7 @@ rules:
     patterns:
       - pattern: JSON.parse($X)
       - pattern-not-inside: |
-          try { ... } catch (...) { ... }
+          try { ... } catch ($E) { ... }
     languages: [typescript, javascript]
     severity: INFO
     message: >
@@ -94,7 +94,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: >
-      eval/exec/compile with variable input — arbitrary code execution.
+      eval/exec/compile with variable input - arbitrary code execution.
     metadata:
       cwe: CWE-94
       category: code-execution
@@ -156,15 +156,13 @@ rules:
       - pattern-either:
           - pattern: setTimeout($X, ...)
           - pattern: setInterval($X, ...)
-      - metavariable-pattern:
-          metavariable: $X
-          pattern-not: "..."
-          pattern-not: '...'
+      - pattern-not: setTimeout("...", ...)
+      - pattern-not: setInterval("...", ...)
     languages: [typescript, javascript]
     severity: INFO
     message: >
       setTimeout/setInterval with non-function argument. If a string
-      is passed, it acts as eval() — code injection risk.
+      is passed, it acts as eval() - code injection risk.
     metadata:
       cwe: CWE-94
       category: code-execution

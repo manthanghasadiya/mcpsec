@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # Rust MCP Server — Command Injection
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Rust MCP Server - Command Injection
+  # 
   - id: rust-mcp-command-injection
     message: >-
       Command::new() with non-literal argument. If the command name or
@@ -50,9 +50,9 @@ rules:
       confidence: HIGH
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # Rust MCP Server — SQL Injection
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Rust MCP Server - SQL Injection
+  # 
   - id: rust-mcp-sql-format-string
     message: >-
       SQL query built with format!() macro. Use parameterized queries
@@ -77,9 +77,9 @@ rules:
       confidence: HIGH
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # Rust MCP Server — Path Traversal
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Rust MCP Server - Path Traversal
+  # 
   - id: rust-mcp-path-traversal
     message: >-
       File operation with potentially user-controlled path. Canonicalize
@@ -93,8 +93,7 @@ rules:
           - pattern: std::fs::write($PATH, ...)
           - pattern: std::fs::File::open($PATH)
           - pattern: std::fs::File::create($PATH)
-      - pattern-not-inside: |
-          ... .canonicalize() ...
+      - pattern: $X.canonicalize()
     metadata:
       cwe:
         - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
@@ -105,9 +104,9 @@ rules:
       confidence: MEDIUM
       impact: HIGH
 
-  # ═══════════════════════════════════════════════════════════════
-  # Rust MCP Server — Unsafe Deserialization
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # Rust MCP Server - Unsafe Deserialization
+  # 
   - id: rust-mcp-unsafe-deserialize
     message: >-
       Deserializing user input with serde_json. Ensure the target

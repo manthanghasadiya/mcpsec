@@ -1,7 +1,7 @@
 rules:
-  # ═══════════════════════════════════════════════════════════════
-  # BROAD COMMAND INJECTION — Catches patterns the taint rules miss
-  # ═══════════════════════════════════════════════════════════════
+  # 
+  # BROAD COMMAND INJECTION - Catches patterns the taint rules miss
+  # 
 
   # --- exec/spawn with ANY non-literal (HIGH value) ---
   - id: broad-exec-non-literal
@@ -56,7 +56,7 @@ rules:
     languages: [typescript, javascript]
     severity: ERROR
     message: >
-      String concatenation in exec/execSync — high risk of command injection.
+      String concatenation in exec/execSync - high risk of command injection.
     metadata:
       cwe: CWE-78
       category: command-injection
@@ -102,15 +102,20 @@ rules:
   - id: broad-spawn-shell-true
     patterns:
       - pattern-either:
-          - pattern: spawn($CMD, $ARGS, {shell: true, ...})
-          - pattern: spawn($CMD, $ARGS, {..., shell: true})
-          - pattern: spawn($CMD, {shell: true, ...})
-          - pattern: spawnSync($CMD, $ARGS, {shell: true, ...})
-          - pattern: spawnSync($CMD, {shell: true, ...})
+          - pattern: |
+              spawn($CMD, $ARGS, {shell: true, ...})
+          - pattern: |
+              spawn($CMD, $ARGS, {..., shell: true})
+          - pattern: |
+              spawn($CMD, {shell: true, ...})
+          - pattern: |
+              spawnSync($CMD, $ARGS, {shell: true, ...})
+          - pattern: |
+              spawnSync($CMD, {shell: true, ...})
     languages: [typescript, javascript]
     severity: WARNING
     message: >
-      spawn with shell: true — disables argument escaping and allows
+      spawn with shell: true - disables argument escaping and allows
       shell metacharacters. Use shell: false with explicit argument arrays.
     metadata:
       cwe: CWE-78

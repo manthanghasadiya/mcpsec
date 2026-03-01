@@ -18,3 +18,9 @@ mcp_*.json
 .env
 .mcpsec/
 server_crash.log
+*.sarif
+audit_results.txt
+validate_out.txt
+fix_unicode.py
+temp_*.yml
+out.txt
