@@ -21,22 +21,6 @@ rules:
       category: code-execution
       confidence: HIGH
 
-  # --- JS: JSON.parse without try/catch ---
-  - id: broad-json-parse-no-catch
-    patterns:
-      - pattern: JSON.parse($X)
-      - pattern-not-inside: |
-          try { ... } catch ($E) { ... }
-    languages: [typescript, javascript]
-    severity: INFO
-    message: >
-      JSON.parse without try/catch can crash on malformed input.
-      Wrap in try/catch to handle invalid JSON gracefully.
-    metadata:
-      cwe: CWE-20
-      category: input-validation
-      confidence: LOW
-
   # --- Python: pickle (always dangerous) ---
   - id: broad-python-pickle
     patterns:
@@ -150,20 +134,6 @@ rules:
       category: code-execution
       confidence: MEDIUM
 
-  # --- JS: setTimeout/setInterval with string ---
-  - id: broad-js-settimeout-string
-    patterns:
-      - pattern-either:
-          - pattern: setTimeout($X, ...)
-          - pattern: setInterval($X, ...)
-      - pattern-not: setTimeout("...", ...)
-      - pattern-not: setInterval("...", ...)
-    languages: [typescript, javascript]
-    severity: INFO
-    message: >
-      setTimeout/setInterval with non-function argument. If a string
-      is passed, it acts as eval() - code injection risk.
-    metadata:
-      cwe: CWE-94
-      category: code-execution
-      confidence: LOW
+  # REMOVED:
+  # - broad-json-parse-no-catch: Too noisy, most code handles errors elsewhere
+  # - broad-js-settimeout-string: Catches normal arrow functions, not useful

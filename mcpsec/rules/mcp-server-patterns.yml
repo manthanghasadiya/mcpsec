@@ -1,131 +1,38 @@
 rules:
   # 
-  # MCP SERVER SPECIFIC PATTERNS - Issues unique to MCP architecture
+  # MCP SERVER SPECIFIC PATTERNS - High-confidence issues only
   # 
+  # REMOVED (caused 400+ false positives):
+  # - mcp-tool-reflects-input: Every tool returns data - not a vuln
+  # - mcp-tool-no-auth-check: MCP uses external OAuth/token auth
+  # - mcp-tool-any-type-schema: Too broad, catches valid Zod schemas
+  # - mcp-error-stack-leak (taint version): Too noisy, replaced with specific pattern
+  #
 
-  # --- Tool handler doesn't validate input type ---
-  - id: mcp-tool-no-type-check
-    patterns:
-      - pattern: |
-          server.tool($NAME, $DESC, $SCHEMA, async ($ARGS) => {
-            ...
-            $VAR = $ARGS.params.arguments.$PROP
-            ...
-          })
-      - pattern-not-inside: |
-          if (<... typeof $VAR ...>) { ... }
-      - pattern-not-inside: |
-          if (<... $VAR ...>) { ... }
-    languages: [typescript, javascript]
-    severity: INFO
-    message: >
-      MCP tool handler uses request argument without type validation.
-      Validate types before use to prevent type confusion attacks.
-    metadata:
-      cwe: CWE-20
-      category: input-validation
-      confidence: LOW
-
-  # --- Tool reflects user input directly (prompt injection vector) ---
-  - id: mcp-tool-reflects-input
-    patterns:
-      - pattern: |
-          return { content: [{ type: "text", text: $INPUT }] }
-    languages: [typescript, javascript]
-    severity: INFO
-    message: >
-      Tool returns a variable as content text. If this reflects
-      user input, it could be used for prompt injection attacks.
-    metadata:
-      cwe: CWE-74
-      category: injection
-      confidence: LOW
-
-  # --- Error message leaks implementation details ---
+  # --- Error with STACK TRACE specifically returned to client ---
+  # Only flag when .stack is explicitly returned (not just error messages)
   - id: mcp-error-stack-leak
-    mode: taint
-    languages: [typescript, javascript]
-    severity: WARNING
-    message: >
-      Error stack/message returned to client. This leaks internal
-      implementation details. Return a generic error message instead.
-    metadata:
-      cwe: CWE-209
-      category: information-disclosure
-      confidence: MEDIUM
-    pattern-sources:
-      - pattern-inside: |
-          catch ($ERR) { ... }
-        pattern-either:
-          - pattern: $ERR.message
-          - pattern: $ERR.stack
-          - pattern: String($ERR)
-          - pattern: $ERR.toString()
-          - pattern: $ERR
-    pattern-sinks:
-      - patterns:
-          - pattern-inside: |
-              return { content: [...], ... }
-          - pattern: $SINK
-
-  # --- Error with stack trace (Python) ---
-  - id: mcp-python-error-leak
-    mode: taint
-    languages: [python]
-    severity: WARNING
-    message: >
-      Exception details returned to MCP client. Return a generic
-      error message instead of raw exception info.
-    metadata:
-      cwe: CWE-209
-      category: information-disclosure
-      confidence: MEDIUM
-    pattern-sources:
-      - patterns:
-          - pattern-inside: |
-              try:
-                  ...
-              except $EX as $E:
-                  ...
-          - pattern-either:
-              - pattern: traceback.format_exc()
-              - pattern: str($E)
-              - pattern: $E
-    pattern-sinks:
-      - pattern: return <... $SINK ...>
-
-  # --- No authentication check in tool handler ---
-  - id: mcp-tool-no-auth-check
     patterns:
       - pattern-either:
           - pattern: |
-              server.tool(..., async (...) => {
+              catch ($ERR) {
                 ...
-              })
+                return { content: [{ ..., text: $ERR.stack, ... }] }
+              }
           - pattern: |
-              server.tool(..., async function(...) {
+              catch ($ERR) {
                 ...
-              })
-      - pattern-not-inside: |
-          <... auth ...>
-      - pattern-not-inside: |
-          <... token ...>
-      - pattern-not-inside: |
-          <... authenticate ...>
-      - pattern-not-inside: |
-          <... authorization ...>
-      - pattern-not-inside: |
-          <... cred ...>
+                return { content: [{ ..., text: `...${$ERR.stack}...`, ... }] }
+              }
     languages: [typescript, javascript]
     severity: INFO
     message: >
-      MCP tool handler without visible authentication check. MCP
-      protocol does not provide built-in authentication — implement
-      it in your tool handlers if needed.
+      Error stack trace returned to client. This may leak internal
+      file paths and implementation details.
     metadata:
-      cwe: CWE-306
-      category: authentication
-      confidence: LOW
+      cwe: CWE-209
+      category: information-disclosure
+      confidence: MEDIUM
 
   # --- Dangerous tool names (common attack surface) ---
   - id: mcp-dangerous-tool-name
@@ -138,6 +45,9 @@ rules:
           - pattern: server.tool("eval", ...)
           - pattern: server.tool("run_code", ...)
           - pattern: server.tool("system", ...)
+          - pattern: server.tool("bash", ...)
+          - pattern: server.tool("cmd", ...)
+          - pattern: server.tool("powershell", ...)
     languages: [typescript, javascript]
     severity: WARNING
     message: >
@@ -162,11 +72,17 @@ rules:
               @server.tool()
               async def shell(...): ...
           - pattern: |
+              @server.tool()
+              async def exec(...): ...
+          - pattern: |
               @mcp.tool()
               async def execute(...): ...
           - pattern: |
               @mcp.tool()
               async def run_command(...): ...
+          - pattern: |
+              @mcp.tool()
+              async def shell(...): ...
     languages: [python]
     severity: WARNING
     message: >
@@ -176,30 +92,22 @@ rules:
       category: command-injection
       confidence: MEDIUM
 
-  # --- Tool handler with broad schema (any type) ---
-  - id: mcp-tool-any-type-schema
+  # --- Resource handler with user-controlled URI directly to FS ---
+  - id: mcp-resource-uri-to-fs
     patterns:
-      - pattern: |
-          server.tool($NAME, $DESC, {}, ...)
-    languages: [typescript, javascript]
-    severity: INFO
-    message: >
-      MCP tool registered with empty schema - accepts any input.
-      Define a strict schema to validate input types.
-    metadata:
-      cwe: CWE-20
-      category: input-validation
-      confidence: LOW
-
-  # --- Resource handler with user-controlled URI ---
-  - id: mcp-resource-uri-variable
-    patterns:
-      - pattern: |
-          server.resource($NAME, $URI, async ($REQ) => {
-            ...
-            fs.$METHOD($REQ.params.uri, ...)
-            ...
-          })
+      - pattern-either:
+          - pattern: |
+              server.resource($NAME, $URI, async ($REQ) => {
+                ...
+                fs.readFile($REQ.params.uri, ...)
+                ...
+              })
+          - pattern: |
+              server.resource($NAME, $URI, async ($REQ) => {
+                ...
+                fs.readFileSync($REQ.params.uri, ...)
+                ...
+              })
     languages: [typescript, javascript]
     severity: ERROR
     message: >
@@ -208,4 +116,20 @@ rules:
     metadata:
       cwe: CWE-22
       category: path-traversal
+      confidence: HIGH
+
+  # --- Tool description built from user input (real prompt injection risk) ---
+  - id: mcp-tool-description-dynamic
+    patterns:
+      - pattern-either:
+          - pattern: server.tool($NAME, `...${$VAR}...`, ...)
+          - pattern: server.tool($NAME, $A + $B, ...)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Tool description contains dynamic content. If user-controlled,
+      this enables prompt injection via tool descriptions.
+    metadata:
+      cwe: CWE-74
+      category: prompt-injection
       confidence: HIGH

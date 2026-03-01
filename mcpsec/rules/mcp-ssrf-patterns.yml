@@ -14,7 +14,7 @@ rules:
       - pattern-not: fetch('...')
       - pattern-not: fetch('...', ...)
     languages: [typescript, javascript]
-    severity: WARNING
+    severity: INFO
     message: >
       fetch() with non-literal URL. If the URL is user-controlled, this
       enables SSRF - accessing internal services, cloud metadata, etc.
@@ -42,7 +42,7 @@ rules:
       - pattern-not: axios.post("...", ...)
       - pattern-not: $AXIOS.get("...", ...)
     languages: [typescript, javascript]
-    severity: WARNING
+    severity: INFO
     message: >
       Axios request with non-literal URL - potential SSRF.
     metadata:
@@ -61,7 +61,7 @@ rules:
       - pattern-not: http.get("...", ...)
       - pattern-not: https.get("...", ...)
     languages: [typescript, javascript]
-    severity: WARNING
+    severity: INFO
     message: >
       Node http/https request with non-literal URL - potential SSRF.
     metadata:
@@ -79,7 +79,7 @@ rules:
       - pattern-not: got("...", ...)
       - pattern-not: got.get("...", ...)
     languages: [typescript, javascript]
-    severity: WARNING
+    severity: INFO
     message: >
       got() request with non-literal URL - potential SSRF.
     metadata:
@@ -138,7 +138,7 @@ rules:
       - pattern-not: requests.post("...", ...)
       - pattern-not: httpx.get("...", ...)
     languages: [python]
-    severity: WARNING
+    severity: INFO
     message: >
       HTTP request with non-literal URL - potential SSRF.
       Validate URLs against an allowlist and block internal/metadata addresses.
