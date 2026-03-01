@@ -14,32 +14,16 @@ rules:
     patterns:
       - pattern-either:
           # Template literal in description
-          - pattern: |
-              {
-                name: $NAME,
-                description: `$...TEMPLATE`,
-                ...
-              }
+          - pattern: $SERVER.tool($NAME, `...${$VAR}...`, ...)
           # Concatenation in description
-          - pattern: |
-              {
-                name: $NAME,
-                description: $A + $B,
-                ...
-              }
+          - pattern: $SERVER.tool($NAME, $A + $B, ...)
           # Variable description
-          - pattern: |
-              {
-                name: $NAME,
-                description: $VAR,
-                ...
-              }
-      - pattern-not: |
-          {
-            name: $NAME,
-            description: "...",
-            ...
-          }
+          - pattern: $SERVER.tool($NAME, $VAR, ...)
+      - pattern-not: $SERVER.tool($NAME, "...", ...)
+      - pattern-not: $SERVER.tool($NAME, '...', ...)
+      - metavariable-regex:
+          metavariable: $SERVER
+          regex: (server|mcp)
     metadata:
       category: security
       technology:
