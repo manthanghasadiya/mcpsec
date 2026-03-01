@@ -1,0 +1,196 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # MCP SERVER SPECIFIC PATTERNS — Issues unique to MCP architecture
+  # ═══════════════════════════════════════════════════════════════
+
+  # --- Tool handler doesn't validate input type ---
+  - id: mcp-tool-no-type-check
+    patterns:
+      - pattern: |
+          server.tool($NAME, $DESC, $SCHEMA, async ($ARGS) => {
+            ...
+            $VAR = $ARGS.params.arguments.$PROP
+            ...
+          })
+      - pattern-not-inside: |
+          if (typeof $VAR ...) { ... }
+      - pattern-not-inside: |
+          if (!$VAR ...) { ... }
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      MCP tool handler uses request argument without type validation.
+      Validate types before use to prevent type confusion attacks.
+    metadata:
+      cwe: CWE-20
+      category: input-validation
+      confidence: LOW
+
+  # --- Tool reflects user input directly (prompt injection vector) ---
+  - id: mcp-tool-reflects-input
+    patterns:
+      - pattern: |
+          return { content: [{ type: "text", text: $INPUT }] }
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      Tool returns a variable as content text. If this reflects
+      user input, it could be used for prompt injection attacks.
+    metadata:
+      cwe: CWE-74
+      category: injection
+      confidence: LOW
+
+  # --- Error message leaks implementation details ---
+  - id: mcp-error-stack-leak
+    patterns:
+      - pattern: |
+          catch ($ERR) {
+            ...
+            return { content: [{ ... text: $ERR.stack ... }] }
+          }
+      - pattern: |
+          catch ($ERR) {
+            ...
+            return { content: [{ ... text: $ERR.message ... }] }
+          }
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      Error stack/message returned to client. This leaks internal
+      implementation details. Return a generic error message instead.
+    metadata:
+      cwe: CWE-209
+      category: information-disclosure
+      confidence: MEDIUM
+
+  # --- Error with stack trace (Python) ---
+  - id: mcp-python-error-leak
+    patterns:
+      - pattern-either:
+          - pattern: |
+              except $EX as $E:
+                  ...
+                  return ... traceback.format_exc() ...
+          - pattern: |
+              except $EX as $E:
+                  ...
+                  return ... str($E) ...
+    languages: [python]
+    severity: WARNING
+    message: >
+      Exception details returned to MCP client. Return a generic
+      error message instead of raw exception info.
+    metadata:
+      cwe: CWE-209
+      category: information-disclosure
+      confidence: MEDIUM
+
+  # --- No authentication check in tool handler ---
+  - id: mcp-tool-no-auth-check
+    patterns:
+      - pattern: |
+          server.tool($NAME, $DESC, $SCHEMA, async ($REQ) => {
+            ...
+          })
+      - pattern-not-inside: |
+          ...auth...
+      - pattern-not-inside: |
+          ...token...
+      - pattern-not-inside: |
+          ...authenticate...
+      - pattern-not-inside: |
+          ...authorization...
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      MCP tool handler without visible authentication check. MCP
+      protocol does not provide built-in authentication — implement
+      it in your tool handlers if needed.
+    metadata:
+      cwe: CWE-306
+      category: authentication
+      confidence: LOW
+
+  # --- Dangerous tool names (common attack surface) ---
+  - id: mcp-dangerous-tool-name
+    patterns:
+      - pattern-either:
+          - pattern: server.tool("execute", ...)
+          - pattern: server.tool("run_command", ...)
+          - pattern: server.tool("shell", ...)
+          - pattern: server.tool("exec", ...)
+          - pattern: server.tool("eval", ...)
+          - pattern: server.tool("run_code", ...)
+          - pattern: server.tool("system", ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      Tool with dangerous name suggests it executes arbitrary commands.
+      Ensure strict input validation and sandboxing.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  # --- Python: dangerous MCP tool names ---
+  - id: mcp-python-dangerous-tool-name
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @server.tool()
+              async def execute(...): ...
+          - pattern: |
+              @server.tool()
+              async def run_command(...): ...
+          - pattern: |
+              @server.tool()
+              async def shell(...): ...
+          - pattern: |
+              @mcp.tool()
+              async def execute(...): ...
+          - pattern: |
+              @mcp.tool()
+              async def run_command(...): ...
+    languages: [python]
+    severity: WARNING
+    message: >
+      MCP tool with dangerous name — ensure strict input validation.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  # --- Tool handler with broad schema (any type) ---
+  - id: mcp-tool-any-type-schema
+    patterns:
+      - pattern: |
+          server.tool($NAME, $DESC, {}, ...)
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      MCP tool registered with empty schema — accepts any input.
+      Define a strict schema to validate input types.
+    metadata:
+      cwe: CWE-20
+      category: input-validation
+      confidence: LOW
+
+  # --- Resource handler with user-controlled URI ---
+  - id: mcp-resource-uri-variable
+    patterns:
+      - pattern: |
+          server.resource($NAME, $URI, async ($REQ) => {
+            ...
+            fs.$METHOD($REQ.params.uri, ...)
+            ...
+          })
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Resource handler passes URI directly to filesystem operation.
+      Validate and sanitize the URI before use.
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: HIGH

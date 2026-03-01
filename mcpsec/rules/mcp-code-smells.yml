@@ -1,0 +1,200 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # CODE SMELLS — Issues that indicate security problems
+  # ═══════════════════════════════════════════════════════════════
+
+  # --- Security-related TODO/FIXME ---
+  - id: smell-todo-security
+    pattern-regex: "(TODO|FIXME|HACK|XXX|WARN).*(security|auth|sanitiz|validat|escap|inject|vuln|csrf|xss|sqli)"
+    languages: [typescript, javascript, python, go]
+    severity: INFO
+    message: >
+      Security-related TODO/FIXME comment. This may indicate an
+      unfinished security fix or known vulnerability.
+    metadata:
+      category: code-smell
+      confidence: LOW
+
+  # --- ESLint security rules disabled ---
+  - id: smell-eslint-disable-security
+    pattern-regex: "eslint-disable.*(no-eval|security|no-unsafe)"
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      ESLint security rule explicitly disabled. Review why and whether
+      an alternative approach is possible.
+    metadata:
+      category: code-smell
+      confidence: LOW
+
+  # --- Empty catch block (swallows errors) ---
+  - id: smell-empty-catch-js
+    patterns:
+      - pattern: |
+          try { ... } catch ($E) { }
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      Empty catch block — errors are silently swallowed. This can
+      hide security-relevant failures and mask vulnerabilities.
+    metadata:
+      cwe: CWE-390
+      category: code-smell
+      confidence: LOW
+
+  - id: smell-empty-except-python
+    patterns:
+      - pattern-either:
+          - pattern: |
+              try:
+                  ...
+              except:
+                  pass
+          - pattern: |
+              try:
+                  ...
+              except Exception:
+                  pass
+    languages: [python]
+    severity: INFO
+    message: >
+      Bare except with pass — errors silently swallowed. At minimum,
+      log the exception. This can hide security failures.
+    metadata:
+      cwe: CWE-390
+      category: code-smell
+      confidence: LOW
+
+  # --- console.log with sensitive data ---
+  - id: smell-console-log-sensitive
+    patterns:
+      - pattern-either:
+          - pattern: console.log(..., $X.password, ...)
+          - pattern: console.log(..., $X.token, ...)
+          - pattern: console.log(..., $X.secret, ...)
+          - pattern: console.log(..., $X.apiKey, ...)
+          - pattern: console.log(..., $X.api_key, ...)
+          - pattern: console.log(..., $X.accessToken, ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      Logging potentially sensitive data (password/token/secret/apiKey).
+      Remove before production deployment.
+    metadata:
+      cwe: CWE-532
+      category: information-disclosure
+      confidence: MEDIUM
+
+  # --- Disabling TLS verification ---
+  - id: smell-tls-verify-disabled
+    patterns:
+      - pattern-either:
+          - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+          - pattern: process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0'
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      TLS certificate verification disabled! This allows
+      man-in-the-middle attacks.
+    metadata:
+      cwe: CWE-295
+      category: configuration
+      confidence: HIGH
+
+  - id: smell-python-tls-verify-disabled
+    patterns:
+      - pattern-either:
+          - pattern: requests.get($URL, verify=False, ...)
+          - pattern: requests.post($URL, verify=False, ...)
+          - pattern: httpx.get($URL, verify=False, ...)
+          - pattern: $SESSION.get($URL, verify=False, ...)
+    languages: [python]
+    severity: ERROR
+    message: >
+      TLS verification disabled (verify=False). This allows
+      man-in-the-middle attacks.
+    metadata:
+      cwe: CWE-295
+      category: configuration
+      confidence: HIGH
+
+  # --- Hardcoded IP addresses (usually internal) ---
+  - id: smell-hardcoded-internal-ip
+    pattern-regex: "(?:10\\.|172\\.(?:1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.)[0-9]{1,3}\\.[0-9]{1,3}"
+    languages: [typescript, javascript, python, go]
+    severity: INFO
+    message: >
+      Hardcoded internal IP address. This may leak network topology.
+      Use configuration variables instead.
+    metadata:
+      category: information-disclosure
+      confidence: LOW
+
+  # --- CORS allow all origins ---
+  - id: smell-cors-allow-all
+    patterns:
+      - pattern-either:
+          - pattern: "Access-Control-Allow-Origin: *"
+          - pattern: |
+              cors({ origin: "*" })
+          - pattern: |
+              cors({ origin: true })
+          - pattern: |
+              res.header("Access-Control-Allow-Origin", "*")
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      CORS allows all origins. This permits any website to make
+      requests to this server. Restrict to trusted origins.
+    metadata:
+      cwe: CWE-942
+      category: configuration
+      confidence: MEDIUM
+
+  # --- Python: no rate limiting imports (common MCP issue) ---
+  - id: smell-no-rate-limit-comment
+    pattern-regex: "(?i)(rate.?limit|throttl|brute.?force).*(TODO|FIXME|not implemented|disabled)"
+    languages: [typescript, javascript, python]
+    severity: INFO
+    message: >
+      Rate limiting appears to be TODO/disabled. MCP tools without
+      rate limiting are vulnerable to abuse.
+    metadata:
+      category: code-smell
+      confidence: LOW
+
+  # --- Regex without timeout/limit (ReDoS) ---
+  - id: smell-regex-no-timeout
+    patterns:
+      - pattern-either:
+          - pattern: new RegExp($PATTERN)
+          - pattern: new RegExp($PATTERN, ...)
+      - pattern-not: new RegExp("...")
+      - pattern-not: new RegExp('...')
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      RegExp constructed from variable. If user-controlled, this
+      can cause ReDoS (catastrophic backtracking).
+    metadata:
+      cwe: CWE-1333
+      category: denial-of-service
+      confidence: LOW
+
+  # --- Python: re.compile with variable ---
+  - id: smell-python-regex-variable
+    patterns:
+      - pattern: re.compile($PATTERN)
+      - pattern-not: re.compile("...")
+      - pattern-not: re.compile('...')
+      - pattern-not: re.compile(r"...")
+      - pattern-not: re.compile(r'...')
+    languages: [python]
+    severity: INFO
+    message: >
+      re.compile with variable pattern. If user-controlled, this
+      can cause ReDoS. Use re2 library for safe regex.
+    metadata:
+      cwe: CWE-1333
+      category: denial-of-service
+      confidence: LOW

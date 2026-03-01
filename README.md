@@ -201,6 +201,13 @@ For authorized security testing only. Only scan servers you own or have permissi
 
 ## Changelog
 
+### v2.4.0 (2026-02-28)
+- **SAST Rules Expansion**: 87 new Semgrep rules → **154 total** across 24 rule files.
+- **Broad Patterns**: Command injection, path traversal, SQL injection, SSRF, deserialization — now catches non-literal args, template literals, string concat, ORM raw queries.
+- **Secrets Detection**: AWS keys, AI API keys, GitHub/Slack tokens, JWT secrets, connection strings, private keys.
+- **MCP-Specific**: Dangerous tool names, empty schemas, error leaks, input reflection, no auth checks.
+- **Code Smells**: Security TODOs, empty catches, TLS disabled, CORS *, logging sensitive data, ReDoS patterns.
+
 ### v2.3.0 (2026-02-28)
 - **Scanner Nuclear Expansion**: CmdInj 138, PathTrav 104, SSRF 81 payloads — encoding bypasses, protocol smuggling, shell-specific evasion.
 - **Confirmation-Based Detection**: Regex matching with CONFIRMED/LIKELY confidence scoring.

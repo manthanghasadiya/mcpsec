@@ -1,0 +1,168 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # BROAD SQL INJECTION — Catch every database call with user input
+  # ═══════════════════════════════════════════════════════════════
+
+  # --- Template literal in ANY database method ---
+  - id: broad-sql-template-any-db
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query(`...${$VAR}...`)
+          - pattern: $DB.execute(`...${$VAR}...`)
+          - pattern: $DB.raw(`...${$VAR}...`)
+          - pattern: $POOL.query(`...${$VAR}...`)
+          - pattern: $CLIENT.query(`...${$VAR}...`)
+          - pattern: $CONN.query(`...${$VAR}...`)
+          - pattern: $CONN.execute(`...${$VAR}...`)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      SQL query with template literal interpolation — SQL injection risk.
+      Use parameterized queries with $1/$2 or ? placeholders.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH
+
+  # --- ORM-specific raw query patterns ---
+  - id: broad-sql-sequelize-raw
+    patterns:
+      - pattern-either:
+          - pattern: sequelize.query(`...${$VAR}...`)
+          - pattern: sequelize.query($Q + $V)
+          - pattern: $SEQ.query(`...${$VAR}...`)
+          - pattern: $SEQ.query($Q + $V)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Sequelize raw query with interpolation. Use replacements or
+      bind parameters instead.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH
+
+  - id: broad-sql-knex-raw
+    patterns:
+      - pattern-either:
+          - pattern: knex.raw(`...${$VAR}...`)
+          - pattern: $KNEX.raw(`...${$VAR}...`)
+          - pattern: knex.raw($Q + $V)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Knex raw query with interpolation. Use knex.raw('...?...', [value])
+      with bind parameters.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH
+
+  - id: broad-sql-prisma-raw
+    patterns:
+      - pattern-either:
+          - pattern: prisma.$queryRaw(`...${$VAR}...`)
+          - pattern: prisma.$executeRaw(`...${$VAR}...`)
+          - pattern: $PRISMA.$queryRaw(`...${$VAR}...`)
+          - pattern: $PRISMA.$executeRaw(`...${$VAR}...`)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Prisma raw query with template literal. Use Prisma.sql tagged
+      template or Prisma.$queryRaw(Prisma.sql`...`) for safe queries.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH
+
+  # --- String concat in query ---
+  - id: broad-sql-string-concat
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query($A + $B)
+          - pattern: $DB.query($A + $B + $C)
+          - pattern: $DB.query("..." + $VAR + "...")
+          - pattern: $DB.execute($A + $B)
+          - pattern: $CONN.query($A + $B)
+          - pattern: $CONN.execute($A + $B)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      SQL query with string concatenation — SQL injection vulnerability.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH
+
+  # --- Query built separately then executed ---
+  - id: broad-sql-variable-query-template
+    patterns:
+      - pattern: |
+          $QUERY = `...${$VAR}...`
+          ...
+          $DB.query($QUERY)
+      - pattern: |
+          $QUERY = "..." + $VAR + "..."
+          ...
+          $DB.query($QUERY)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      SQL query built with user input into variable, then executed.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH
+
+  # --- Python: broader cursor.execute patterns ---
+  - id: broad-python-sql-fstring
+    patterns:
+      - pattern-either:
+          - pattern: $CURSOR.execute(f"...{$VAR}...")
+          - pattern: $CURSOR.execute(f'...{$VAR}...')
+          - pattern: $CURSOR.executemany(f"...{$VAR}...", ...)
+          - pattern: $CONN.execute(f"...{$VAR}...")
+          - pattern: $DB.execute(f"...{$VAR}...")
+    languages: [python]
+    severity: ERROR
+    message: >
+      SQL query with f-string interpolation — SQL injection.
+      Use parameterized queries: cursor.execute("SELECT * WHERE id=%s", (id,))
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH
+
+  - id: broad-python-sql-format
+    patterns:
+      - pattern-either:
+          - pattern: $CURSOR.execute("...".format($VAR))
+          - pattern: $CURSOR.execute("..." % $VAR)
+          - pattern: $CURSOR.execute("..." + $VAR)
+          - pattern: $CONN.execute("..." % $VAR)
+          - pattern: $CONN.execute("...".format($VAR))
+    languages: [python]
+    severity: ERROR
+    message: >
+      SQL query with .format() or % formatting — SQL injection.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH
+
+  # --- Python SQLAlchemy text() with concat ---
+  - id: broad-python-sqlalchemy-text
+    patterns:
+      - pattern-either:
+          - pattern: text(f"...{$VAR}...")
+          - pattern: text("..." + $VAR)
+          - pattern: text("...".format($VAR))
+    languages: [python]
+    severity: ERROR
+    message: >
+      SQLAlchemy text() with string interpolation. Use text() with
+      bindparams instead.
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+      confidence: HIGH

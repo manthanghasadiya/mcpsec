@@ -1,0 +1,136 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # BROAD COMMAND INJECTION — Catches patterns the taint rules miss
+  # ═══════════════════════════════════════════════════════════════
+
+  # --- exec/spawn with ANY non-literal (HIGH value) ---
+  - id: broad-exec-non-literal
+    patterns:
+      - pattern-either:
+          - pattern: exec($X)
+          - pattern: execSync($X)
+          - pattern: execSync($X, ...)
+      - pattern-not: exec("...")
+      - pattern-not: exec('...')
+      - pattern-not: execSync("...")
+      - pattern-not: execSync('...')
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      exec/execSync called with non-literal argument. If this value
+      comes from user input (even indirectly), this is command injection.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  - id: broad-spawn-non-literal
+    patterns:
+      - pattern-either:
+          - pattern: spawn($X, ...)
+          - pattern: spawnSync($X, ...)
+          - pattern: child_process.spawn($X, ...)
+          - pattern: child_process.spawnSync($X, ...)
+      - pattern-not: spawn("...", ...)
+      - pattern-not: spawnSync("...", ...)
+      - pattern-not: child_process.spawn("...", ...)
+      - pattern-not: child_process.spawnSync("...", ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      spawn/spawnSync called with non-literal command. Verify the command
+      is not derived from user input.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  # --- String concatenation into commands ---
+  - id: broad-exec-string-concat
+    patterns:
+      - pattern-either:
+          - pattern: exec($A + $B)
+          - pattern: exec($A + $B + $C)
+          - pattern: execSync($A + $B)
+          - pattern: execSync($A + $B + $C)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      String concatenation in exec/execSync — high risk of command injection.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: HIGH
+
+  # --- Array.join into exec ---
+  - id: broad-exec-array-join
+    patterns:
+      - pattern-either:
+          - pattern: exec($ARR.join(...))
+          - pattern: execSync($ARR.join(...))
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      Array joined into exec() command string. If array contents include
+      user input, this is command injection.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  # --- Command built then executed ---
+  - id: broad-exec-template-variable
+    patterns:
+      - pattern: |
+          $CMD = `...${$VAR}...`
+          ...
+          exec($CMD)
+      - pattern: |
+          $CMD = `...${$VAR}...`
+          ...
+          execSync($CMD)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Command string built with template literal then passed to exec().
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: HIGH
+
+  # --- spawn with shell: true (dangerous config) ---
+  - id: broad-spawn-shell-true
+    patterns:
+      - pattern-either:
+          - pattern: spawn($CMD, $ARGS, {shell: true, ...})
+          - pattern: spawn($CMD, $ARGS, {..., shell: true})
+          - pattern: spawn($CMD, {shell: true, ...})
+          - pattern: spawnSync($CMD, $ARGS, {shell: true, ...})
+          - pattern: spawnSync($CMD, {shell: true, ...})
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      spawn with shell: true — disables argument escaping and allows
+      shell metacharacters. Use shell: false with explicit argument arrays.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: MEDIUM
+
+  # --- execFile with variable command ---
+  - id: broad-execfile-variable
+    patterns:
+      - pattern-either:
+          - pattern: execFile($CMD, ...)
+          - pattern: child_process.execFile($CMD, ...)
+      - pattern-not: execFile("...", ...)
+      - pattern-not: child_process.execFile("...", ...)
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      execFile with variable command. While safer than exec(), ensure
+      the command path is not user-controlled.
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+      confidence: LOW

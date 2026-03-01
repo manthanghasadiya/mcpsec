@@ -1,0 +1,171 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # DESERIALIZATION & CODE EXECUTION — eval, vm, pickle, yaml
+  # ═══════════════════════════════════════════════════════════════
+
+  # --- JS: vm module (sandbox escapes) ---
+  - id: broad-vm-run-unsafe
+    patterns:
+      - pattern-either:
+          - pattern: vm.runInThisContext($X, ...)
+          - pattern: vm.runInNewContext($X, ...)
+          - pattern: vm.createScript($X, ...)
+          - pattern: new vm.Script($X, ...)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Node.js vm module can be escaped. If the code input is
+      user-controlled, this enables arbitrary code execution.
+    metadata:
+      cwe: CWE-94
+      category: code-execution
+      confidence: HIGH
+
+  # --- JS: JSON.parse without try/catch ---
+  - id: broad-json-parse-no-catch
+    patterns:
+      - pattern: JSON.parse($X)
+      - pattern-not-inside: |
+          try { ... } catch (...) { ... }
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      JSON.parse without try/catch can crash on malformed input.
+      Wrap in try/catch to handle invalid JSON gracefully.
+    metadata:
+      cwe: CWE-20
+      category: input-validation
+      confidence: LOW
+
+  # --- Python: pickle (always dangerous) ---
+  - id: broad-python-pickle
+    patterns:
+      - pattern-either:
+          - pattern: pickle.load($X)
+          - pattern: pickle.loads($X)
+          - pattern: pickle.Unpickler($X).load()
+          - pattern: _pickle.loads($X)
+          - pattern: cPickle.loads($X)
+          - pattern: dill.load($X)
+          - pattern: dill.loads($X)
+          - pattern: joblib.load($X)
+          - pattern: shelve.open($X, ...)
+          - pattern: torch.load($X, ...)
+    languages: [python]
+    severity: ERROR
+    message: >
+      Pickle/dill/joblib/torch deserialization can execute arbitrary code.
+      Never unpickle data from untrusted sources. Use json or msgpack instead.
+    metadata:
+      cwe: CWE-502
+      category: deserialization
+      confidence: HIGH
+
+  # --- Python: yaml.load without SafeLoader ---
+  - id: broad-python-yaml-unsafe
+    patterns:
+      - pattern-either:
+          - pattern: yaml.load($X)
+          - pattern: yaml.load($X, Loader=yaml.FullLoader)
+          - pattern: yaml.load($X, Loader=yaml.UnsafeLoader)
+          - pattern: yaml.load($X, Loader=yaml.Loader)
+          - pattern: yaml.unsafe_load($X)
+      - pattern-not: yaml.load($X, Loader=yaml.SafeLoader)
+      - pattern-not: yaml.safe_load($X)
+    languages: [python]
+    severity: ERROR
+    message: >
+      yaml.load without SafeLoader allows arbitrary code execution.
+      Use yaml.safe_load() or yaml.load(data, Loader=yaml.SafeLoader).
+    metadata:
+      cwe: CWE-502
+      category: deserialization
+      confidence: HIGH
+
+  # --- Python: eval/exec/compile ---
+  - id: broad-python-eval
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: exec($X)
+          - pattern: compile($X, ...)
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
+    languages: [python]
+    severity: ERROR
+    message: >
+      eval/exec/compile with variable input — arbitrary code execution.
+    metadata:
+      cwe: CWE-94
+      category: code-execution
+      confidence: HIGH
+
+  # --- Python: __import__ / importlib ---
+  - id: broad-python-dynamic-import
+    patterns:
+      - pattern-either:
+          - pattern: __import__($X)
+          - pattern: importlib.import_module($X)
+      - pattern-not: __import__("...")
+      - pattern-not: importlib.import_module("...")
+    languages: [python]
+    severity: WARNING
+    message: >
+      Dynamic import with variable module name. If user-controlled,
+      this can load malicious modules.
+    metadata:
+      cwe: CWE-94
+      category: code-execution
+      confidence: MEDIUM
+
+  # --- Python: marshal.loads (code execution) ---
+  - id: broad-python-marshal
+    patterns:
+      - pattern-either:
+          - pattern: marshal.loads($X)
+          - pattern: marshal.load($X)
+    languages: [python]
+    severity: ERROR
+    message: >
+      marshal deserialization can execute arbitrary code. Never use
+      with untrusted data.
+    metadata:
+      cwe: CWE-502
+      category: deserialization
+      confidence: HIGH
+
+  # --- JS: require() with variable (dynamic require) ---
+  - id: broad-js-dynamic-require
+    patterns:
+      - pattern: require($X)
+      - pattern-not: require("...")
+      - pattern-not: require('...')
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      Dynamic require() with variable path. If user-controlled,
+      this can load arbitrary modules.
+    metadata:
+      cwe: CWE-94
+      category: code-execution
+      confidence: MEDIUM
+
+  # --- JS: setTimeout/setInterval with string ---
+  - id: broad-js-settimeout-string
+    patterns:
+      - pattern-either:
+          - pattern: setTimeout($X, ...)
+          - pattern: setInterval($X, ...)
+      - metavariable-pattern:
+          metavariable: $X
+          pattern-not: "..."
+          pattern-not: '...'
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      setTimeout/setInterval with non-function argument. If a string
+      is passed, it acts as eval() — code injection risk.
+    metadata:
+      cwe: CWE-94
+      category: code-execution
+      confidence: LOW

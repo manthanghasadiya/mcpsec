@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-02-28
+
+### Added
+- **SAST Rules Expansion**: 9 new Semgrep rule files with 87 new rules, bringing total to 154 rules across 24 files.
+- **Broad Command Injection**: Non-literal exec/spawn, string concat, array join, template variables, shell:true.
+- **Broad Path Traversal**: All fs read/write/stat/delete operations, fs.promises, path.join, Express req→fs flows.
+- **Broad SQL Injection**: All DB drivers (Sequelize, Knex, Prisma), template literals, string concat, variable queries.
+- **SSRF Detection**: fetch/axios/got/http, URL template construction, Python requests/httpx.
+- **Deserialization & Code Execution**: vm module, pickle/dill/joblib/torch, unsafe YAML, eval/exec, dynamic imports.
+- **Secrets Detection**: AWS keys, AI API keys (sk-*), GitHub/Slack tokens, JWT secrets, connection strings, bearer tokens.
+- **MCP Server Patterns**: No type validation, input reflection, error leaks, dangerous tool names, empty schemas.
+- **Python Broad**: open/pathlib traversal, os.path.join, subprocess shell=True, f-string commands, insecure tempfile.
+- **Code Smells**: Security TODOs, disabled eslint, empty catch, logging sensitive data, TLS disabled, CORS *, ReDoS.
+
 ## [2.3.0] - 2026-02-28
 
 ### Added

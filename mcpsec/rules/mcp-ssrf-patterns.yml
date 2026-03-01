@@ -1,0 +1,163 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # SSRF PATTERNS — HTTP requests with non-literal URLs
+  # ═══════════════════════════════════════════════════════════════
+
+  # --- JS/TS: fetch with non-literal URL ---
+  - id: broad-ssrf-fetch
+    patterns:
+      - pattern-either:
+          - pattern: fetch($URL)
+          - pattern: fetch($URL, ...)
+      - pattern-not: fetch("...")
+      - pattern-not: fetch("...", ...)
+      - pattern-not: fetch('...')
+      - pattern-not: fetch('...', ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      fetch() with non-literal URL. If the URL is user-controlled, this
+      enables SSRF — accessing internal services, cloud metadata, etc.
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+      confidence: MEDIUM
+
+  # --- axios ---
+  - id: broad-ssrf-axios
+    patterns:
+      - pattern-either:
+          - pattern: axios.get($URL, ...)
+          - pattern: axios.post($URL, ...)
+          - pattern: axios.put($URL, ...)
+          - pattern: axios.delete($URL, ...)
+          - pattern: axios.request({url: $URL, ...})
+          - pattern: axios($URL)
+          - pattern: axios({url: $URL, ...})
+          - pattern: $AXIOS.get($URL, ...)
+          - pattern: $AXIOS.post($URL, ...)
+      - pattern-not: axios.get("...", ...)
+      - pattern-not: axios.post("...", ...)
+      - pattern-not: $AXIOS.get("...", ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      Axios request with non-literal URL — potential SSRF.
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+      confidence: MEDIUM
+
+  # --- Node http/https ---
+  - id: broad-ssrf-http-module
+    patterns:
+      - pattern-either:
+          - pattern: http.get($URL, ...)
+          - pattern: https.get($URL, ...)
+          - pattern: http.request($URL, ...)
+          - pattern: https.request($URL, ...)
+      - pattern-not: http.get("...", ...)
+      - pattern-not: https.get("...", ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      Node http/https request with non-literal URL — potential SSRF.
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+      confidence: MEDIUM
+
+  # --- got ---
+  - id: broad-ssrf-got
+    patterns:
+      - pattern-either:
+          - pattern: got($URL, ...)
+          - pattern: got.get($URL, ...)
+          - pattern: got.post($URL, ...)
+      - pattern-not: got("...", ...)
+      - pattern-not: got.get("...", ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      got() request with non-literal URL — potential SSRF.
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+      confidence: MEDIUM
+
+  # --- URL constructed from user input ---
+  - id: broad-ssrf-url-template
+    patterns:
+      - pattern-either:
+          - pattern: fetch(`...${$INPUT}...`)
+          - pattern: fetch(`...${$INPUT}...`, ...)
+          - pattern: axios.get(`...${$INPUT}...`)
+          - pattern: axios.get(`...${$INPUT}...`, ...)
+          - pattern: axios.post(`...${$INPUT}...`, ...)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      HTTP request URL built with template literal interpolation.
+      If the interpolated value is user-controlled, this is SSRF.
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+      confidence: HIGH
+
+  # --- new URL with user input ---
+  - id: broad-ssrf-new-url
+    patterns:
+      - pattern: new URL($INPUT, ...)
+      - pattern-not: new URL("...", ...)
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      URL constructed with variable input. The URL constructor doesn't
+      prevent SSRF — validate the result against an allowlist.
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+      confidence: LOW
+
+  # --- Python requests/httpx ---
+  - id: broad-ssrf-python-requests
+    patterns:
+      - pattern-either:
+          - pattern: requests.get($URL, ...)
+          - pattern: requests.post($URL, ...)
+          - pattern: requests.put($URL, ...)
+          - pattern: requests.delete($URL, ...)
+          - pattern: requests.request("...", $URL, ...)
+          - pattern: httpx.get($URL, ...)
+          - pattern: httpx.post($URL, ...)
+          - pattern: $CLIENT.get($URL, ...)
+          - pattern: $CLIENT.post($URL, ...)
+      - pattern-not: requests.get("...", ...)
+      - pattern-not: requests.post("...", ...)
+      - pattern-not: httpx.get("...", ...)
+    languages: [python]
+    severity: WARNING
+    message: >
+      HTTP request with non-literal URL — potential SSRF.
+      Validate URLs against an allowlist and block internal/metadata addresses.
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+      confidence: MEDIUM
+
+  # --- Python: URL from f-string ---
+  - id: broad-ssrf-python-fstring-url
+    patterns:
+      - pattern-either:
+          - pattern: requests.get(f"...{$VAR}...", ...)
+          - pattern: requests.post(f"...{$VAR}...", ...)
+          - pattern: httpx.get(f"...{$VAR}...", ...)
+          - pattern: httpx.post(f"...{$VAR}...", ...)
+    languages: [python]
+    severity: ERROR
+    message: >
+      HTTP request URL built with f-string — SSRF if user-controlled.
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+      confidence: HIGH

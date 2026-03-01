@@ -1,0 +1,174 @@
+rules:
+  # ═══════════════════════════════════════════════════════════════
+  # BROAD PATH TRAVERSAL — Every FS operation with non-literal path
+  # ═══════════════════════════════════════════════════════════════
+
+  # --- Read operations with non-literal path ---
+  - id: broad-fs-read-non-literal
+    patterns:
+      - pattern-either:
+          - pattern: fs.readFile($PATH, ...)
+          - pattern: fs.readFileSync($PATH, ...)
+          - pattern: fs.readdir($PATH, ...)
+          - pattern: fs.readdirSync($PATH, ...)
+          - pattern: fs.createReadStream($PATH, ...)
+          - pattern: $FS.readFile($PATH, ...)
+          - pattern: $FS.readFileSync($PATH, ...)
+          - pattern: $FS.readdir($PATH, ...)
+          - pattern: $FS.readdirSync($PATH, ...)
+          - pattern: $FS.createReadStream($PATH, ...)
+      - pattern-not: fs.readFile("...", ...)
+      - pattern-not: fs.readFileSync("...", ...)
+      - pattern-not: fs.readdir("...", ...)
+      - pattern-not: fs.readdirSync("...", ...)
+      - pattern-not: $FS.readFile("...", ...)
+      - pattern-not: $FS.readFileSync("...", ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      File read operation with non-literal path. If the path includes
+      user input, this could allow reading arbitrary files.
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: MEDIUM
+
+  # --- Write operations with non-literal path ---
+  - id: broad-fs-write-non-literal
+    patterns:
+      - pattern-either:
+          - pattern: fs.writeFile($PATH, ...)
+          - pattern: fs.writeFileSync($PATH, ...)
+          - pattern: fs.createWriteStream($PATH, ...)
+          - pattern: fs.appendFile($PATH, ...)
+          - pattern: fs.appendFileSync($PATH, ...)
+          - pattern: $FS.writeFile($PATH, ...)
+          - pattern: $FS.writeFileSync($PATH, ...)
+          - pattern: $FS.createWriteStream($PATH, ...)
+      - pattern-not: fs.writeFile("...", ...)
+      - pattern-not: fs.writeFileSync("...", ...)
+      - pattern-not: $FS.writeFile("...", ...)
+      - pattern-not: $FS.writeFileSync("...", ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      File write operation with non-literal path. If the path includes
+      user input, this could allow writing to arbitrary locations.
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: MEDIUM
+
+  # --- fs.existsSync / stat with variable (info leak) ---
+  - id: broad-fs-stat-non-literal
+    patterns:
+      - pattern-either:
+          - pattern: fs.existsSync($PATH)
+          - pattern: fs.statSync($PATH)
+          - pattern: fs.stat($PATH, ...)
+          - pattern: fs.access($PATH, ...)
+          - pattern: fs.lstat($PATH, ...)
+          - pattern: $FS.existsSync($PATH)
+          - pattern: $FS.statSync($PATH)
+      - pattern-not: fs.existsSync("...")
+      - pattern-not: fs.statSync("...")
+      - pattern-not: $FS.existsSync("...")
+      - pattern-not: $FS.statSync("...")
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      File existence/stat check with non-literal path. Can leak information
+      about filesystem structure if user-controlled.
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: LOW
+
+  # --- fs.promises API ---
+  - id: broad-fs-promises-non-literal
+    patterns:
+      - pattern-either:
+          - pattern: fs.promises.readFile($PATH, ...)
+          - pattern: fs.promises.writeFile($PATH, ...)
+          - pattern: fs.promises.readdir($PATH, ...)
+          - pattern: fs.promises.stat($PATH, ...)
+          - pattern: fs.promises.access($PATH, ...)
+          - pattern: fs.promises.unlink($PATH)
+          - pattern: fs.promises.rm($PATH, ...)
+          - pattern: fs.promises.mkdir($PATH, ...)
+      - pattern-not: fs.promises.readFile("...", ...)
+      - pattern-not: fs.promises.writeFile("...", ...)
+      - pattern-not: fs.promises.readdir("...", ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      fs.promises operation with non-literal path. Validate the path
+      against traversal before use.
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: MEDIUM
+
+  # --- path.join doesn't prevent traversal ---
+  - id: broad-path-join-traversal
+    patterns:
+      - pattern: path.join($BASE, $INPUT)
+      - pattern-not: path.join("...", "...")
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >
+      path.join does NOT prevent path traversal. An input like
+      '../../etc/passwd' will traverse out of the base directory.
+      Use path.resolve() and verify with startsWith().
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: LOW
+
+  # --- Direct request params to fs (Express/Fastify) ---
+  - id: broad-express-file-from-params
+    patterns:
+      - pattern: |
+          $PATH = req.params.$PARAM
+          ...
+          fs.$METHOD($PATH, ...)
+      - pattern: |
+          $PATH = req.query.$PARAM
+          ...
+          fs.$METHOD($PATH, ...)
+      - pattern: |
+          $PATH = req.body.$PARAM
+          ...
+          fs.$METHOD($PATH, ...)
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      File path taken directly from request parameter and passed to
+      filesystem operation — definite path traversal vulnerability.
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: HIGH
+
+  # --- Unlink / delete with variable ---
+  - id: broad-fs-delete-non-literal
+    patterns:
+      - pattern-either:
+          - pattern: fs.unlink($PATH, ...)
+          - pattern: fs.unlinkSync($PATH)
+          - pattern: fs.rmSync($PATH, ...)
+          - pattern: fs.rmdirSync($PATH, ...)
+          - pattern: $FS.unlink($PATH, ...)
+          - pattern: $FS.unlinkSync($PATH)
+      - pattern-not: fs.unlink("...", ...)
+      - pattern-not: fs.unlinkSync("...")
+      - pattern-not: $FS.unlink("...", ...)
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >
+      File deletion with non-literal path. If user-controlled, this
+      enables arbitrary file deletion.
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+      confidence: MEDIUM
