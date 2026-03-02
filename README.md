@@ -256,6 +256,6 @@ For authorized security testing only. Only scan servers you own or have permissi
 
 <div align="center">
 
-Built by [Manthan Ghasadiya](https://www.linkedin.com/in/man-ghasadiya)
+Built with ❤️ by [Manthan](https://www.linkedin.com/in/man-ghasadiya)
 
 </div>
