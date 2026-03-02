@@ -26,7 +26,7 @@ class HttpFuzzer:
         self.framing = "jsonl" # Default to no framing for HTTP bodies
         self.error_log_path = "mcpsec_fuzz_http.log"
 
-    def start_server(self):
+    def start(self):
         """No-op for HTTP."""
         pass
 
@@ -35,6 +35,22 @@ class HttpFuzzer:
         pass
 
     def restart(self):
+        """No-op for HTTP."""
+        pass
+
+    def start_server(self):
+        """No-op for HTTP."""
+        pass
+
+    def stop_server(self):
+        """No-op for HTTP."""
+        pass
+
+    def restart_server(self):
+        """No-op for HTTP."""
+        pass
+
+    async def restart_async(self):
         """No-op for HTTP."""
         pass
 
@@ -155,6 +171,26 @@ class HttpFuzzer:
         """Helper to send a JSON-RPC message."""
         import json
         payload = json.dumps(msg).encode()
+        
+        old_timeout = self.timeout
+        self.timeout = timeout
+        try:
+            return self.send_raw(payload)
+        finally:
+            self.timeout = old_timeout
+
+    def send_mcp_message(self, message: dict) -> FuzzResult:
+        """Send formatted message with default timeout."""
+        return self.send_mcp_message_with_timeout(message, self.timeout)
+
+    def send_malformed(self, raw_bytes: bytes, generator_name: str = "") -> FuzzResult:
+        """Send malformed payload and attach generator name to result."""
+        result = self.send_raw(raw_bytes)
+        result.generator = generator_name
+        return result
+
+    def send_notification(self, payload: bytes) -> FuzzResult:
+        """Send raw bytes for notification."""
         return self.send_raw(payload)
 
     async def send_request_async(self, message: dict) -> Optional[dict]:
