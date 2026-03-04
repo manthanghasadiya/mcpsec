@@ -1,23 +1,17 @@
 <div align="center">
-     
+
 # mcpsec
 
-</div>
-
-<div align="center">
+**Security scanner and protocol fuzzer for MCP servers**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/mcpsec)](https://pypi.org/project/mcpsec/)
-[![Bugs Found](https://img.shields.io/badge/bugs%20reported-10+-red)](https://github.com/manthanghasadiya/mcpsec)
-[![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-700+-orange)](https://github.com/manthanghasadiya/mcpsec)
-[![Semgrep Rules](https://img.shields.io/badge/semgrep%20rules-49-purple)](https://github.com/manthanghasadiya/mcpsec)
+[![Bugs Reported](https://img.shields.io/badge/bugs%20reported-12+-red)](https://github.com/manthanghasadiya/mcpsec)
+[![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-800+-orange)](https://github.com/manthanghasadiya/mcpsec)
+[![Semgrep Rules](https://img.shields.io/badge/semgrep%20rules-149-purple)](https://github.com/manthanghasadiya/mcpsec)
 
-**Security scanner and protocol fuzzer for MCP servers.**
-
-Most MCP security tools do static analysis. mcpsec connects to live servers and proves exploitation.
-
-[Installation](#installation) • [Usage](#usage) • [Scanners](#scanners) • [Fuzzing](#fuzz-generators)
+[Installation](#installation) • [Quick Start](#quick-start) • [Scanners](#scanners) • [Fuzzing](#fuzz-generators)
 
 </div>
 
@@ -25,14 +19,11 @@ Most MCP security tools do static analysis. mcpsec connects to live servers and 
 
 ## Why mcpsec?
 
-MCP is the protocol connecting AI agents (Claude, Cursor, VS Code) to external tools. Every major AI company uses it. Its security is often overlooked.
+MCP (Model Context Protocol) connects AI agents to external tools. Claude Desktop, Cursor, VS Code Copilot, and every major AI IDE uses it. **Security is often an afterthought.**
 
-- **82%** of MCP implementations have path traversal vulnerabilities
-- **67%** are vulnerable to code injection  
-- **~2,000** internet-exposed MCP servers found with zero authentication
-- Anthropic's own Git MCP server had 3 critical RCE vulnerabilities
+Most MCP security tools do static analysis. **mcpsec connects to live servers and proves exploitation.**
 
-mcpsec has been used to discover and report **12+ vulnerabilities** across Anthropic and GitHub MCP implementations, affecting Python, TypeScript, and Go SDK ecosystems.
+![mcpsec demo](assets/demo.gif)
 
 ---
 
@@ -49,10 +40,9 @@ pip install mcpsec[ai]
 
 ---
 
-## Usage
+## Quick Start
 
 ### Runtime Scanning
-
 ```bash
 # Scan via stdio
 mcpsec scan --stdio "npx @modelcontextprotocol/server-filesystem /tmp"
@@ -62,33 +52,21 @@ mcpsec scan --http http://localhost:8080/mcp -H "Authorization: Bearer TOKEN"
 
 # Enumerate attack surface
 mcpsec info --stdio "python my_server.py"
-
-# Advanced SQL Injection Discovery
-mcpsec sql --stdio "npx @benborla29/mcp-server-mysql" --fingerprint
-
-# Attack Chain Analysis (Priority 0)
-mcpsec chains --stdio "npx @example/complex-server"
 ```
 
 ### Protocol Fuzzing
-
 ```bash
-# Standard fuzzing (150+ cases)
+# Standard fuzzing (~200 cases)
 mcpsec fuzz --stdio "python my_server.py"
 
-# High intensity (500+ cases)
+# High intensity (~800 cases)
 mcpsec fuzz --stdio "python my_server.py" --intensity high
-
-# Target specific attack class
-mcpsec fuzz --stdio "python my_server.py" -g protocol_state_machine
-mcpsec fuzz --stdio "python my_server.py" -g id_confusion
 
 # AI-powered payload generation
 mcpsec fuzz --stdio "python my_server.py" --ai
 ```
 
 ### Static Analysis
-
 ```bash
 # Local source
 mcpsec audit --path ./my-mcp-server
@@ -100,10 +78,18 @@ mcpsec audit --github https://github.com/user/mcp-server
 mcpsec audit --github https://github.com/user/mcp-server --ai
 ```
 
-### Rogue Server (Client Testing)
-
+### Advanced
 ```bash
-# Test MCP clients for vulnerabilities
+# SQL Injection scanner with DB fingerprinting
+mcpsec sql --stdio "npx @benborla29/mcp-server-mysql" --fingerprint
+
+# Dangerous tool chain detection
+mcpsec chains --stdio "npx @example/complex-server"
+
+# Interactive exploitation REPL
+mcpsec exploit --stdio "npx vulnerable-server"
+
+# Rogue server for client-side testing
 mcpsec rogue-server --port 9999 --attack all
 ```
 
@@ -114,65 +100,41 @@ mcpsec rogue-server --port 9999 --attack all
 | Scanner | Description |
 |---------|-------------|
 | `prompt-injection` | Hidden instructions in tool descriptions |
-| `command-injection` | OS command injection with proof of exploitation |
-| `path-traversal` | File traversal with proof of exploitation |
-| `ssrf` | Server-Side Request Forgery to internal services |
-| `auth-audit` | Missing auth, dangerous tool combinations |
+| `command-injection` | OS command injection with 138 payloads |
+| `path-traversal` | Directory traversal with 104 payloads |
+| `ssrf` | Server-Side Request Forgery with 81 payloads |
+| `sql` | SQL Injection (Error, Time, Boolean, Stacked) |
+| `auth-audit` | Missing authentication, dangerous tool combos |
 | `description-prompt-injection` | LLM manipulation via descriptions |
 | `resource-ssrf` | SSRF via MCP resource URIs |
 | `capability-escalation` | Undeclared capability abuse |
-| `sql` | Modular SQL Injection (Error, Time, Boolean, Stacked) |
-| `chains` | Tool Chain Analysis (Dangerous combinations detection) |
-| `sql-rce` | SQL Injection to RCE/File access (Legacy) |
+| `chains` | Dangerous tool combination detection |
 
 ---
 
 ## Fuzz Generators
 
-| Generator | Description |
-|-----------|-------------|
-| `malformed_json` | Invalid JSON structures |
-| `protocol_violation` | JSON-RPC spec violations |
-| `type_confusion` | Type mismatch attacks |
-| `unicode_attacks` | Encoding edge cases |
-| `injection_payloads` | SQLi, XSS, command injection |
-| `protocol_state_machine` | MCP state violations |
-| `id_confusion` | JSON-RPC ID edge cases |
+22 generators organized by intensity level:
+
+**Low (~65 cases):** `malformed_json`, `protocol_violation`, `type_confusion`, `boundary_testing`, `unicode_attacks`
+
+**Medium (~200 cases):** + `session_attacks`, `encoding_attacks`, `integer_boundaries`
+
+**High (~800 cases):** + `injection_payloads`, `method_mutations`, `param_mutations`, `timing_attacks`, `header_mutations`, `json_edge_cases`, `protocol_state`, `protocol_state_machine`, `id_confusion`, `concurrency_attacks`, `regex_dos`, `deserialization`
+
+**Insane (~1500+ cases):** + `resource_exhaustion`, `memory_exhaustion_v2`
 
 ---
 
-## Semgrep Rules
+## Static Analysis (149 Semgrep Rules)
 
-49 MCP-specific rules:
+24 rule files covering:
 
-- Command injection (`exec`, `spawn`, `child_process`)
-- SQL injection (raw queries, ORM bypass)
-- Path traversal (`path.join` with unsanitized input)
-- Description injection (dynamic tool descriptions)
-- Resource URI issues (SSRF vectors)
-- Protocol handler vulnerabilities
-
----
-
-## Configuration
-
-### AI Provider Setup
-
-```bash
-mcpsec setup
-```
-
-Supports: OpenAI, Anthropic, Google, Groq, DeepSeek, Ollama
-
-### Output Formats
-
-```bash
-# JSON
-mcpsec scan --stdio "server" --output results.json
-
-# SARIF (CI/CD)
-mcpsec fuzz --stdio "server" --output results.sarif
-```
+- **Injection:** Command injection (JS, Go, Rust, .NET, Python, Python async), SQL injection (all drivers + ORM bypass), path traversal
+- **Network:** SSRF patterns, resource URI issues
+- **Secrets:** AWS keys, API tokens, JWT secrets, connection strings, private keys
+- **MCP-Specific:** Dangerous tool names, empty schemas, input reflection, missing auth
+- **Code Quality:** Security TODOs, empty catches, TLS disabled, CORS *, ReDoS patterns
 
 ---
 
@@ -185,66 +147,86 @@ mcpsec fuzz --stdio "server" --output results.sarif
 └────┬────┘                       └────────────┘
      │
      ├── Connect & enumerate attack surface
-     ├── Run static scanners
-     ├── Generate dynamic payloads  
-     ├── Execute fuzzing campaigns
-     └── Report findings with evidence
+     ├── Run 10+ security scanners  
+     ├── Generate 800+ fuzz cases
+     ├── Execute AI-powered payload mutations
+     └── Report findings with PoC evidence
 ```
 
 ---
 
-## Disclaimer
+## Configuration
 
-For authorized security testing only. Only scan servers you own or have permission to test.
+### AI Provider Setup
+```bash
+mcpsec setup
+```
+Supports: OpenAI, Anthropic, Google, Groq, DeepSeek, Ollama
+
+### Output Formats
+```bash
+# JSON
+mcpsec scan --stdio "server" --output results.json
+
+# SARIF 2.1.0 (GitHub/GitLab/Azure DevOps CI/CD)
+mcpsec fuzz --stdio "server" --output results.sarif
+```
 
 ---
 
 ## Changelog
 
 ### v2.4.0 (2026-02-28)
-- **SAST Rules Expansion**: 87 new Semgrep rules → **154 total** across 24 rule files.
-- **Broad Patterns**: Command injection, path traversal, SQL injection, SSRF, deserialization — now catches non-literal args, template literals, string concat, ORM raw queries.
-- **Secrets Detection**: AWS keys, AI API keys, GitHub/Slack tokens, JWT secrets, connection strings, private keys.
-- **MCP-Specific**: Dangerous tool names, empty schemas, error leaks, input reflection, no auth checks.
-- **Code Smells**: Security TODOs, empty catches, TLS disabled, CORS *, logging sensitive data, ReDoS patterns.
+- **SAST Rules Expansion**: 87 new Semgrep rules → **149 total** across 24 rule files
+- Broad patterns for command injection, path traversal, SQL injection, SSRF, deserialization
+- Secrets detection: AWS keys, AI API keys, GitHub/Slack tokens, JWT secrets
+- MCP-specific rules: dangerous tool names, empty schemas, error leaks, input reflection
+- Code smells: security TODOs, empty catches, TLS disabled, CORS *, ReDoS patterns
 
 ### v2.3.0 (2026-02-28)
-- **Scanner Nuclear Expansion**: CmdInj 138, PathTrav 104, SSRF 81 payloads — encoding bypasses, protocol smuggling, shell-specific evasion.
-- **Confirmation-Based Detection**: Regex matching with CONFIRMED/LIKELY confidence scoring.
-- **5 New Fuzzer Generators**: Integer boundaries, concurrency attacks, memory exhaustion, regex DoS, deserialization (187+ new test cases).
-- **SDK Audit Rules**: New Semgrep rules for Go, Rust, Python async, and .NET MCP servers.
+- **Scanner Nuclear Expansion**: Command injection (138), path traversal (104), SSRF (81) payloads
+- Encoding bypasses, protocol smuggling, shell-specific evasion
+- 5 new fuzz generators: integer boundaries, concurrency, memory exhaustion, regex DoS, deserialization
+- SDK-specific Semgrep rules for Go, Rust, Python async, .NET
 
 ### v2.2.0 (2026-02-28)
-- **SARIF 2.1.0 Output**: `--format sarif` flag on `scan`, `fuzz`, and `audit` for GitHub/GitLab/Azure DevOps CI/CD integration.
-- **CWE Mapping & Severity Scores**: Automatic CWE classification and GitHub-compatible security-severity scoring.
-- **Audit Report Export**: New `--output` and `--format` flags for `mcpsec audit`.
-- **Bugfixes**: Fixed exploit `run` parameter resolution and AI client import.
+- **SARIF 2.1.0 Output** for CI/CD integration
+- CWE mapping and severity scoring
+- Audit report export with `--output` and `--format` flags
 
 ### v2.1.0 (2026-02-27)
-- **AI Exploitation Assistant**: New REPL commands (`select`, `run`, `next`, `verdict`, `auto`) for interactive AI-led testing.
-- **Expert Controls**: Added `edit`, `aggressive`, and `hint` to guide AI toward complex bypasses.
-- **Feedback Loop**: AI now learns from manual `call` commands and response history.
-- **Robustness**: Fixed `Finding` model schema and improved `--from-scan` report ingestion.
+- **AI Exploitation Assistant**: `select`, `run`, `next`, `verdict`, `auto` REPL commands
+- Expert controls: `edit`, `aggressive`, `hint` for complex bypasses
+- AI learns from manual `call` commands and response history
 
 ### v2.0.3 (2026-02-26)
-- **Interactive Exploitation (MCP Repeater)**: New REPL for manual/semi-auto validation of findings.
-- **AI Payload Engine**: Context-aware payload recommendations integrated into playbooks.
-- **Exploit Playbooks**: Attack sequences for SQLi, RCE, SSRF, and more.
-- **Evidence Capture**: Automated logging and PoC script generation.
+- **MCP Repeater**: Interactive REPL for manual/semi-auto finding validation
+- AI payload engine with context-aware recommendations
+- Exploit playbooks for SQLi, RCE, SSRF, path traversal
+- Automated evidence capture and PoC generation
+
+<details>
+<summary>Earlier versions</summary>
 
 ### v2.0.2 (2026-02-26)
-- **Tool Chain Analysis**: Detect dangerous tool combinations (read+exec, sql+exfil).
-- **Cross-Platform Priority**: Robust Windows support for `npx`, modern path resolution.
-- **Improved UI**: Refined terminal output and error reporting.
+- Tool chain analysis for dangerous combinations
+- Cross-platform Windows support improvements
 
 ### v2.0.1 (2026-02-25)
-- **Advanced SQL Scanner**: Modular architecture with error/time/boolean detection.
-- **DB Fingerprinting**: Automated identification of MySQL, Postgres, MSSQL, and SQLite.
-- **Enhanced Heuristics**: Better tool and parameter surface discovery.
+- Advanced SQL scanner with modular detection
+- DB fingerprinting for MySQL, Postgres, MSSQL, SQLite
 
 ### v2.0.0 (2026-02-24)
-- **Fuzzing Engine v2**: Chained fuzzer for deep state-machine exploration.
-- **AI-Powered Validation**: LLM verification of potential security findings.
+- Fuzzing engine v2 with chained state-machine exploration
+- AI-powered validation of security findings
+
+</details>
+
+---
+
+## Disclaimer
+
+For authorized security testing only. Only scan servers you own or have explicit permission to test.
 
 ---
 
