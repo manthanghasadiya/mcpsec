@@ -1,0 +1,18 @@
+rules:
+  - id: mcpsec-indirect-injection
+    languages:
+      - python
+    message: |
+      Possible RAG Poisoning or Indirect Prompt Injection. Data from an MCP tool argument is being
+      written to storage (file, db, memory), which might later be fed into an LLM context without sanitization.
+    severity: INFO
+    mode: taint
+    pattern-sources:
+      - pattern: arguments
+      - pattern: $ARGS.get(...)
+      - pattern: $ARGS[...]
+    pattern-sinks:
+      - pattern: open(..., 'w').write(...)
+      - pattern: $DB.execute("INSERT ...", ...)
+      - pattern: $DICT[$KEY] = ...
+      - pattern: $DICT.update(...)

@@ -1,0 +1,16 @@
+rules:
+  - id: mcpsec-ast-sandbox-escape
+    languages:
+      - python
+    message: |
+      Unsafe eval() detected. Even with __builtins__ blocked, an attacker can escape the sandbox using MRO traversal 
+      (e.g., ().__class__.__base__.__subclasses__()) or AST Subscript attacks if __getitem__ isn't blocked.
+    severity: WARNING
+    patterns:
+      - pattern: eval(...)
+      - pattern-not-inside: |
+          $TREE = ast.parse(...)
+          ...
+          eval(...)
+      - pattern-not-inside: |
+          ast.literal_eval(...)

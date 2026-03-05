@@ -1,16 +1,27 @@
 """Mutate the JSON-RPC 'method' field — typos, case, homoglyphs, traversal."""
 
 import json
+
 from .base import FuzzCase
 
 # All valid MCP methods
 MCP_METHODS = [
-    "initialize", "ping", "tools/list", "tools/call",
-    "resources/list", "resources/read", "resources/subscribe",
-    "resources/unsubscribe", "prompts/list", "prompts/get",
-    "completion/complete", "logging/setLevel",
-    "notifications/initialized", "notifications/cancelled",
+    "initialize",
+    "ping",
+    "tools/list",
+    "tools/call",
+    "resources/list",
+    "resources/read",
+    "resources/subscribe",
+    "resources/unsubscribe",
+    "prompts/list",
+    "prompts/get",
+    "completion/complete",
+    "logging/setLevel",
+    "notifications/initialized",
+    "notifications/cancelled",
 ]
+
 
 def _rpc(method: str, params=None, req_id=1) -> bytes:
     msg: dict = {"jsonrpc": "2.0", "method": method, "id": req_id}
@@ -28,9 +39,15 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         return f"Content-Length: {len(body)}\r\n\r\n".encode() + body
 
     def _add(name: str, payload: bytes, desc: str, expected: str = "Error or reject"):
-        cases.append(FuzzCase(name=name, generator="method_mutations",
-                              payload=_frame(payload), description=desc,
-                              expected_behavior=expected))
+        cases.append(
+            FuzzCase(
+                name=name,
+                generator="method_mutations",
+                payload=_frame(payload),
+                description=desc,
+                expected_behavior=expected,
+            )
+        )
 
     # ── Typos for every slash-method ─────────────────────────────────
     typo_pairs = [
@@ -44,24 +61,32 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
     ]
     for correct, typos in typo_pairs:
         for t in typos:
-            _add(f"typo_{t.replace('/', '_')}", _rpc(t),
-                 f"Typo of '{correct}': '{t}'")
+            _add(f"typo_{t.replace('/', '_')}", _rpc(t), f"Typo of '{correct}': '{t}'")
 
     # ── Case variations ──────────────────────────────────────────────
     case_variants = [
-        "TOOLS/LIST", "Tools/List", "tOOLS/lIST", "TOOLS/CALL",
-        "INITIALIZE", "Initialize", "PING", "Ping",
-        "RESOURCES/LIST", "Resources/Read",
+        "TOOLS/LIST",
+        "Tools/List",
+        "tOOLS/lIST",
+        "TOOLS/CALL",
+        "INITIALIZE",
+        "Initialize",
+        "PING",
+        "Ping",
+        "RESOURCES/LIST",
+        "Resources/Read",
     ]
     for v in case_variants:
-        _add(f"case_{v.replace('/', '_').lower()}", _rpc(v),
-             f"Case variation: '{v}'")
+        _add(f"case_{v.replace('/', '_').lower()}", _rpc(v), f"Case variation: '{v}'")
 
     # ── Unicode homoglyphs for slash ─────────────────────────────────
-    FAKE_SLASHES = ["\u2215", "\u2044", "\u29F8", "\uFF0F"]  # ∕ ⁄ ⧸ ／
+    FAKE_SLASHES = ["\u2215", "\u2044", "\u29f8", "\uff0f"]  # ∕ ⁄ ⧸ ／
     for i, fs in enumerate(FAKE_SLASHES):
-        _add(f"homoglyph_slash_{i}", _rpc(f"tools{fs}list"),
-             f"Unicode homoglyph slash (U+{ord(fs):04X}) in method")
+        _add(
+            f"homoglyph_slash_{i}",
+            _rpc(f"tools{fs}list"),
+            f"Unicode homoglyph slash (U+{ord(fs):04X}) in method",
+        )
 
     # ── Path traversal in method ─────────────────────────────────────
     traversals = [
@@ -74,8 +99,7 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         "tools\\..\\list",
     ]
     for i, t in enumerate(traversals):
-        _add(f"method_traversal_{i}", _rpc(t),
-             f"Path traversal in method: '{t}'")
+        _add(f"method_traversal_{i}", _rpc(t), f"Path traversal in method: '{t}'")
 
     # ── Method with whitespace ───────────────────────────────────────
     ws_variants = [
@@ -99,23 +123,33 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         _add(f"inject_{name}", _rpc(m), f"Method injection: {repr(m)}")
 
     # ── Very long method paths ───────────────────────────────────────
-    _add("long_method_segments", _rpc("tools/" + "a/" * 500 + "list"),
-         "Method with 500 path segments")
-    _add("long_method_10k", _rpc("x" * 10_000),
-         "10KB method name")
+    _add(
+        "long_method_segments",
+        _rpc("tools/" + "a/" * 500 + "list"),
+        "Method with 500 path segments",
+    )
+    _add("long_method_10k", _rpc("x" * 10_000), "10KB method name")
 
     # ── Empty / missing segments ─────────────────────────────────────
     empty_segs = [
-        "tools//list", "//tools/list", "tools/list//",
-        "/", "//", "", "///tools///list///",
+        "tools//list",
+        "//tools/list",
+        "tools/list//",
+        "/",
+        "//",
+        "",
+        "///tools///list///",
     ]
     for i, s in enumerate(empty_segs):
         _add(f"empty_seg_{i}", _rpc(s), f"Empty path segments: '{s}'")
 
     # ── Dot segments ─────────────────────────────────────────────────
     dot_segs = [
-        "tools/./list", "tools/../tools/list",
-        "./tools/list", "tools/list/.", "tools/list/..",
+        "tools/./list",
+        "tools/../tools/list",
+        "./tools/list",
+        "tools/list/.",
+        "tools/list/..",
     ]
     for i, s in enumerate(dot_segs):
         _add(f"dot_seg_{i}", _rpc(s), f"Dot segments in method: '{s}'")
@@ -170,25 +204,31 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
     ]
     for name, val in wrong_method_types:
         msg = {"jsonrpc": "2.0", "method": val, "id": 1}
-        _add(name, json.dumps(msg).encode(),
-             f"Method as {type(val).__name__}: {val}")
+        _add(name, json.dumps(msg).encode(), f"Method as {type(val).__name__}: {val}")
 
     # ── LSP / other protocol methods ─────────────────────────────────
     lsp_methods = [
-        "textDocument/didOpen", "textDocument/completion",
-        "workspace/symbol", "window/showMessage",
-        "$/progress", "$/cancelRequest",
-        "shutdown", "exit",
-        "textDocument/hover", "textDocument/definition",
+        "textDocument/didOpen",
+        "textDocument/completion",
+        "workspace/symbol",
+        "window/showMessage",
+        "$/progress",
+        "$/cancelRequest",
+        "shutdown",
+        "exit",
+        "textDocument/hover",
+        "textDocument/definition",
     ]
     for i, m in enumerate(lsp_methods):
         _add(f"lsp_method_{i}", _rpc(m), f"LSP method name: {m}")
 
     # ── Numeric / integer methods ────────────────────────────────────
     for num in [0, 1, -1, 999, 2147483647, -2147483648]:
-        _add(f"numeric_method_{abs(num)}",
-             json.dumps({"jsonrpc": "2.0", "method": str(num), "id": 1}).encode(),
-             f"Numeric method name: {num}")
+        _add(
+            f"numeric_method_{abs(num)}",
+            json.dumps({"jsonrpc": "2.0", "method": str(num), "id": 1}).encode(),
+            f"Numeric method name: {num}",
+        )
 
     # ── Method with SQL/command injection ────────────────────────────
     inject_methods = [
@@ -196,16 +236,22 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         ("cmd_method", "tools/list; ls -la", "Command injection in method"),
         ("xpath_method", "tools/list[1=1]", "XPath injection in method"),
         ("template_method", "tools/{{list}}", "Template injection in method"),
-        ("eval_method", "tools/list\"; eval(\"1+1", "Eval injection in method"),
+        ("eval_method", 'tools/list"; eval("1+1', "Eval injection in method"),
     ]
     for name, m, desc in inject_methods:
         _add(name, _rpc(m), desc)
 
     # ── Every valid method with extra prefix/suffix ──────────────────
     for method in ["tools/list", "tools/call", "resources/list", "ping"]:
-        _add(f"prefix_slash_{method.replace('/', '_')}",
-             _rpc(f"/{method}"), f"Leading slash: /{method}")
-        _add(f"suffix_slash_{method.replace('/', '_')}",
-             _rpc(f"{method}/"), f"Trailing slash: {method}/")
+        _add(
+            f"prefix_slash_{method.replace('/', '_')}",
+            _rpc(f"/{method}"),
+            f"Leading slash: /{method}",
+        )
+        _add(
+            f"suffix_slash_{method.replace('/', '_')}",
+            _rpc(f"{method}/"),
+            f"Trailing slash: {method}/",
+        )
 
     return cases

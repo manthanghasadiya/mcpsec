@@ -10,30 +10,24 @@ Tests what happens with:
 6. Null IDs (notification vs request confusion)
 """
 
-import math
 from typing import Any
 
 # Generator metadata
 GENERATOR_NAME = "id_confusion"
 GENERATOR_DESCRIPTION = "Tests JSON-RPC message ID edge cases and type confusion"
 CATEGORY = "protocol"
-INTENSITY_LEVELS = {
-    "low": 15,
-    "medium": 35,
-    "high": 60,
-    "insane": 60
-}
+INTENSITY_LEVELS = {"low": 15, "medium": 35, "high": 60, "insane": 60}
 
 
 def generate(intensity: str = "medium") -> list[dict[str, Any]]:
     """Generate ID confusion test cases."""
     cases = []
     max_cases = INTENSITY_LEVELS.get(intensity, 35)
-    
+
     # Base request template
     base_method = "tools/list"
     base_params = {}
-    
+
     # ===========================================
     # Category 1: Numeric ID Edge Cases
     # ===========================================
@@ -50,16 +44,23 @@ def generate(intensity: str = "medium") -> list[dict[str, Any]]:
         ("max_uint64", 18446744073709551615, "Max 64-bit unsigned int"),
         ("huge_int", 10**100, "Astronomically large integer"),
     ]
-    
+
     for name, id_val, desc in numeric_ids:
-        cases.append({
-            "name": f"id_numeric_{name}",
-            "description": desc,
-            "payload": {"jsonrpc": "2.0", "id": id_val, "method": base_method, "params": base_params},
-            "expects_error": False,
-            "crash_indicates_bug": True,
-        })
-    
+        cases.append(
+            {
+                "name": f"id_numeric_{name}",
+                "description": desc,
+                "payload": {
+                    "jsonrpc": "2.0",
+                    "id": id_val,
+                    "method": base_method,
+                    "params": base_params,
+                },
+                "expects_error": False,
+                "crash_indicates_bug": True,
+            }
+        )
+
     # ===========================================
     # Category 2: Float IDs (technically valid JSON-RPC but edge case)
     # ===========================================
@@ -72,16 +73,23 @@ def generate(intensity: str = "medium") -> list[dict[str, Any]]:
         # Note: infinity and NaN can't be represented in standard JSON
         # but some parsers might accept them
     ]
-    
+
     for name, id_val, desc in float_ids:
-        cases.append({
-            "name": f"id_float_{name}",
-            "description": desc,
-            "payload": {"jsonrpc": "2.0", "id": id_val, "method": base_method, "params": base_params},
-            "expects_error": False,
-            "crash_indicates_bug": True,
-        })
-    
+        cases.append(
+            {
+                "name": f"id_float_{name}",
+                "description": desc,
+                "payload": {
+                    "jsonrpc": "2.0",
+                    "id": id_val,
+                    "method": base_method,
+                    "params": base_params,
+                },
+                "expects_error": False,
+                "crash_indicates_bug": True,
+            }
+        )
+
     # ===========================================
     # Category 3: String IDs (valid per JSON-RPC 2.0)
     # ===========================================
@@ -98,16 +106,23 @@ def generate(intensity: str = "medium") -> list[dict[str, Any]]:
         ("whitespace", "   ", "Whitespace-only ID"),
         ("json_injection", '{"nested": "json"}', "JSON string as ID"),
     ]
-    
+
     for name, id_val, desc in string_ids:
-        cases.append({
-            "name": f"id_string_{name}",
-            "description": desc,
-            "payload": {"jsonrpc": "2.0", "id": id_val, "method": base_method, "params": base_params},
-            "expects_error": False,
-            "crash_indicates_bug": True,
-        })
-    
+        cases.append(
+            {
+                "name": f"id_string_{name}",
+                "description": desc,
+                "payload": {
+                    "jsonrpc": "2.0",
+                    "id": id_val,
+                    "method": base_method,
+                    "params": base_params,
+                },
+                "expects_error": False,
+                "crash_indicates_bug": True,
+            }
+        )
+
     # ===========================================
     # Category 4: Type Confusion
     # ===========================================
@@ -122,57 +137,76 @@ def generate(intensity: str = "medium") -> list[dict[str, Any]]:
         ("object_with_id", {"id": 1}, "Object with 'id' field as ID"),
         ("array_of_ids", [1, 2, 3], "Multiple IDs in array"),
     ]
-    
+
     for name, id_val, desc in type_confusion_ids:
-        cases.append({
-            "name": f"id_type_{name}",
-            "description": desc,
-            "payload": {"jsonrpc": "2.0", "id": id_val, "method": base_method, "params": base_params},
-            "expects_error": True,  # Invalid ID types should error
-            "crash_indicates_bug": True,
-        })
-    
+        cases.append(
+            {
+                "name": f"id_type_{name}",
+                "description": desc,
+                "payload": {
+                    "jsonrpc": "2.0",
+                    "id": id_val,
+                    "method": base_method,
+                    "params": base_params,
+                },
+                "expects_error": True,  # Invalid ID types should error
+                "crash_indicates_bug": True,
+            }
+        )
+
     # ===========================================
     # Category 5: ID Collision/Reuse
     # ===========================================
     # These are sent as sequences
-    cases.append({
-        "name": "id_duplicate_sequential",
-        "description": "Send two requests with same ID sequentially",
-        "payload": {"jsonrpc": "2.0", "id": 1, "method": base_method, "params": base_params},
-        "repeat": 2,
-        "crash_indicates_bug": True,
-    })
-    
-    cases.append({
-        "name": "id_reuse_after_response",
-        "description": "Reuse ID immediately after receiving response",
-        "payload": {"jsonrpc": "2.0", "id": 42, "method": base_method, "params": base_params},
-        "repeat": 3,
-        "delay_between": 0.1,
-        "crash_indicates_bug": True,
-    })
-    
+    cases.append(
+        {
+            "name": "id_duplicate_sequential",
+            "description": "Send two requests with same ID sequentially",
+            "payload": {"jsonrpc": "2.0", "id": 1, "method": base_method, "params": base_params},
+            "repeat": 2,
+            "crash_indicates_bug": True,
+        }
+    )
+
+    cases.append(
+        {
+            "name": "id_reuse_after_response",
+            "description": "Reuse ID immediately after receiving response",
+            "payload": {"jsonrpc": "2.0", "id": 42, "method": base_method, "params": base_params},
+            "repeat": 3,
+            "delay_between": 0.1,
+            "crash_indicates_bug": True,
+        }
+    )
+
     # ===========================================
     # Category 6: Missing ID (Notification vs Request)
     # ===========================================
     # Request without ID = notification, but expecting response is confusing
-    cases.append({
-        "name": "missing_id_tools_list",
-        "description": "tools/list without ID (treated as notification, but expects result)",
-        "payload": {"jsonrpc": "2.0", "method": "tools/list", "params": {}},
-        "expects_error": False,  # Notifications don't get responses
-        "crash_indicates_bug": True,
-    })
-    
-    cases.append({
-        "name": "missing_id_tools_call",
-        "description": "tools/call without ID (notification for a method that needs response)",
-        "payload": {"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "test", "arguments": {}}},
-        "expects_error": False,
-        "crash_indicates_bug": True,
-    })
-    
+    cases.append(
+        {
+            "name": "missing_id_tools_list",
+            "description": "tools/list without ID (treated as notification, but expects result)",
+            "payload": {"jsonrpc": "2.0", "method": "tools/list", "params": {}},
+            "expects_error": False,  # Notifications don't get responses
+            "crash_indicates_bug": True,
+        }
+    )
+
+    cases.append(
+        {
+            "name": "missing_id_tools_call",
+            "description": "tools/call without ID (notification for a method that needs response)",
+            "payload": {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {"name": "test", "arguments": {}},
+            },
+            "expects_error": False,
+            "crash_indicates_bug": True,
+        }
+    )
+
     # ===========================================
     # Category 7: ID in Notifications (Invalid)
     # ===========================================
@@ -181,15 +215,17 @@ def generate(intensity: str = "medium") -> list[dict[str, Any]]:
         ("cancelled", "notifications/cancelled", {"requestId": 1}),
         ("progress", "notifications/progress", {"progressToken": "tok", "progress": 50}),
     ]
-    
+
     for name, method, params in notification_with_ids:
-        cases.append({
-            "name": f"notification_with_id_{name}",
-            "description": f"{method} notification incorrectly includes ID",
-            "payload": {"jsonrpc": "2.0", "id": 999, "method": method, "params": params},
-            "expects_error": True,
-            "crash_indicates_bug": True,
-        })
-    
+        cases.append(
+            {
+                "name": f"notification_with_id_{name}",
+                "description": f"{method} notification incorrectly includes ID",
+                "payload": {"jsonrpc": "2.0", "id": 999, "method": method, "params": params},
+                "expects_error": True,
+                "crash_indicates_bug": True,
+            }
+        )
+
     # Limit to intensity level
     return cases[:max_cases]

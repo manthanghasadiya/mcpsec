@@ -11,19 +11,19 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from mcpsec.models import Finding, Severity, ServerProfile
-from mcpsec.scanners.base import BaseScanner
 from mcpsec.client.mcp_client import MCPSecClient
+from mcpsec.models import Finding, ServerProfile, Severity
+from mcpsec.scanners.base import BaseScanner
 
 logger = logging.getLogger(__name__)
 
 
 class CapabilityEscalationScanner(BaseScanner):
     """Scans for capability enforcement issues."""
-    
+
     name = "capability-escalation"
     description = "Tests if servers properly enforce declared capabilities"
-    
+
     # Map of capabilities to their methods
     CAPABILITY_METHODS = {
         "tools": [
@@ -43,27 +43,35 @@ class CapabilityEscalationScanner(BaseScanner):
             ("logging/setLevel", {"level": "debug"}, "Set log level"),
         ],
         "sampling": [
-            ("sampling/createMessage", {
-                "messages": [{"role": "user", "content": {"type": "text", "text": "test"}}],
-                "maxTokens": 10
-            }, "Create sampling message"),
+            (
+                "sampling/createMessage",
+                {
+                    "messages": [{"role": "user", "content": {"type": "text", "text": "test"}}],
+                    "maxTokens": 10,
+                },
+                "Create sampling message",
+            ),
         ],
     }
-    
-    async def scan(self, profile: ServerProfile, client: MCPSecClient | None = None) -> list[Finding]:
+
+    async def scan(
+        self, profile: ServerProfile, client: MCPSecClient | None = None
+    ) -> list[Finding]:
         """Scan for capability enforcement issues."""
         findings = []
-        
+
         if not client or not client.session:
-            return [Finding(
-                severity=Severity.INFO,
-                scanner=self.name,
-                title="Capability scan requires live connection",
-                description="This scanner needs a live MCP connection to test capability enforcement",
-                detail="No live client session available",
-                remediation="Run with live server connection"
-            )]
-        
+            return [
+                Finding(
+                    severity=Severity.INFO,
+                    scanner=self.name,
+                    title="Capability scan requires live connection",
+                    description="This scanner needs a live MCP connection to test capability enforcement",
+                    detail="No live client session available",
+                    remediation="Run with live server connection",
+                )
+            ]
+
         # Get declared capabilities from profile
         server_capabilities = profile.capabilities
         declared = set()
@@ -77,7 +85,7 @@ class CapabilityEscalationScanner(BaseScanner):
             declared.add("logging")
         if server_capabilities.get("experimental", {}).get("sampling"):
             declared.add("sampling")
-        
+
         # Test undeclared capabilities
         for capability, methods in self.CAPABILITY_METHODS.items():
             if capability not in declared:
@@ -88,32 +96,56 @@ class CapabilityEscalationScanner(BaseScanner):
                     )
                     if finding:
                         findings.append(finding)
-        
+
         # Also check if declared capabilities can be abused
         for capability in declared:
-            abuse_finding = self._check_capability_abuse(capability, server_capabilities.get(capability, {}))
+            abuse_finding = self._check_capability_abuse(
+                capability, server_capabilities.get(capability, {})
+            )
             if abuse_finding:
                 findings.append(abuse_finding)
-        
+
         return findings
-    
+
     async def _test_undeclared_capability(
-        self, 
+        self,
         client: MCPSecClient,
         server_capabilities: dict,
-        capability: str, 
-        method: str, 
+        capability: str,
+        method: str,
         params: dict,
-        description: str
+        description: str,
     ) -> Finding | None:
         """Test if an undeclared capability actually works."""
         if not client.session:
             return None
 
         try:
-            # Try to call the method via the low-level session request
-            result = await client.session.send_request(method, params)
-            
+            if method == "tools/list":
+                result = await client.session.list_tools()
+            elif method == "tools/call":
+                result = await client.session.call_tool(
+                    params.get("name", "__test__"), params.get("arguments", {})
+                )
+            elif method == "resources/list":
+                result = await client.session.list_resources()
+            elif method == "resources/read":
+                # For high level read API it might accept string uri
+                result = await client.session.read_resource(params.get("uri", "test://resource"))
+            elif method == "resources/subscribe":
+                # Same here
+                result = await client.session.subscribe_resource(
+                    params.get("uri", "test://resource")
+                )
+            elif method == "prompts/list":
+                result = await client.session.list_prompts()
+            elif method == "prompts/get":
+                result = await client.session.get_prompt(
+                    params.get("name", "__test__"), params.get("arguments")
+                )
+            else:
+                return None
+
             # If we got a successful response (not None and not an exception), that's a problem
             if result is not None and not isinstance(result, Exception):
                 return Finding(
@@ -124,20 +156,20 @@ class CapabilityEscalationScanner(BaseScanner):
                     description=f"Server responds to {method} but didn't declare '{capability}' capability",
                     detail=f"Capability: {capability}\nDeclared: {list(server_capabilities.keys())}",
                     evidence=str(result)[:200],
-                    remediation=f"Either declare the '{capability}' capability or disable the {method} handler"
+                    remediation=f"Either declare the '{capability}' capability or disable the {method} handler",
                 )
         except Exception as e:
             error_str = str(e).lower()
-            
+
             # Check if error indicates method exists but is "disabled"
             # vs method truly doesn't exist
             soft_errors = ["not enabled", "capability not", "disabled", "not supported"]
             hard_errors = ["method not found", "unknown method", "invalid method"]
-            
+
             if any(soft in error_str for soft in soft_errors):
                 # Server knows about the method but claims it's disabled. This is okay.
                 return None
-            
+
             if not any(hard in error_str for hard in hard_errors):
                 # Ambiguous error - might be partially working or revealing something
                 return Finding(
@@ -148,11 +180,11 @@ class CapabilityEscalationScanner(BaseScanner):
                     description=f"Server gave unclear error for undeclared {method}",
                     detail=f"Method: {method}\nError: {error_str[:300]}",
                     evidence=error_str[:200],
-                    remediation="Ensure undeclared capabilities return clear 'method not found' errors"
+                    remediation="Ensure undeclared capabilities return clear 'method not found' errors",
                 )
-        
+
         return None
-    
+
     def _check_capability_abuse(self, capability: str, cap_config: Any) -> Finding | None:
         """Check if a declared capability has dangerous configurations."""
         if not isinstance(cap_config, dict):
@@ -169,9 +201,9 @@ class CapabilityEscalationScanner(BaseScanner):
                     title="Dynamic Tool List Enabled",
                     description="Server can dynamically add/remove tools (listChanged=true)",
                     detail=f"Tools Config: {cap_config}",
-                    remediation="Consider if dynamic tool changes are necessary. Could enable tool injection."
+                    remediation="Consider if dynamic tool changes are necessary. Could enable tool injection.",
                 )
-        
+
         elif capability == "resources":
             if cap_config.get("subscribe"):
                 # Subscription could be abused for DoS or data exfil
@@ -182,7 +214,7 @@ class CapabilityEscalationScanner(BaseScanner):
                     title="Resource Subscription Enabled",
                     description="Server supports resource subscriptions - monitor for abuse",
                     detail=f"Resources Config: {cap_config}",
-                    remediation="Implement rate limiting on resource subscriptions"
+                    remediation="Implement rate limiting on resource subscriptions",
                 )
-        
+
         return None

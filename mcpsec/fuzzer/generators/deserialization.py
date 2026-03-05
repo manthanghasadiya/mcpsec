@@ -37,16 +37,19 @@ def generate(intensity: str = "medium", **kwargs) -> list[dict]:
     ]
 
     for i, payload in enumerate(proto_payloads):
-        cases.append({
-            "name": f"prototype_pollution_{i}",
-            "description": f"Prototype pollution: {list(payload.keys())[0]}",
-            "payload": {
-                "jsonrpc": "2.0", "id": 1,
-                "method": "tools/call",
-                "params": {"name": "test", "arguments": payload}
-            },
-            "crash_indicates_bug": True,
-        })
+        cases.append(
+            {
+                "name": f"prototype_pollution_{i}",
+                "description": f"Prototype pollution: {list(payload.keys())[0]}",
+                "payload": {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "test", "arguments": payload},
+                },
+                "crash_indicates_bug": True,
+            }
+        )
 
     # ── Python class confusion ───────────────────────────────────
     python_payloads = [
@@ -58,16 +61,19 @@ def generate(intensity: str = "medium", **kwargs) -> list[dict]:
     ]
 
     for i, payload in enumerate(python_payloads):
-        cases.append({
-            "name": f"python_deser_{i}",
-            "description": f"Python deserialization: {list(payload.keys())[0]}",
-            "payload": {
-                "jsonrpc": "2.0", "id": 1,
-                "method": "tools/call",
-                "params": {"name": "test", "arguments": payload}
-            },
-            "crash_indicates_bug": True,
-        })
+        cases.append(
+            {
+                "name": f"python_deser_{i}",
+                "description": f"Python deserialization: {list(payload.keys())[0]}",
+                "payload": {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "test", "arguments": payload},
+                },
+                "crash_indicates_bug": True,
+            }
+        )
 
     # ── YAML tag injection (as strings in JSON) ──────────────────
     yaml_tags = [
@@ -81,16 +87,19 @@ def generate(intensity: str = "medium", **kwargs) -> list[dict]:
     ]
 
     for i, tag in enumerate(yaml_tags):
-        cases.append({
-            "name": f"yaml_tag_{i}",
-            "description": f"YAML tag injection: {tag[:40]}",
-            "payload": {
-                "jsonrpc": "2.0", "id": 1,
-                "method": "tools/call",
-                "params": {"name": "test", "arguments": {"data": tag}}
-            },
-            "crash_indicates_bug": True,
-        })
+        cases.append(
+            {
+                "name": f"yaml_tag_{i}",
+                "description": f"YAML tag injection: {tag[:40]}",
+                "payload": {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "test", "arguments": {"data": tag}},
+                },
+                "crash_indicates_bug": True,
+            }
+        )
 
     # ── JSON type confusion for typed languages ──────────────────
     type_confusion_payloads = [
@@ -111,16 +120,14 @@ def generate(intensity: str = "medium", **kwargs) -> list[dict]:
     ]
 
     for i, payload in enumerate(type_confusion_payloads):
-        cases.append({
-            "name": f"type_confusion_{i}",
-            "description": f"Type confusion: {json.dumps(payload)[:50]}",
-            "payload": {
-                "jsonrpc": "2.0", "id": 1,
-                "method": "tools/call",
-                "params": payload
-            },
-            "crash_indicates_bug": True,
-        })
+        cases.append(
+            {
+                "name": f"type_confusion_{i}",
+                "description": f"Type confusion: {json.dumps(payload)[:50]}",
+                "payload": {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": payload},
+                "crash_indicates_bug": True,
+            }
+        )
 
     # ── Template injection strings ───────────────────────────────
     if intensity in ("high", "insane"):
@@ -137,15 +144,18 @@ def generate(intensity: str = "medium", **kwargs) -> list[dict]:
         ]
 
         for i, payload in enumerate(template_payloads):
-            cases.append({
-                "name": f"template_injection_{i}",
-                "description": f"Template injection: {payload[:40]}",
-                "payload": {
-                    "jsonrpc": "2.0", "id": 1,
-                    "method": "tools/call",
-                    "params": {"name": "test", "arguments": {"input": payload}}
-                },
-                "crash_indicates_bug": True,
-            })
+            cases.append(
+                {
+                    "name": f"template_injection_{i}",
+                    "description": f"Template injection: {payload[:40]}",
+                    "payload": {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {"name": "test", "arguments": {"input": payload}},
+                    },
+                    "crash_indicates_bug": True,
+                }
+            )
 
     return cases

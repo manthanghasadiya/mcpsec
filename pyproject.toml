@@ -4,20 +4,22 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcpsec"
-version = "2.4.1"
-description = "Security scanner and protocol fuzzer for MCP (Model Context Protocol) servers. Found and reported vulnerabilities in official Anthropic and GitHub MCP implementations."
+version = "2.5.0"
+description = "Security scanner for MCP (Model Context Protocol) servers - pentest your AI agent's tool connections"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 authors = [
-    { name = "Manthan" }
+    {name = "Manthan Ghasadiya", email = "manthan27ghasadiya@gmail.com"}
 ]
-keywords = ["mcp", "security", "pentesting", "ai", "scanner", "model-context-protocol"]
+keywords = ["mcp", "security", "scanner", "ai", "llm", "pentest", "vulnerability"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Security",
@@ -58,7 +60,9 @@ mcpsec = "mcpsec.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/manthanghasadiya/mcpsec"
+Documentation = "https://github.com/manthanghasadiya/mcpsec#readme"
 Repository = "https://github.com/manthanghasadiya/mcpsec"
+Issues = "https://github.com/manthanghasadiya/mcpsec/issues"
 
 [tool.ruff]
 target-version = "py311"

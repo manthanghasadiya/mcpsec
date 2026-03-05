@@ -4,7 +4,6 @@ Core data models for mcpsec.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -27,6 +26,7 @@ class TransportType(str, Enum):
 
 class ToolInfo(BaseModel):
     """Represents a discovered MCP tool."""
+
     name: str
     description: str = ""
     parameters: dict[str, Any] = Field(default_factory=dict)
@@ -36,6 +36,7 @@ class ToolInfo(BaseModel):
 
 class ResourceInfo(BaseModel):
     """Represents a discovered MCP resource."""
+
     uri: str
     name: str = ""
     description: str = ""
@@ -44,6 +45,7 @@ class ResourceInfo(BaseModel):
 
 class PromptInfo(BaseModel):
     """Represents a discovered MCP prompt."""
+
     name: str
     description: str = ""
     arguments: list[dict[str, Any]] = Field(default_factory=list)
@@ -51,6 +53,7 @@ class PromptInfo(BaseModel):
 
 class ServerProfile(BaseModel):
     """Full profile of an MCP server's exposed surface."""
+
     server_name: str = ""
     server_version: str = ""
     transport: TransportType = TransportType.STDIO
@@ -64,6 +67,7 @@ class ServerProfile(BaseModel):
 
 class Finding(BaseModel):
     """A single vulnerability finding."""
+
     id: str = ""
     severity: Severity
     scanner: str
@@ -93,6 +97,7 @@ class Finding(BaseModel):
 
 class ScanResult(BaseModel):
     """Complete scan result."""
+
     scan_id: str = ""
     target: str = ""
     transport: TransportType = TransportType.STDIO

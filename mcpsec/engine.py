@@ -5,14 +5,12 @@ Scan engine — orchestrates scanner execution.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import ScanResult, ServerProfile, TransportType
-from mcpsec.scanners.base import BaseScanner
 from mcpsec.scanners import SCANNERS
-from mcpsec.ui import console, print_finding, print_section, print_summary, get_progress
-
+from mcpsec.scanners.base import BaseScanner
+from mcpsec.ui import console, get_progress, print_finding, print_section, print_summary
 
 # ── Scanner Registry ─────────────────────────────────────────────────────────
 
@@ -29,6 +27,7 @@ def get_scanners(names: list[str] | None = None) -> list[BaseScanner]:
 
 
 # ── Scan Engine ──────────────────────────────────────────────────────────────
+
 
 async def run_scan(
     profile: ServerProfile,
@@ -66,19 +65,19 @@ async def run_scan(
                 console.print(f"  [warning]⚠ {error_msg}[/warning]")
 
             progress.advance(task)
-            
+
         # Phase 5: Run MCP-specific protocol scanners (fast, no network needed)
         try:
-            from mcpsec.scanners.description_injection import scan_descriptions
             from mcpsec.scanners.annotation_integrity import scan_annotations
-            
+            from mcpsec.scanners.description_injection import scan_descriptions
+
             # These are instant, so we just run them
             result.findings.extend(scan_descriptions(profile.tools))
             result.findings.extend(scan_annotations(profile.tools))
-            
+
             result.scanners_run.append("description-injection")
             result.scanners_run.append("annotation-integrity")
-            
+
         except Exception as e:
             console.print(f"  [warning]⚠ Protocol scanners failed: {e}[/warning]")
 
@@ -89,8 +88,8 @@ async def run_scan(
         # Using a fuzzy key to consolidate multiple "missing annotation" warnings
         simple_title = f.title.lower()
         if "missing" in simple_title and "annotation" in simple_title:
-             simple_title = "missing annotations"
-             
+            simple_title = "missing annotations"
+
         key = (f.tool_name, simple_title)
         if key not in unique_findings:
             unique_findings[key] = f
@@ -99,7 +98,7 @@ async def run_scan(
             existing = unique_findings[key]
             if len(f.description) > len(existing.description):
                 unique_findings[key] = f
-    
+
     result.findings = list(unique_findings.values())
 
     # ── Print findings ────────────────────────────────────────────────────
@@ -107,8 +106,7 @@ async def run_scan(
         print_section("Findings", "🔍")
         severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
         sorted_findings = sorted(
-            result.findings,
-            key=lambda f: severity_order.get(f.severity.value, 5)
+            result.findings, key=lambda f: severity_order.get(f.severity.value, 5)
         )
         for finding in sorted_findings:
             print_finding(

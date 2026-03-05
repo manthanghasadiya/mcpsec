@@ -1,0 +1,17 @@
+rules:
+  - id: mcpsec-dangerous-defaults
+    languages:
+      - python
+    message: |
+      Dangerous default configurations like shell=True in subprocess or verify=False in requests are enabled.
+      These can lead to OS command injection or Man-in-the-Middle attacks.
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.Popen(..., shell=True, ...)
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.call(..., shell=True, ...)
+          - pattern: requests.get(..., verify=False, ...)
+          - pattern: requests.post(..., verify=False, ...)
+          - pattern: yaml.load(..., Loader=yaml.Loader)
+          - pattern: yaml.load(...)

@@ -1,33 +1,38 @@
 """
 mcpsec terminal UI theme — hacker aesthetic.
 """
-from mcpsec import __version__
-from rich.console import Console
-from rich.panel import Panel
-from rich.theme import Theme
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+
 from rich import box
+from rich.console import Console
+from rich.markup import escape
+from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.table import Table
+from rich.theme import Theme
+
+from mcpsec import __version__
 
 # ── Custom Theme ─────────────────────────────────────────────────────────────
 
-MCPSEC_THEME = Theme({
-    "info": "cyan",
-    "warning": "yellow",
-    "danger": "red bold",
-    "success": "green bold",
-    "muted": "dim white",
-    "accent": "bold cyan",
-    "vuln.critical": "bold red",
-    "vuln.high": "red",
-    "vuln.medium": "yellow",
-    "vuln.low": "blue",
-    "vuln.info": "dim cyan",
-    "header": "bold white on rgb(20,30,50)",
-    "tool_name": "bold magenta",
-    "param": "bold cyan",
-    "value": "green",
-})
+MCPSEC_THEME = Theme(
+    {
+        "info": "cyan",
+        "warning": "yellow",
+        "danger": "red bold",
+        "success": "green bold",
+        "muted": "dim white",
+        "accent": "bold cyan",
+        "vuln.critical": "bold red",
+        "vuln.high": "red",
+        "vuln.medium": "yellow",
+        "vuln.low": "blue",
+        "vuln.info": "dim cyan",
+        "header": "bold white on rgb(20,30,50)",
+        "tool_name": "bold magenta",
+        "param": "bold cyan",
+        "value": "green",
+    }
+)
 
 console = Console(theme=MCPSEC_THEME)
 
@@ -78,31 +83,35 @@ def print_target_info(
     table = Table(box=box.SIMPLE_HEAVY, show_header=False, padding=(0, 2))
     table.add_column("key", style="muted", width=12)
     table.add_column("value", style="value")
-    
+
     table.add_row("TARGET", target)
     table.add_row("TRANSPORT", transport)
     table.add_row("TYPE", target_type)
-    
+
     if headers:
         for k, v in headers.items():
             table.add_row("HEADER", f"{k}: {_mask_header_value(k, v)}")
-    
+
     title = "◉ Target"
     try:
-        console.print(Panel(
-            table,
-            title=f"[bold cyan]{title}[/bold cyan]",
-            border_style="cyan",
-            padding=(1, 2),
-        ))
-    except UnicodeEncodeError:
-        try:
-            console.print(Panel(
+        console.print(
+            Panel(
                 table,
-                title="Target",
+                title=f"[bold cyan]{title}[/bold cyan]",
                 border_style="cyan",
                 padding=(1, 2),
-            ))
+            )
+        )
+    except UnicodeEncodeError:
+        try:
+            console.print(
+                Panel(
+                    table,
+                    title="Target",
+                    border_style="cyan",
+                    padding=(1, 2),
+                )
+            )
         except (BrokenPipeError, OSError):
             pass
     except (BrokenPipeError, OSError):
@@ -119,12 +128,13 @@ def _mask_header_value(key: str, value: str) -> str:
 
 def print_tool_info(name: str, description: str, params: dict):
     """Print a discovered MCP tool."""
-    param_str = ", ".join(
-        f"[param]{k}[/param]:[muted]{v}[/muted]"
-        for k, v in params.items()
-    ) if params else "[muted]none[/muted]"
-    
-    icon = "o" # Safe fallback
+    param_str = (
+        ", ".join(f"[param]{k}[/param]:[muted]{v}[/muted]" for k, v in params.items())
+        if params
+        else "[muted]none[/muted]"
+    )
+
+    icon = "o"  # Safe fallback
     console.print(f"  [tool_name]{icon} {name}[/tool_name]  ({param_str})")
     if description:
         short = description[:120] + "..." if len(description) > 120 else description
@@ -139,13 +149,12 @@ def print_finding(severity: str, scanner: str, tool_name: str, title: str, detai
         severity.lower(), "[i]"
     )
     console.print(
-        f"  {icon} [{sev_style}]{sev_label}[/{sev_style}] "
-        f"[bold white]{title}[/bold white]"
+        f"  {icon} [{sev_style}]{sev_label}[/{sev_style}] [bold white]{title}[/bold white]"
     )
     console.print(f"           [muted]scanner={scanner}  tool={tool_name}[/muted]")
     if detail:
         for line in detail.split("\n"):
-            console.print(f"           [muted]{line}[/muted]")
+            console.print(f"           [muted]{escape(line)}[/muted]")
     console.print()
 
 
@@ -177,7 +186,9 @@ def print_summary(total: int, critical: int, high: int, medium: int, low: int, i
     table.add_column("Count", justify="right")
 
     if critical > 0:
-        table.add_row("[vuln.critical]CRITICAL[/vuln.critical]", f"[vuln.critical]{critical}[/vuln.critical]")
+        table.add_row(
+            "[vuln.critical]CRITICAL[/vuln.critical]", f"[vuln.critical]{critical}[/vuln.critical]"
+        )
     if high > 0:
         table.add_row("[vuln.high]HIGH[/vuln.high]", f"[vuln.high]{high}[/vuln.high]")
     if medium > 0:

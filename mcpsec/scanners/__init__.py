@@ -1,12 +1,19 @@
-from mcpsec.scanners.prompt_injection import PromptInjectionScanner
 from mcpsec.scanners.auth_audit import AuthAuditScanner
-from mcpsec.scanners.path_traversal import PathTraversalScanner
-from mcpsec.scanners.command_injection import CommandInjectionScanner
-from mcpsec.scanners.ssrf import SSRFScanner
-from mcpsec.scanners.description_prompt_injection import DescriptionPromptInjectionScanner
-from mcpsec.scanners.resource_ssrf import ResourceSSRFScanner
 from mcpsec.scanners.capability_escalation import CapabilityEscalationScanner
+from mcpsec.scanners.command_injection import CommandInjectionScanner
+from mcpsec.scanners.description_prompt_injection import DescriptionPromptInjectionScanner
+from mcpsec.scanners.path_traversal import PathTraversalScanner
+from mcpsec.scanners.prompt_injection import PromptInjectionScanner
+from mcpsec.scanners.resource_ssrf import ResourceSSRFScanner
+from mcpsec.scanners.ssrf import SSRFScanner
+
+from .code_execution import CodeExecutionScanner
+from .deserialization import DeserializationScanner
+from .idor import IDORScanner
+from .info_leak import InfoLeakScanner
+from .rag_poisoning import RAGPoisoningScanner
 from .sql_rce import SQLInjectionRCEScanner
+from .template_injection import TemplateInjectionScanner
 
 __all__ = [
     "PromptInjectionScanner",
@@ -18,6 +25,12 @@ __all__ = [
     "ResourceSSRFScanner",
     "CapabilityEscalationScanner",
     "SQLInjectionRCEScanner",
+    "DeserializationScanner",
+    "IDORScanner",
+    "InfoLeakScanner",
+    "RAGPoisoningScanner",
+    "CodeExecutionScanner",
+    "TemplateInjectionScanner",
 ]
 
 SCANNERS = {
@@ -30,4 +43,10 @@ SCANNERS = {
     "resource-ssrf": ResourceSSRFScanner,
     "capability-escalation": CapabilityEscalationScanner,
     "sql-rce": SQLInjectionRCEScanner,
+    "deserialization": DeserializationScanner,
+    "idor": IDORScanner,
+    "info-leak": InfoLeakScanner,
+    "rag-poisoning": RAGPoisoningScanner,
+    "code-execution": CodeExecutionScanner,
+    "template-injection": TemplateInjectionScanner,
 }

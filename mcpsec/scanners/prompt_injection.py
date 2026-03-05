@@ -17,12 +17,10 @@ from __future__ import annotations
 
 import base64
 import re
-from typing import Any
 
-from mcpsec.models import Finding, Severity, ServerProfile, ToolInfo
-from mcpsec.scanners.base import BaseScanner
 from mcpsec.client.mcp_client import MCPSecClient
-
+from mcpsec.models import Finding, ServerProfile, Severity, ToolInfo
+from mcpsec.scanners.base import BaseScanner
 
 # ── Detection Patterns ───────────────────────────────────────────────────────
 
@@ -96,7 +94,9 @@ class PromptInjectionScanner(BaseScanner):
     name = "prompt-injection"
     description = "Detect hidden instructions and prompt injection in tool descriptions"
 
-    async def scan(self, profile: ServerProfile, client: MCPSecClient | None = None) -> list[Finding]:
+    async def scan(
+        self, profile: ServerProfile, client: MCPSecClient | None = None
+    ) -> list[Finding]:
         findings: list[Finding] = []
 
         for tool in profile.tools:
@@ -119,61 +119,67 @@ class PromptInjectionScanner(BaseScanner):
             for pattern in INJECTION_KEYWORDS:
                 matches = re.findall(pattern, text, re.IGNORECASE)
                 if matches:
-                    findings.append(Finding(
-                        severity=Severity.CRITICAL,
-                        scanner=self.name,
-                        tool_name=tool.name,
-                        title=f"Prompt injection keyword in {surface_name}",
-                        description=(
-                            f"The {surface_name} of tool '{tool.name}' contains language "
-                            f"commonly used for prompt injection attacks."
-                        ),
-                        detail=f"Pattern matched: {pattern}\nIn: {text[:200]}",
-                        evidence=f"Match: {matches[0] if isinstance(matches[0], str) else matches[0]}",
-                        remediation="Remove or sanitize the description. Tool descriptions should only describe functionality.",
-                        cwe="CWE-1426",  # Improper Validation of Generative AI Output
-                    ))
+                    findings.append(
+                        Finding(
+                            severity=Severity.CRITICAL,
+                            scanner=self.name,
+                            tool_name=tool.name,
+                            title=f"Prompt injection keyword in {surface_name}",
+                            description=(
+                                f"The {surface_name} of tool '{tool.name}' contains language "
+                                f"commonly used for prompt injection attacks."
+                            ),
+                            detail=f"Pattern matched: {pattern}\nIn: {text[:200]}",
+                            evidence=f"Match: {matches[0] if isinstance(matches[0], str) else matches[0]}",
+                            remediation="Remove or sanitize the description. Tool descriptions should only describe functionality.",
+                            cwe="CWE-1426",  # Improper Validation of Generative AI Output
+                        )
+                    )
                     break  # One finding per pattern category per surface
 
             # ── Check for hidden imperatives ──────────────────────────────
             for pattern in IMPERATIVE_PATTERNS:
                 matches = re.findall(pattern, text, re.IGNORECASE)
                 if matches:
-                    findings.append(Finding(
-                        severity=Severity.CRITICAL,
-                        scanner=self.name,
-                        tool_name=tool.name,
-                        title=f"Hidden instruction in {surface_name}",
-                        description=(
-                            f"The {surface_name} of tool '{tool.name}' contains imperative "
-                            f"instructions that could manipulate an AI agent into performing "
-                            f"unintended actions."
-                        ),
-                        detail=f"Pattern: {pattern}\nText: {text[:200]}",
-                        evidence=str(matches[0]),
-                        remediation="Tool descriptions must only describe what the tool does, not instruct the AI.",
-                        cwe="CWE-1426",
-                    ))
+                    findings.append(
+                        Finding(
+                            severity=Severity.CRITICAL,
+                            scanner=self.name,
+                            tool_name=tool.name,
+                            title=f"Hidden instruction in {surface_name}",
+                            description=(
+                                f"The {surface_name} of tool '{tool.name}' contains imperative "
+                                f"instructions that could manipulate an AI agent into performing "
+                                f"unintended actions."
+                            ),
+                            detail=f"Pattern: {pattern}\nText: {text[:200]}",
+                            evidence=str(matches[0]),
+                            remediation="Tool descriptions must only describe what the tool does, not instruct the AI.",
+                            cwe="CWE-1426",
+                        )
+                    )
                     break
 
             # ── Check for data exfiltration indicators ────────────────────
             for pattern in EXFIL_PATTERNS:
                 matches = re.findall(pattern, text, re.IGNORECASE)
                 if matches:
-                    findings.append(Finding(
-                        severity=Severity.HIGH,
-                        scanner=self.name,
-                        tool_name=tool.name,
-                        title=f"Data exfiltration indicator in {surface_name}",
-                        description=(
-                            f"The {surface_name} of tool '{tool.name}' contains URLs, "
-                            f"IP addresses, or language associated with data exfiltration."
-                        ),
-                        detail=f"Pattern: {pattern}\nText: {text[:200]}",
-                        evidence=str(matches[0]),
-                        remediation="Remove external URLs and sensitive path references from tool descriptions.",
-                        cwe="CWE-200",  # Exposure of Sensitive Information
-                    ))
+                    findings.append(
+                        Finding(
+                            severity=Severity.HIGH,
+                            scanner=self.name,
+                            tool_name=tool.name,
+                            title=f"Data exfiltration indicator in {surface_name}",
+                            description=(
+                                f"The {surface_name} of tool '{tool.name}' contains URLs, "
+                                f"IP addresses, or language associated with data exfiltration."
+                            ),
+                            detail=f"Pattern: {pattern}\nText: {text[:200]}",
+                            evidence=str(matches[0]),
+                            remediation="Remove external URLs and sensitive path references from tool descriptions.",
+                            cwe="CWE-200",  # Exposure of Sensitive Information
+                        )
+                    )
                     break
 
             # ── Check for encoding obfuscation ────────────────────────────
@@ -181,58 +187,64 @@ class PromptInjectionScanner(BaseScanner):
                 matches = re.findall(pattern, text)
                 if matches:
                     decoded_hint = self._try_decode(matches[0])
-                    findings.append(Finding(
-                        severity=Severity.HIGH,
-                        scanner=self.name,
-                        tool_name=tool.name,
-                        title=f"Encoded/obfuscated content in {surface_name}",
-                        description=(
-                            f"The {surface_name} of tool '{tool.name}' contains encoded content "
-                            f"that could hide malicious instructions."
-                        ),
-                        detail=f"Encoded: {matches[0][:80]}\nDecoded hint: {decoded_hint}",
-                        evidence=matches[0][:100],
-                        remediation="Tool descriptions should use plain text only. Remove encoded content.",
-                        cwe="CWE-116",  # Improper Encoding or Escaping of Output
-                    ))
+                    findings.append(
+                        Finding(
+                            severity=Severity.HIGH,
+                            scanner=self.name,
+                            tool_name=tool.name,
+                            title=f"Encoded/obfuscated content in {surface_name}",
+                            description=(
+                                f"The {surface_name} of tool '{tool.name}' contains encoded content "
+                                f"that could hide malicious instructions."
+                            ),
+                            detail=f"Encoded: {matches[0][:80]}\nDecoded hint: {decoded_hint}",
+                            evidence=matches[0][:100],
+                            remediation="Tool descriptions should use plain text only. Remove encoded content.",
+                            cwe="CWE-116",  # Improper Encoding or Escaping of Output
+                        )
+                    )
                     break
 
             # ── Check for cross-tool manipulation ─────────────────────────
             for pattern in CROSS_TOOL_PATTERNS:
                 matches = re.findall(pattern, text, re.IGNORECASE)
                 if matches:
-                    findings.append(Finding(
-                        severity=Severity.MEDIUM,
-                        scanner=self.name,
-                        tool_name=tool.name,
-                        title=f"Cross-tool manipulation in {surface_name}",
-                        description=(
-                            f"The {surface_name} of tool '{tool.name}' attempts to influence "
-                            f"AI agent behavior regarding other tools (tool shadowing/rug pull)."
-                        ),
-                        detail=f"Pattern: {pattern}\nText: {text[:200]}",
-                        evidence=str(matches[0]),
-                        remediation="Tool descriptions should not reference or influence usage of other tools.",
-                        cwe="CWE-1426",
-                    ))
+                    findings.append(
+                        Finding(
+                            severity=Severity.MEDIUM,
+                            scanner=self.name,
+                            tool_name=tool.name,
+                            title=f"Cross-tool manipulation in {surface_name}",
+                            description=(
+                                f"The {surface_name} of tool '{tool.name}' attempts to influence "
+                                f"AI agent behavior regarding other tools (tool shadowing/rug pull)."
+                            ),
+                            detail=f"Pattern: {pattern}\nText: {text[:200]}",
+                            evidence=str(matches[0]),
+                            remediation="Tool descriptions should not reference or influence usage of other tools.",
+                            cwe="CWE-1426",
+                        )
+                    )
                     break
 
         # ── Check description length anomaly ──────────────────────────────
         if tool.description and len(tool.description) > 1000:
-            findings.append(Finding(
-                severity=Severity.LOW,
-                scanner=self.name,
-                tool_name=tool.name,
-                title="Unusually long tool description",
-                description=(
-                    f"Tool '{tool.name}' has a description of {len(tool.description)} characters. "
-                    f"Excessively long descriptions may hide injected instructions "
-                    f"that are hard to spot visually."
-                ),
-                detail=f"Length: {len(tool.description)} chars",
-                remediation="Keep tool descriptions concise (<500 chars). Review for hidden content.",
-                cwe="CWE-1426",
-            ))
+            findings.append(
+                Finding(
+                    severity=Severity.LOW,
+                    scanner=self.name,
+                    tool_name=tool.name,
+                    title="Unusually long tool description",
+                    description=(
+                        f"Tool '{tool.name}' has a description of {len(tool.description)} characters. "
+                        f"Excessively long descriptions may hide injected instructions "
+                        f"that are hard to spot visually."
+                    ),
+                    detail=f"Length: {len(tool.description)} chars",
+                    remediation="Keep tool descriptions concise (<500 chars). Review for hidden content.",
+                    cwe="CWE-1426",
+                )
+            )
 
         return findings
 

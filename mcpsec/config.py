@@ -77,7 +77,7 @@ def load_config() -> dict:
 def save_config(provider: str, api_key: str = "") -> None:
     """Save provider and API key to config file."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     provider_info = PROVIDERS.get(provider, {})
     config = {
         "ai_provider": provider,
@@ -91,7 +91,7 @@ def save_config(provider: str, api_key: str = "") -> None:
 def get_api_key() -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """
     Resolve API key. Returns (provider, api_key, base_url, model).
-    
+
     Resolution order:
     1. Environment variables (highest priority)
     2. ~/.mcpsec/config.json
@@ -99,13 +99,13 @@ def get_api_key() -> Tuple[Optional[str], Optional[str], Optional[str], Optional
     4. (None, None, None, None)
     """
     import os
-    
+
     # 1. Check environment variables
     for provider_id, info in PROVIDERS.items():
         env_var = info.get("env_var")
         if env_var and os.environ.get(env_var):
             return (provider_id, os.environ[env_var], info["base_url"], info["model"])
-    
+
     # 2. Check config file
     config = load_config()
     if config.get("ai_provider") and config.get("api_key"):
@@ -117,20 +117,21 @@ def get_api_key() -> Tuple[Optional[str], Optional[str], Optional[str], Optional
             config.get("base_url") or info.get("base_url", ""),
             config.get("model") or info.get("model", ""),
         )
-    
+
     # 3. Check Ollama
     if config.get("ai_provider") == "ollama":
         info = PROVIDERS["ollama"]
         return ("ollama", "", info["base_url"], config.get("model") or info["model"])
-    
+
     try:
         import httpx
+
         resp = httpx.get("http://localhost:11434/api/tags", timeout=2.0)
         if resp.status_code == 200:
             info = PROVIDERS["ollama"]
             return ("ollama", "", info["base_url"], info["model"])
     except Exception:
         pass
-    
+
     # 4. Nothing found
     return (None, None, None, None)

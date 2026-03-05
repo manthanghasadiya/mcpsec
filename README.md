@@ -109,6 +109,12 @@ mcpsec rogue-server --port 9999 --attack all
 | `resource-ssrf` | SSRF via MCP resource URIs |
 | `capability-escalation` | Undeclared capability abuse |
 | `chains` | Dangerous tool combination detection |
+| `code-execution` | Detects `eval()`, `exec()`, and `compile()` sinks |
+| `template-injection` | Targets SSTI and string formatting vulnerabilities |
+| `rag-poisoning` | Identifies dangerous Write→Read data flows |
+| `idor` | Insecure Direct Object Reference detection |
+| `info-leak` | Environment variable and credential disclosure |
+| `deserialization` | Pickle, XXE, and unsafe YAML parsing |
 
 ---
 
@@ -175,6 +181,13 @@ mcpsec fuzz --stdio "server" --output results.sarif
 ---
 
 ## Changelog
+
+### v2.5.0 (2026-03-04)
+- **New Scanners**: `code-execution`, `template-injection`, `rag-poisoning`, `idor`, `info-leak`, `deserialization`
+- **Confirmation Proofs**: Added `mcpsec_cmd_success` execution anchor for command injection
+- **SSRF Expansion**: Support for `file://` protocol and generic fetch success indicators
+- **Robust Parameter Handling**: Automatic dummy argument generation for complex tool schemas
+- **Enhanced Classification**: Massive reduction in false positives for blocked/sandboxed tools
 
 ### v2.4.0 (2026-02-28)
 - **SAST Rules Expansion**: 87 new Semgrep rules → **149 total** across 24 rule files

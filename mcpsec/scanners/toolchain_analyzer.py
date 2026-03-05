@@ -1,58 +1,59 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Set, Any, Optional
+from typing import Dict, List, Optional, Set
+
 from mcpsec.models import ServerProfile, ToolInfo
 
 TOOL_CAPABILITIES = {
     "read_fs": {
         "keywords": ["read_file", "get_file", "cat", "load", "open", "read_content"],
         "description_hints": ["read", "file content", "load file"],
-        "risk": "data_access"
+        "risk": "data_access",
     },
     "write_fs": {
         "keywords": ["write_file", "save", "create_file", "put_file", "write_content"],
         "description_hints": ["write", "save", "create file"],
-        "risk": "persistence"
+        "risk": "persistence",
     },
     "execute": {
         "keywords": ["execute", "exec", "run", "shell", "command", "eval", "spawn"],
         "description_hints": ["execute", "run command", "shell"],
-        "risk": "code_execution"
+        "risk": "code_execution",
     },
     "network_out": {
         "keywords": ["http", "fetch", "request", "send", "post", "webhook", "api_call"],
         "description_hints": ["send", "http", "request", "api"],
-        "risk": "exfiltration"
+        "risk": "exfiltration",
     },
     "network_in": {
         "keywords": ["listen", "serve", "bind", "accept"],
         "description_hints": ["listen", "server", "incoming"],
-        "risk": "backdoor"
+        "risk": "backdoor",
     },
     "db_read": {
         "keywords": ["query", "select", "find", "search", "sql", "read_db"],
         "description_hints": ["query", "database", "select"],
-        "risk": "data_access"
+        "risk": "data_access",
     },
     "db_write": {
         "keywords": ["insert", "update", "delete", "drop", "execute_sql", "write_db"],
         "description_hints": ["insert", "update", "modify database"],
-        "risk": "data_modification"
+        "risk": "data_modification",
     },
     "credentials": {
         "keywords": ["password", "secret", "key", "token", "credential", "auth"],
         "description_hints": ["password", "secret", "credential", "api key"],
-        "risk": "credential_access"
+        "risk": "credential_access",
     },
     "email": {
         "keywords": ["email", "send_mail", "smtp", "mail"],
         "description_hints": ["send email", "mail"],
-        "risk": "exfiltration"
+        "risk": "exfiltration",
     },
     "cloud": {
         "keywords": ["s3", "gcs", "azure_blob", "upload", "cloud_storage"],
         "description_hints": ["cloud", "s3", "storage", "bucket"],
-        "risk": "exfiltration"
-    }
+        "risk": "exfiltration",
+    },
 }
 
 ATTACK_CHAINS = [
@@ -67,7 +68,7 @@ ATTACK_CHAINS = [
         "example_attack": "Read SSH keys or config files, then execute commands using stolen credentials",
     },
     {
-        "id": "CHAIN-002", 
+        "id": "CHAIN-002",
         "name": "sql_to_exfil",
         "description": "Database access with network egress allows data theft",
         "chain": ["db_read", "network_out"],
@@ -158,6 +159,7 @@ ATTACK_CHAINS = [
     },
 ]
 
+
 @dataclass
 class ChainFinding:
     chain_id: str
@@ -169,6 +171,7 @@ class ChainFinding:
     example_attack: Optional[str] = None
     cvss_base: Optional[float] = None
 
+
 @dataclass
 class ToolChainReport:
     total_tools: int
@@ -176,25 +179,26 @@ class ToolChainReport:
     chain_findings: List[ChainFinding]
     risk_score: float
 
+
 class ToolChainAnalyzer:
     def __init__(self):
         self.capabilities = TOOL_CAPABILITIES
         self.chains = ATTACK_CHAINS
-    
+
     def analyze_server(self, profile: ServerProfile) -> ToolChainReport:
         """Analyze all tools from an MCP server for dangerous combinations"""
         tools = profile.tools
-        
+
         # Step 1: Classify each tool's capabilities
         tool_capabilities = {}
         for tool in tools:
             caps = self._classify_tool(tool)
             if caps:
                 tool_capabilities[tool.name] = caps
-        
+
         # Step 2: Build capability graph
         server_capabilities = self._aggregate_capabilities(tool_capabilities)
-        
+
         # Step 3: Check for dangerous chains
         findings = []
         for chain in self.chains:
@@ -210,34 +214,34 @@ class ToolChainAnalyzer:
                     cvss_base=chain.get("cvss_base"),
                 )
                 findings.append(finding)
-        
+
         # Step 4: Calculate overall risk score
         risk_score = self._calculate_risk_score(findings)
-        
+
         return ToolChainReport(
             total_tools=len(tools),
             capabilities_found=server_capabilities,
             chain_findings=findings,
             risk_score=risk_score,
         )
-    
+
     def _classify_tool(self, tool: ToolInfo) -> Set[str]:
         """Classify a tool's capabilities based on name and description"""
         capabilities = set()
-        
+
         tool_name = tool.name.lower()
         tool_desc = tool.description.lower() if tool.description else ""
-        
+
         for cap_name, cap_def in self.capabilities.items():
             # Check keywords in tool name
             if any(kw in tool_name for kw in cap_def["keywords"]):
                 capabilities.add(cap_name)
                 continue
-            
+
             # Check hints in description
             if any(hint in tool_desc for hint in cap_def["description_hints"]):
                 capabilities.add(cap_name)
-        
+
         return capabilities
 
     def _aggregate_capabilities(self, tool_capabilities: Dict[str, Set[str]]) -> Set[str]:
@@ -251,7 +255,9 @@ class ToolChainAnalyzer:
         """Check if all capabilities in a chain are present on the server"""
         return all(cap in server_caps for cap in chain_def["chain"])
 
-    def _get_matching_tools(self, chain_def: Dict, tool_capabilities: Dict[str, Set[str]]) -> Dict[str, List[str]]:
+    def _get_matching_tools(
+        self, chain_def: Dict, tool_capabilities: Dict[str, Set[str]]
+    ) -> Dict[str, List[str]]:
         """Identify which tools provide which capabilities for a chain"""
         matches = {}
         for cap in chain_def["chain"]:
@@ -266,13 +272,13 @@ class ToolChainAnalyzer:
         """Calculate overall risk score (0-10)"""
         if not findings:
             return 0.0
-        
+
         max_severity = 0.0
         severity_map = {"CRITICAL": 10.0, "HIGH": 8.0, "MEDIUM": 5.0, "LOW": 2.0}
-        
+
         for f in findings:
             score = severity_map.get(f.severity, 0.0)
             if score > max_severity:
                 max_severity = score
-        
+
         return max_severity

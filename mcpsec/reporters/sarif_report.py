@@ -12,14 +12,14 @@ SARIF Spec: https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html
 
 from __future__ import annotations
 
-import json
 import hashlib
-from pathlib import Path
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from mcpsec import __version__ as MCPSEC_VERSION
-from mcpsec.models import ScanResult, Finding, Severity
+from mcpsec.models import Finding, ScanResult, Severity
 
 # CWE mappings for each scanner type
 SCANNER_CWE_MAP = {
@@ -95,7 +95,8 @@ def _build_rule(finding: Finding) -> dict:
         "fullDescription": {"text": finding.description or finding.title},
         "helpUri": f"https://github.com/manthanghasadiya/mcpsec/wiki/{finding.scanner}",
         "help": {
-            "text": finding.remediation or f"Review the {finding.scanner} finding and apply appropriate fixes.",
+            "text": finding.remediation
+            or f"Review the {finding.scanner} finding and apply appropriate fixes.",
             "markdown": (
                 f"## {finding.title}\n\n"
                 f"{finding.description or ''}\n\n"
@@ -108,9 +109,7 @@ def _build_rule(finding: Finding) -> dict:
             "security-severity": str(SEVERITY_TO_SCORE.get(finding.severity, 5.0)),
             "precision": "high" if finding.confidence == "high" else "medium",
         },
-        "defaultConfiguration": {
-            "level": SEVERITY_TO_SARIF_LEVEL.get(finding.severity, "warning")
-        },
+        "defaultConfiguration": {"level": SEVERITY_TO_SARIF_LEVEL.get(finding.severity, "warning")},
     }
 
     if cwe:
@@ -150,7 +149,9 @@ def _build_result(finding: Finding, rule_index: int) -> dict:
         location = {
             "physicalLocation": {
                 "artifactLocation": {
-                    "uri": f"mcp://tool/{finding.tool_name}" if finding.tool_name else "mcp://server",
+                    "uri": f"mcp://tool/{finding.tool_name}"
+                    if finding.tool_name
+                    else "mcp://server",
                 }
             },
             "logicalLocations": [
@@ -283,9 +284,15 @@ def generate_sarif_report(result: ScanResult) -> dict:
                 "invocations": [
                     {
                         "executionSuccessful": len(result.errors) == 0,
-                        "commandLine": f'mcpsec scan --stdio "{result.target}"' if result.target else "mcpsec scan",
-                        "startTimeUtc": result.started_at.isoformat() if result.started_at else now_utc,
-                        "endTimeUtc": result.completed_at.isoformat() if result.completed_at else now_utc,
+                        "commandLine": f'mcpsec scan --stdio "{result.target}"'
+                        if result.target
+                        else "mcpsec scan",
+                        "startTimeUtc": result.started_at.isoformat()
+                        if result.started_at
+                        else now_utc,
+                        "endTimeUtc": result.completed_at.isoformat()
+                        if result.completed_at
+                        else now_utc,
                         "workingDirectory": {"uri": "."},
                         "toolExecutionNotifications": [
                             {"message": {"text": err}, "level": "error"} for err in result.errors
@@ -428,11 +435,7 @@ def generate_sarif_from_fuzz(fuzz_summary: dict, target: str) -> dict:
                     "text": f"{case.get('case_name', 'Unknown')}: {case.get('description', '')}"
                 },
                 "locations": [
-                    {
-                        "physicalLocation": {
-                            "artifactLocation": {"uri": f"mcp://{target}"}
-                        }
-                    }
+                    {"physicalLocation": {"artifactLocation": {"uri": f"mcp://{target}"}}}
                 ],
                 "properties": {
                     "generator": case.get("generator", "unknown"),

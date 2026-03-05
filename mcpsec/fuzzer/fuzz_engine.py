@@ -5,43 +5,53 @@ Orchestrates test case generation, execution, and crash analysis.
 
 import json
 import time
-from pathlib import Path
 from typing import List
 
-from mcpsec.fuzzer.transport.stdio_fuzzer import StdioFuzzer, FuzzResult
-from mcpsec.fuzzer.transport.http_fuzzer import HttpFuzzer
-from mcpsec.fuzzer.generators.base import FuzzCase
 from mcpsec.fuzzer.generators import (
-    malformed_json,
-    protocol_violation,
-    type_confusion,
     boundary_testing,
-    unicode_attacks,
-    session_attacks,
-    injection_payloads,
-    resource_exhaustion,
+    concurrency_attacks,
+    deserialization,
     encoding_attacks,
-    method_mutations,
-    param_mutations,
-    timing_attacks,
     header_mutations,
-    json_edge_cases,
-    protocol_state,
-    protocol_state_machine,
     id_confusion,
+    injection_payloads,
     # Nuclear expansion generators
     integer_boundaries,
-    concurrency_attacks,
+    json_edge_cases,
+    malformed_json,
     memory_exhaustion_v2,
+    method_mutations,
+    param_mutations,
+    protocol_state,
+    protocol_state_machine,
+    protocol_violation,
     regex_dos,
-    deserialization,
+    resource_exhaustion,
+    session_attacks,
+    timing_attacks,
+    type_confusion,
+    unicode_attacks,
 )
-from mcpsec.ui import console, print_section, get_progress
+from mcpsec.fuzzer.generators.base import FuzzCase
+from mcpsec.fuzzer.transport.http_fuzzer import HttpFuzzer
+from mcpsec.fuzzer.transport.stdio_fuzzer import FuzzResult, StdioFuzzer
+from mcpsec.ui import console, get_progress, print_section
+
 
 class FuzzEngine:
     """Orchestrates the fuzzing campaign."""
-    
-    def __init__(self, command: str, timeout: float = 2.0, startup_timeout: float = 15.0, framing: str = "auto", debug: bool = False, intensity: str = "medium", ai: bool = False, headers: dict | None = None):
+
+    def __init__(
+        self,
+        command: str,
+        timeout: float = 2.0,
+        startup_timeout: float = 15.0,
+        framing: str = "auto",
+        debug: bool = False,
+        intensity: str = "medium",
+        ai: bool = False,
+        headers: dict | None = None,
+    ):
         self.command = command
         self.timeout = timeout
         self.startup_timeout = startup_timeout
@@ -53,82 +63,93 @@ class FuzzEngine:
         self.results: List[FuzzResult] = []
         self.interesting: List[tuple[FuzzCase, FuzzResult]] = []
         self._discovered_tools: list[dict] = []
-    
+
     def run(self, generators: list[str] | None = None) -> dict:
         """Run the full fuzzing campaign."""
-        
+
         print_section("Fuzzing", "🔥")
         console.print(f"  [accent]Target:[/accent] {self.command}")
         console.print()
-        
+
         # 1. Start server and initialize (detect framing)
         if self.command.startswith(("http://", "https://")):
             fuzzer = HttpFuzzer(self.command, self.timeout, debug=self.debug, headers=self.headers)
         else:
             fuzzer = StdioFuzzer(self.command, self.timeout, debug=self.debug)
-        
+
         if self.debug:
             console.print("  [dim]Starting server...[/dim]")
-        
-        detected_framing = "clrf" # Default fallback
-        
+
+        detected_framing = "clrf"  # Default fallback
+
         try:
             init_result = self._do_initialize(fuzzer)
             if not init_result:
-                 console.print("  [danger]Server failed to respond to initialize![/danger]")
-                 fuzzer.stop_server()
-                 return self._summarize(fuzzer)
-            
+                console.print("  [danger]Server failed to respond to initialize![/danger]")
+                fuzzer.stop_server()
+                return self._summarize(fuzzer)
+
             # Capture the framing that worked
             detected_framing = fuzzer.framing
-            
+
             if self.debug:
-                 resp_preview = init_result.response.decode(errors='replace')[:200] if init_result.response else "None"
-                 console.print(f"  [muted]Initialize response: {resp_preview}[/muted]")
+                resp_preview = (
+                    init_result.response.decode(errors="replace")[:200]
+                    if init_result.response
+                    else "None"
+                )
+                console.print(f"  [muted]Initialize response: {resp_preview}[/muted]")
 
             if init_result.crashed or init_result.timeout:
-                error = init_result.error_message or ("Timeout" if init_result.timeout else "Unknown")
-                console.print(f"  [danger]Server crashed/timed out during initialize! ({error})[/danger]")
+                error = init_result.error_message or (
+                    "Timeout" if init_result.timeout else "Unknown"
+                )
+                console.print(
+                    f"  [danger]Server crashed/timed out during initialize! ({error})[/danger]"
+                )
                 fuzzer.stop_server()
                 return self._summarize(fuzzer)
 
             if init_result.error_message:
-                 console.print(f"  [danger]Initialize error: {init_result.error_message}[/danger]")
+                console.print(f"  [danger]Initialize error: {init_result.error_message}[/danger]")
 
         except Exception as e:
             console.print(f"  [danger]Failed to initialize server: {e}[/danger]")
             if self.debug:
                 import traceback
+
                 traceback.print_exc()
             fuzzer.stop_server()
             return self._summarize(fuzzer)
- 
+
         if self.debug:
-            console.print(f"  [dim]Initialization successful (framing={detected_framing}). Starting fuzzing...[/dim]")
-            
+            console.print(
+                f"  [dim]Initialization successful (framing={detected_framing}). Starting fuzzing...[/dim]"
+            )
+
         # 2. Collect test cases using the detected framing
         all_cases = self._collect_cases(generators, detected_framing)
-        
+
         # 2b. AI-generated fuzz cases (per-tool)
         if self.ai:
             ai_cases = self._generate_ai_cases(fuzzer, detected_framing)
             all_cases.extend(ai_cases)
-        
+
         console.print(f"  [accent]Test cases:[/accent] {len(all_cases)}")
-        
+
         # 3. Run all fuzz cases
         with get_progress() as progress:
             task = progress.add_task("Fuzzing...", total=len(all_cases))
-            
+
             for case in all_cases:
                 self._run_generator(fuzzer, case, detected_framing)
                 progress.advance(task)
-        
+
         # 4. Stop server
         fuzzer.stop_server()
-        
+
         return self._summarize(fuzzer)
-    
+
     def _collect_cases(self, generators: list[str] | None, framing: str) -> list[FuzzCase]:
         """Collect fuzz cases from all enabled generators."""
         # Low: core protocol tests (~65 cases)
@@ -165,7 +186,7 @@ class FuzzEngine:
             "resource_exhaustion": resource_exhaustion.generate,
             "memory_exhaustion_v2": memory_exhaustion_v2.generate,
         }
-        
+
         gen_map = dict(low_gens)
         if self.intensity in ("medium", "high", "insane"):
             gen_map.update(medium_gens)
@@ -173,10 +194,10 @@ class FuzzEngine:
             gen_map.update(high_gens)
         if self.intensity == "insane":
             gen_map.update(insane_gens)
-        
+
         cases = []
         active = generators or list(gen_map.keys())
-        
+
         for name in active:
             if name in gen_map:
                 try:
@@ -193,7 +214,7 @@ class FuzzEngine:
                         except TypeError:
                             # Try no args
                             generated = gen_map[name]()
-                
+
                 for item in generated:
                     if isinstance(item, dict):
                         # Convert dict to FuzzCase and handle framing
@@ -211,29 +232,40 @@ class FuzzEngine:
                         elif isinstance(raw_payload, (bytes, bytearray)):
                             # Pre-serialized raw payload — just apply framing
                             if framing == "jsonl":
-                                payload = raw_payload if raw_payload.endswith(b"\n") else raw_payload + b"\n"
+                                payload = (
+                                    raw_payload
+                                    if raw_payload.endswith(b"\n")
+                                    else raw_payload + b"\n"
+                                )
                             else:
-                                payload = f"Content-Length: {len(raw_payload)}\r\n\r\n".encode() + raw_payload
+                                payload = (
+                                    f"Content-Length: {len(raw_payload)}\r\n\r\n".encode()
+                                    + raw_payload
+                                )
                         else:
                             payload = raw_payload
-                        
-                        cases.append(FuzzCase(
-                            name=item.get("name", "unknown"),
-                            generator=name,
-                            payload=payload,
-                            description=item.get("description", ""),
-                            expected_behavior="Error expected" if item.get("expects_error") else "Success",
-                            skip_init=item.get("skip_init", False),
-                            send_after_init=item.get("send_after_init", False),
-                            send_shutdown_first=item.get("send_shutdown_first", False),
-                            repeat=item.get("repeat", 1),
-                            delay_between=item.get("delay_between", 0.0),
-                            expects_error=item.get("expects_error", False),
-                            crash_indicates_bug=item.get("crash_indicates_bug", True)
-                        ))
+
+                        cases.append(
+                            FuzzCase(
+                                name=item.get("name", "unknown"),
+                                generator=name,
+                                payload=payload,
+                                description=item.get("description", ""),
+                                expected_behavior="Error expected"
+                                if item.get("expects_error")
+                                else "Success",
+                                skip_init=item.get("skip_init", False),
+                                send_after_init=item.get("send_after_init", False),
+                                send_shutdown_first=item.get("send_shutdown_first", False),
+                                repeat=item.get("repeat", 1),
+                                delay_between=item.get("delay_between", 0.0),
+                                expects_error=item.get("expects_error", False),
+                                crash_indicates_bug=item.get("crash_indicates_bug", True),
+                            )
+                        )
                     else:
                         cases.append(item)
-        
+
         # Enrichment logic (OMITTED for brevity in constructed file if not needed, but here it's original)
         if self._discovered_tools:
             enriched: list[FuzzCase] = []
@@ -257,36 +289,43 @@ class FuzzEngine:
                                 if real_params:
                                     old_args = msg["params"].get("arguments", {})
                                     payload_val = next(iter(old_args.values()), "")
-                                    msg["params"]["arguments"] = {p: payload_val for p in real_params}
+                                    msg["params"]["arguments"] = {
+                                        p: payload_val for p in real_params
+                                    }
                                 new_body = json.dumps(msg).encode()
                                 if framing == "jsonl":
                                     framed = new_body + b"\n"
                                 else:
-                                    framed = f"Content-Length: {len(new_body)}\r\n\r\n".encode() + new_body
-                                enriched.append(FuzzCase(
-                                    name=f"{case.name}_{tool_name}",
-                                    generator=case.generator,
-                                    payload=framed,
-                                    description=f"{case.description} (tool: {tool_name})",
-                                    expected_behavior=case.expected_behavior,
-                                ))
+                                    framed = (
+                                        f"Content-Length: {len(new_body)}\r\n\r\n".encode()
+                                        + new_body
+                                    )
+                                enriched.append(
+                                    FuzzCase(
+                                        name=f"{case.name}_{tool_name}",
+                                        generator=case.generator,
+                                        payload=framed,
+                                        description=f"{case.description} (tool: {tool_name})",
+                                        expected_behavior=case.expected_behavior,
+                                    )
+                                )
                         except Exception:
                             pass
                     enriched.append(case)
                 else:
                     enriched.append(case)
             return enriched
-        
+
         return cases
 
     def _run_generator(self, fuzzer, case: FuzzCase, framing: str):
         """Execute a single fuzz case, handling special protocol flags."""
-        
+
         # 1. Handle state-breaking flags
         if case.skip_init or case.send_shutdown_first:
             fuzzer.restart_server()
             fuzzer.framing = framing
-            
+
             if case.send_shutdown_first:
                 # To test post-shutdown, we must first be initialized
                 self._do_initialize(fuzzer)
@@ -308,11 +347,11 @@ class FuzzEngine:
             is_crash, crash_reason = fuzzer._check_real_crash()
             if is_crash and self.debug:
                 console.print(f"  [danger]Server crashed! ({crash_reason}) Restarting...[/danger]")
-            
+
             fuzzer.restart_server()
             fuzzer.framing = framing
             self._do_initialize(fuzzer)
-        
+
         # 3. Handle double-initialize or other "after init" requirements
         if case.send_after_init:
             # We ensure we are initialized (already handled above if not alive)
@@ -326,34 +365,41 @@ class FuzzEngine:
             result = fuzzer.send_raw(case.payload)
             result.generator = case.generator
             self.results.append(result)
-            
+
             if self.debug:
-                resp_preview = result.response.decode(errors='replace')[:200] if result.response else "None"
+                resp_preview = (
+                    result.response.decode(errors="replace")[:200] if result.response else "None"
+                )
                 if result.timeout:
                     console.print(f"  [dim][DEBUG] {case.name}: TIMEOUT[/dim]")
                 else:
-                    console.print(f"  [dim][DEBUG] {case.name}: {len(result.response or b'')} bytes[/dim]")
+                    console.print(
+                        f"  [dim][DEBUG] {case.name}: {len(result.response or b'')} bytes[/dim]"
+                    )
 
             # Check if interesting
             if result.crashed or result.timeout or self._is_anomalous(result):
                 self.interesting.append((case, result))
-            
+
             if case.repeat > 1 and i < case.repeat - 1 and case.delay_between > 0:
                 time.sleep(case.delay_between)
-    
+
     def _do_initialize(self, fuzzer: StdioFuzzer) -> FuzzResult | None:
         """Send proper initialize handshake with startup timeout and framing detection."""
         if not fuzzer.process:
-             fuzzer.start_server()
-             
+            fuzzer.start_server()
+
         import json
+
         init_msg = {
-            "jsonrpc": "2.0", "method": "initialize", "id": 1,
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "id": 1,
             "params": {
-                "protocolVersion": "2024-11-05", 
+                "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "mcpsec-fuzzer", "version": "0.3.0"}
-            }
+                "clientInfo": {"name": "mcpsec-fuzzer", "version": "0.3.0"},
+            },
         }
 
         strategies = []
@@ -364,20 +410,22 @@ class FuzzEngine:
 
         for strategy in strategies:
             if self.debug:
-                 console.print(f"  [dim][DEBUG] Attempting initialization with {strategy} framing...[/dim]")
-            
+                console.print(
+                    f"  [dim][DEBUG] Attempting initialization with {strategy} framing...[/dim]"
+                )
+
             fuzzer.framing = strategy
-            
+
             if strategy != strategies[0]:
                 fuzzer.restart_server()
-            
+
             result = fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
-            
+
             if result and result.response and not result.timeout and not result.crashed:
                 # Success!
                 if self.framing == "auto" and self.debug:
                     console.print(f"  [success]✔ Auto-detected framing: {strategy}[/success]")
-                
+
                 # Send initialized notification
                 notif_json = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
                 if getattr(fuzzer, "framing", None) == "jsonl":
@@ -385,31 +433,31 @@ class FuzzEngine:
                 else:
                     body = notif_json.encode("utf-8")
                     notif_payload = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
-                
+
                 if fuzzer.process and fuzzer.process.stdin:
                     fuzzer.process.stdin.write(notif_payload)
                     fuzzer.process.stdin.flush()
                 else:
                     fuzzer.send_raw(notif_payload)
                 return result
-            
+
             if self.debug:
                 console.print(f"  [dim][DEBUG] {strategy} framing failed. Retrying...[/dim]")
 
         return result
-    
+
     def _generate_ai_cases(self, fuzzer: StdioFuzzer, framing: str) -> list[FuzzCase]:
         """Use AI to generate custom adversarial payloads per tool."""
         cases: list[FuzzCase] = []
-        
+
         def _frame(body: bytes) -> bytes:
             if framing == "jsonl":
                 return body + b"\n"
             return f"Content-Length: {len(body)}\r\n\r\n".encode() + body
-        
+
         console.print("  [accent]🧠 AI Fuzz:[/accent] Discovering server tools...")
         time.sleep(1.0)
-        
+
         tools_msg = {"jsonrpc": "2.0", "method": "tools/list", "id": 9999}
         result = None
         for attempt in range(3):
@@ -418,12 +466,14 @@ class FuzzEngine:
                 fuzzer.framing = framing
                 # Re-initialize
                 init_msg = {
-                    "jsonrpc": "2.0", "method": "initialize", "id": 1,
+                    "jsonrpc": "2.0",
+                    "method": "initialize",
+                    "id": 1,
                     "params": {
                         "protocolVersion": "2024-11-05",
                         "capabilities": {},
-                        "clientInfo": {"name": "mcpsec-fuzzer", "version": "1.0.0"}
-                    }
+                        "clientInfo": {"name": "mcpsec-fuzzer", "version": "1.0.0"},
+                    },
                 }
                 init_result = fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
                 if not init_result or init_result.crashed:
@@ -435,23 +485,23 @@ class FuzzEngine:
                 else:
                     body = notif_json.encode("utf-8")
                     notif_payload = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
-                
+
                 if fuzzer.process and fuzzer.process.stdin:
                     fuzzer.process.stdin.write(notif_payload)
                     fuzzer.process.stdin.flush()
                 else:
                     fuzzer.send_raw(notif_payload)
                 time.sleep(0.5)
-            
+
             result = fuzzer.send_mcp_message_with_timeout(tools_msg, self.startup_timeout)
             time.sleep(1.0)
             if result and result.response and not result.crashed and not result.timeout:
                 break
             time.sleep(0.5)
-        
+
         if not result or not result.response:
             return cases
-        
+
         try:
             resp_text = result.response.decode("utf-8", errors="replace")
             if "\r\n\r\n" in resp_text:
@@ -460,87 +510,104 @@ class FuzzEngine:
             tools = resp_data.get("result", {}).get("tools", [])
         except Exception:
             return cases
-        
+
         if not tools:
             return cases
-        
+
         self._discovered_tools = tools
-        console.print(f"  [accent]🧠 AI Fuzz:[/accent] Found {len(tools)} tools. Generating payloads...")
-        
+        console.print(
+            f"  [accent]🧠 AI Fuzz:[/accent] Found {len(tools)} tools. Generating payloads..."
+        )
+
         try:
-            from mcpsec.config import get_api_key
             from mcpsec.ai.llm_client import LLMClient
+            from mcpsec.config import get_api_key
+
             provider, api_key, base_url, model = get_api_key()
             if not provider:
                 return cases
             llm = LLMClient()
         except Exception:
             return cases
-        
+
         for tool in tools:
             tool_name = tool.get("name", "unknown")
             tool_schema = tool.get("inputSchema", {})
-            
+
             system_prompt = "You are a security fuzzer. Output STRICT STATIC JSON ONLY."
             user_prompt = f"Generate 15 adversarial payloads for MCP tool: {tool_name}. Schema: {json.dumps(tool_schema)}"
-            
+
             try:
                 import asyncio
                 import re
+
                 response = asyncio.run(llm.chat(system_prompt, user_prompt))
-                if not response: continue
-                
+                if not response:
+                    continue
+
                 text = response.strip()
                 if "```" in text:
                     text = text.split("```")[1]
-                    if text.startswith("json"): text = text[4:]
+                    if text.startswith("json"):
+                        text = text[4:]
                     text = text.strip()
-                
+
                 # Basic sanitization
-                text = re.sub(r'\\x([0-9a-fA-F]{2})', r'\\u00\1', text)
-                text = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', text)
-                text = re.sub(r',\s*([}\]])', r'\1', text)
-                
+                text = re.sub(r"\\x([0-9a-fA-F]{2})", r"\\u00\1", text)
+                text = re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", text)
+                text = re.sub(r",\s*([}\]])", r"\1", text)
+
                 try:
                     payloads = json.loads(text)
                 except json.JSONDecodeError:
-                    match = re.search(r'\[.*\]', text, re.DOTALL)
-                    if match: payloads = json.loads(match.group())
-                    else: continue
-                
-                if not isinstance(payloads, list): continue
-                
+                    match = re.search(r"\[.*\]", text, re.DOTALL)
+                    if match:
+                        payloads = json.loads(match.group())
+                    else:
+                        continue
+
+                if not isinstance(payloads, list):
+                    continue
+
                 for p in payloads:
-                    if not isinstance(p, dict): continue
+                    if not isinstance(p, dict):
+                        continue
                     msg = {
-                        "jsonrpc": "2.0", "method": "tools/call", "id": 1,
-                        "params": {"name": tool_name, "arguments": p.get("arguments", {})}
+                        "jsonrpc": "2.0",
+                        "method": "tools/call",
+                        "id": 1,
+                        "params": {"name": tool_name, "arguments": p.get("arguments", {})},
                     }
-                    cases.append(FuzzCase(
-                        name=f"ai_{tool_name}_{p.get('name', 'test')}",
-                        generator="ai_fuzz",
-                        payload=_frame(json.dumps(msg).encode()),
-                        description=f"🧠 {tool_name}: {p.get('description', '')}",
-                        expected_behavior="Server handles gracefully"
-                    ))
+                    cases.append(
+                        FuzzCase(
+                            name=f"ai_{tool_name}_{p.get('name', 'test')}",
+                            generator="ai_fuzz",
+                            payload=_frame(json.dumps(msg).encode()),
+                            description=f"🧠 {tool_name}: {p.get('description', '')}",
+                            expected_behavior="Server handles gracefully",
+                        )
+                    )
             except Exception:
                 continue
-        
+
         return cases
-    
+
     def _is_anomalous(self, result: FuzzResult) -> bool:
         """Detect anomalous responses that might indicate bugs."""
-        if not result.response: return False
+        if not result.response:
+            return False
         try:
             text = result.response.decode("utf-8", errors="replace")
         except Exception:
             return True
         if any(x in text.lower() for x in ["traceback", "stack trace", "error:", "panic:"]):
             return True
-        if result.elapsed_ms > 2000: return True
-        if len(result.response) > 100_000: return True
+        if result.elapsed_ms > 2000:
+            return True
+        if len(result.response) > 100_000:
+            return True
         return False
-    
+
     def _summarize(self, fuzzer: StdioFuzzer) -> dict:
         """Generate summary of fuzzing campaign."""
         return {
@@ -560,5 +627,5 @@ class FuzzEngine:
                     "error": result.error_message,
                 }
                 for case, result in self.interesting
-            ]
+            ],
         }

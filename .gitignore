@@ -1,21 +1,65 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.pytest_cache/
-.ruff_cache/
-dist/
+*.so
+.Python
 build/
-*.egg-info/
+develop-eggs/
+dist/
+downloads/
+eggs/
 .eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
 .venv/
+env/
 venv/
-report.json
+ENV/
+test_env/
+
+# Project specific
+findings.json
 *.log
+test_*.py
+!tests/test_*.py
+report.json
 install_log.txt
 temp_*.py
 mcp_*.json
 *.json.bak
-.env
 .mcpsec/
 server_crash.log
 *.sarif
@@ -24,3 +68,4 @@ validate_out.txt
 fix_unicode.py
 temp_*.yml
 out.txt
+mypy_output.txt

@@ -1,0 +1,23 @@
+rules:
+  - id: mcpsec-taint-sinks
+    languages:
+      - python
+    message: |
+      Data from MCP tool arguments flows directly into a dangerous sink (OS command, SQL execution, or Deserialization)
+      without prior sanitization or validation. This is a critical remote code execution vector.
+    severity: ERROR
+    mode: taint
+    pattern-sources:
+      - pattern: arguments
+      - pattern: $ARGS.get(...)
+      - pattern: $ARGS[...]
+    pattern-sinks:
+      - pattern: os.system(...)
+      - pattern: subprocess.Popen(...)
+      - pattern: subprocess.run(...)
+      - pattern: subprocess.call(...)
+      - pattern: eval(...)
+      - pattern: exec(...)
+      - pattern: pickle.loads(...)
+      - pattern: yaml.load(...)
+      - pattern: $CURSOR.execute(...)

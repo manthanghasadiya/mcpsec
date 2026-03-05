@@ -43,12 +43,14 @@ def generate(intensity: str = "medium", **kwargs) -> list[dict]:
     ]
 
     if intensity in ("high", "insane"):
-        redos_patterns.extend([
-            "a" * 50 + "!",
-            "a" * 50 + "@a.a",
-            "0" * 200 + "x",
-            "." * 200 + "!",
-        ])
+        redos_patterns.extend(
+            [
+                "a" * 50 + "!",
+                "a" * 50 + "@a.a",
+                "0" * 200 + "x",
+                "." * 200 + "!",
+            ]
+        )
 
     # Send each pattern to multiple parameter names that likely use regex
     param_sets = [
@@ -60,28 +62,29 @@ def generate(intensity: str = "medium", **kwargs) -> list[dict]:
     for i, pattern in enumerate(redos_patterns):
         for param_set in param_sets:
             args = {k: pattern for k in param_set}
-            cases.append({
-                "name": f"redos_{i}_{list(param_set.keys())[0]}",
-                "description": f"ReDoS pattern ({len(pattern)} chars): {pattern[:30]}...",
-                "payload": {
-                    "jsonrpc": "2.0", "id": 1,
-                    "method": "tools/call",
-                    "params": {"name": "test", "arguments": args}
-                },
-                "crash_indicates_bug": True,
-            })
+            cases.append(
+                {
+                    "name": f"redos_{i}_{list(param_set.keys())[0]}",
+                    "description": f"ReDoS pattern ({len(pattern)} chars): {pattern[:30]}...",
+                    "payload": {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {"name": "test", "arguments": args},
+                    },
+                    "crash_indicates_bug": True,
+                }
+            )
 
     # Also test in method name (some servers regex-match methods)
     for i, pattern in enumerate(redos_patterns[:5]):
-        cases.append({
-            "name": f"redos_method_{i}",
-            "description": f"ReDoS in method name: {pattern[:20]}...",
-            "payload": {
-                "jsonrpc": "2.0", "id": 1,
-                "method": pattern,
-                "params": {}
-            },
-            "crash_indicates_bug": True,
-        })
+        cases.append(
+            {
+                "name": f"redos_method_{i}",
+                "description": f"ReDoS in method name: {pattern[:20]}...",
+                "payload": {"jsonrpc": "2.0", "id": 1, "method": pattern, "params": {}},
+                "crash_indicates_bug": True,
+            }
+        )
 
     return cases

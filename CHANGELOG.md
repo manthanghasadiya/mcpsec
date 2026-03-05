@@ -5,7 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.4.0] - 2026-02-28
+## [2.5.0] - 2026-03-04
+
+### Added
+- New `code-execution` scanner for `eval()`/`exec()` detection.
+- New `template-injection` scanner for SSTI and format string vulnerabilities.
+- New `rag-poisoning` scanner for write→read chain detection.
+- New `idor` scanner for authorization bypass detection.
+- New `info-leak` scanner for environment variable disclosure.
+- New `deserialization` scanner (Pickle, XXE, YAML).
+- Improved command injection detection with execution proof (`mcpsec_cmd_success`).
+- SSRF detection with file:// protocol support and expanded success indicators.
+- Added `_get_dummy_args` to `BaseScanner` for robust parameter handling in tools with complex schemas.
+
+### Fixed
+- Reduced false positives on blocked/sandboxed responses via improved classification.
+- Fixed Rich markup crash on paths containing brackets.
+- Fixed IDOR scanner crash on string responses.
+- Improved path traversal detection (distinguishes blocked vs successful reads/writes).
+- Fixed method call errors in SSRF scanner.
+
+### Changed
+- Scanner scoping now based on more granular tool semantics.
+- Better SQL injection detection with actual error parsing.
+- Improved response classification for `SAFE` vs `CONFIRMED`.
+- Standardized tool call arguments across all scanners.
 
 ### Added
 - **SAST Rules Expansion**: 9 new Semgrep rule files with 87 new rules, bringing total to 154 rules across 24 files.

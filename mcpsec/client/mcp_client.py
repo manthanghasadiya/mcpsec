@@ -5,7 +5,6 @@ MCP client — connects to MCP servers via stdio or HTTP, enumerates tools/resou
 from __future__ import annotations
 
 import asyncio
-import json
 import shlex
 import shutil
 import sys
@@ -21,7 +20,6 @@ from mcpsec.models import (
     ResourceInfo,
     ServerProfile,
     ToolInfo,
-    TransportType,
 )
 from mcpsec.ui import console
 
@@ -40,12 +38,14 @@ class MCPSecClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
 
-    async def connect_stdio(self, command: str, args: list[str] | None = None, env: dict | None = None) -> ServerProfile:
+    async def connect_stdio(
+        self, command: str, args: list[str] | None = None, env: dict | None = None
+    ) -> ServerProfile:
         """Connect to an MCP server via stdio transport."""
         if not args:
             parts = shlex.split(command, posix=(sys.platform != "win32"))
             executable = parts[0]
-            
+
             # Cross-platform executable resolution
             resolved = None
             if sys.platform == "win32":
@@ -56,10 +56,10 @@ class MCPSecClient:
                         break
             else:
                 resolved = shutil.which(executable)
-            
+
             if resolved:
                 executable = resolved
-            
+
             command = executable
             args = parts[1:] if len(parts) > 1 else []
 
@@ -71,9 +71,7 @@ class MCPSecClient:
             env=env,
         )
 
-        stdio_transport = await self._exit_stack.enter_async_context(
-            stdio_client(server_params)
-        )
+        stdio_transport = await self._exit_stack.enter_async_context(stdio_client(server_params))
         read_stream, write_stream = stdio_transport
         self.session = await self._exit_stack.enter_async_context(
             ClientSession(read_stream, write_stream)
@@ -93,9 +91,11 @@ class MCPSecClient:
         await self.session.initialize()
         return await self._enumerate()
 
-    async def call_tool(self, tool_name: str, arguments: dict[str, Any], timeout: float = 30.0) -> Any:
+    async def call_tool(
+        self, tool_name: str, arguments: dict[str, Any], timeout: float = 30.0
+    ) -> Any:
         """Call a tool on the connected MCP server. Returns the raw result.
-        
+
         Args:
             timeout: Maximum seconds to wait for the tool to respond (default 30s).
         """
@@ -137,13 +137,15 @@ class MCPSecClient:
                     elif isinstance(ann, dict):
                         annotations = ann
 
-                profile.tools.append(ToolInfo(
-                    name=tool.name,
-                    description=tool.description or "",
-                    parameters=params,
-                    annotations=annotations,
-                    raw_schema=raw_schema,
-                ))
+                profile.tools.append(
+                    ToolInfo(
+                        name=tool.name,
+                        description=tool.description or "",
+                        parameters=params,
+                        annotations=annotations,
+                        raw_schema=raw_schema,
+                    )
+                )
         except Exception as e:
             console.print(f"  [warning]⚠ Failed to enumerate tools: {e}[/warning]")
 
@@ -151,12 +153,14 @@ class MCPSecClient:
         try:
             resources_result = await self.session.list_resources()
             for res in resources_result.resources:
-                profile.resources.append(ResourceInfo(
-                    uri=str(res.uri),
-                    name=res.name or "",
-                    description=res.description or "",
-                    mime_type=res.mimeType or "",
-                ))
+                profile.resources.append(
+                    ResourceInfo(
+                        uri=str(res.uri),
+                        name=res.name or "",
+                        description=res.description or "",
+                        mime_type=res.mimeType or "",
+                    )
+                )
         except Exception:
             pass  # Resources are optional
 
@@ -167,16 +171,20 @@ class MCPSecClient:
                 args = []
                 if prompt.arguments:
                     for arg in prompt.arguments:
-                        args.append({
-                            "name": arg.name,
-                            "description": arg.description or "",
-                            "required": arg.required if hasattr(arg, "required") else False,
-                        })
-                profile.prompts.append(PromptInfo(
-                    name=prompt.name,
-                    description=prompt.description or "",
-                    arguments=args,
-                ))
+                        args.append(
+                            {
+                                "name": arg.name,
+                                "description": arg.description or "",
+                                "required": arg.required if hasattr(arg, "required") else False,
+                            }
+                        )
+                profile.prompts.append(
+                    PromptInfo(
+                        name=prompt.name,
+                        description=prompt.description or "",
+                        arguments=args,
+                    )
+                )
         except Exception:
             pass  # Prompts are optional
 
