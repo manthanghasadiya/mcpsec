@@ -586,6 +586,7 @@ async def _auto_scan_async(
     # Scan each server
     all_findings = []
     scan_results = []
+    finding_metadata = {}
     
     console.print(f"[bold]Scanning {len(servers)} server(s)...[/bold]\n")
     console.print("─" * 60)
@@ -632,11 +633,12 @@ async def _auto_scan_async(
                     scanner_names=scanner_names,
                 )).findings
                 
-                # Tag findings with server name
+                # Tag findings with server name without mutating Pydantic model
                 for f in findings:
-                    f.extra = f.extra or {}
-                    f.extra["server_name"] = server.name
-                    f.extra["source_client"] = server.source_client
+                    finding_metadata[id(f)] = {
+                        "server_name": server.name,
+                        "source_client": server.source_client
+                    }
                 
                 all_findings.extend(findings)
                 
@@ -694,14 +696,28 @@ async def _auto_scan_async(
     
     # Output report
     if output_path and all_findings:
-        if output_format == "sarif":
-            report = generate_sarif_report(all_findings, target="auto-discovery")
-        else:
-            report = generate_json_report(all_findings)
+        from mcpsec.models import ScanResult
+        combined = ScanResult(
+            target="auto-discovery",
+            findings=all_findings,
+            scanners_run=scanner_names or ["auto"]
+        )
         
-        with open(output_path, "w") as f:
-            json.dump(report, f, indent=2, default=str)
-        console.print(f"\n[dim]Report saved to {output_path}[/dim]")
+        if output_format == "sarif":
+            from mcpsec.reporters.sarif_report import save_sarif_report
+            if save_sarif_report(combined, output_path):
+                console.print(f"\n[dim]SARIF report saved to {output_path}[/dim]")
+        else:
+            report_data = combined.model_dump(mode="json")
+            # Inject the custom metadata into the exported dictionary
+            for i, f in enumerate(all_findings):
+                meta = finding_metadata.get(id(f), {})
+                report_data["findings"][i]["server_name"] = meta.get("server_name", "unknown")
+                report_data["findings"][i]["source_client"] = meta.get("source_client", "unknown")
+                
+            with open(output_path, "w", encoding="utf-8") as file:
+                json.dump(report_data, file, indent=2)
+            console.print(f"\n[dim]Report saved to {output_path}[/dim]")
     
     console.print()
 # ─── EXPLOIT COMMAND ─────────────────────────────────────────────────────────
