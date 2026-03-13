@@ -165,7 +165,7 @@ def scan(
     ),
 ):
     """
-    🔍 Scan an MCP server for security vulnerabilities.
+    Scan an MCP server for security vulnerabilities.
 
     Connect to a running MCP server, enumerate its tools/resources/prompts,
     and run security scanners against them.
@@ -518,7 +518,7 @@ async def _auto_scan_async(
         print_banner()
     
     # Discover servers
-    console.print("\n[bold blue]🔍 Discovering MCP Servers...[/bold blue]\n")
+    console.print("\n[bold blue]Discovering MCP Servers...[/bold blue]\n")
     
     discovery = discover_mcp_servers(config_path=config_path)
     
@@ -526,7 +526,7 @@ async def _auto_scan_async(
     if discovery.configs_found:
         console.print("[dim]Configs found:[/dim]")
         for cfg in discovery.configs_found:
-            console.print(f"  [green]✔[/green] {cfg}")
+            console.print(f"  [green]+[/green] {cfg}")
         console.print()
     
     if discovery.errors:
@@ -624,7 +624,7 @@ async def _auto_scan_async(
                         continue
                     profile = await client.connect_http(server.url)
                 
-                console.print(f"  [green]✔[/green] Connected ({len(profile.tools)} tools)")
+                console.print(f"  [green]+[/green] Connected ({len(profile.tools)} tools)")
                 
                 # Run scanners
                 findings = (await run_scan(
@@ -633,15 +633,13 @@ async def _auto_scan_async(
                     scanner_names=scanner_names,
                 )).findings
                 
-                # Tag findings with server name without mutating Pydantic model
+                # Convert findings to dict early so we can safely inject metadata
                 for f in findings:
-                    finding_metadata[id(f)] = {
-                        "server_name": server.name,
-                        "source_client": server.source_client
-                    }
-                
-                all_findings.extend(findings)
-                
+                    f_dict = f.model_dump(mode="json")
+                    f_dict["server_name"] = server.name
+                    f_dict["source_client"] = server.source_client
+                    all_findings.append(f_dict)
+                    
                 # Summarize
                 critical = sum(1 for f in findings if f.severity == "CRITICAL")
                 high = sum(1 for f in findings if f.severity == "HIGH")
@@ -649,13 +647,13 @@ async def _auto_scan_async(
                 
                 if critical or high:
                     console.print(
-                        f"  [red]⚠ {len(findings)} findings[/red] "
+                        f"  [red]! {len(findings)} findings[/red] "
                         f"([red]{critical} CRITICAL[/red], [orange3]{high} HIGH[/orange3], {medium} MEDIUM)"
                     )
                 elif findings:
-                    console.print(f"  [yellow]⚠ {len(findings)} findings[/yellow]")
+                    console.print(f"  [yellow]! {len(findings)} findings[/yellow]")
                 else:
-                    console.print("  [green]✔ No vulnerabilities found[/green]")
+                    console.print("  [green]+ No vulnerabilities found[/green]")
                 
                 scan_results.append({
                     "server": server.name,
@@ -666,7 +664,9 @@ async def _auto_scan_async(
                 })
                 
             except Exception as e:
-                console.print(f"  [red]✗ Failed: {e}[/red]")
+                import traceback
+                console.print(f"  [red]- Failed: {e}[/red]")
+                traceback.print_exc()
                 scan_results.append({
                     "server": server.name,
                     "client": server.source_client,
@@ -680,10 +680,10 @@ async def _auto_scan_async(
     console.print("\n" + "─" * 60)
     console.print("\n[bold]📊 Summary[/bold]\n")
     
-    total_critical = sum(1 for f in all_findings if f.severity == "CRITICAL")
-    total_high = sum(1 for f in all_findings if f.severity == "HIGH")
-    total_medium = sum(1 for f in all_findings if f.severity == "MEDIUM")
-    total_low = sum(1 for f in all_findings if f.severity == "LOW")
+    total_critical = sum(1 for f in all_findings if str(f.get("severity", "")).upper() == "CRITICAL")
+    total_high = sum(1 for f in all_findings if str(f.get("severity", "")).upper() == "HIGH")
+    total_medium = sum(1 for f in all_findings if str(f.get("severity", "")).upper() == "MEDIUM")
+    total_low = sum(1 for f in all_findings if str(f.get("severity", "")).upper() == "LOW")
     
     console.print(f"Servers scanned: {len([r for r in scan_results if r['status'] == 'success'])}/{len(servers)}")
     console.print(f"Total findings:  {len(all_findings)}")
@@ -696,24 +696,26 @@ async def _auto_scan_async(
     
     # Output report
     if output_path and all_findings:
-        from mcpsec.models import ScanResult
-        combined = ScanResult(
-            target="auto-discovery",
-            findings=all_findings,
-            scanners_run=scanner_names or ["auto"]
-        )
-        
         if output_format == "sarif":
+            # For SARIF we rebuild pydantic models (without extra fields)
+            # as SARIF reporter expects exact Finding objects
+            from mcpsec.models import ScanResult, Finding
+            sarif_findings = [Finding(**f) for f in all_findings]
+            combined = ScanResult(
+                target="auto-discovery",
+                findings=sarif_findings,
+                scanners_run=scanner_names or ["auto"]
+            )
             from mcpsec.reporters.sarif_report import save_sarif_report
             if save_sarif_report(combined, output_path):
                 console.print(f"\n[dim]SARIF report saved to {output_path}[/dim]")
         else:
-            report_data = combined.model_dump(mode="json")
-            # Inject the custom metadata into the exported dictionary
-            for i, f in enumerate(all_findings):
-                meta = finding_metadata.get(id(f), {})
-                report_data["findings"][i]["server_name"] = meta.get("server_name", "unknown")
-                report_data["findings"][i]["source_client"] = meta.get("source_client", "unknown")
+            # For JSON, just dump the raw dicts directly to keep server metadata
+            report_data = {
+                "target": "auto-discovery",
+                "scanners_run": scanner_names or ["auto"],
+                "findings": all_findings
+            }
                 
             with open(output_path, "w", encoding="utf-8") as file:
                 json.dump(report_data, file, indent=2)
@@ -788,7 +790,7 @@ async def _exploit_async(
 
 async def _run_connection_diagnostics(command: str):
     """Run the command manually to see why it's failing."""
-    console.print("\n  [accent]🔍 Running diagnostics...[/accent]")
+    console.print("\n  [accent]Running diagnostics...[/accent]")
 
     try:
         # We run the command with stderr captured
@@ -911,7 +913,7 @@ async def _sql_async(
                 console.print(f"[danger]Error: Tool '{tool_name}' not found on server.[/danger]")
                 return
 
-        console.print(f"  [cyan]🔍 Scanning {len(profile.tools)} tools...[/cyan]")
+        console.print(f"  [cyan]Scanning {len(profile.tools)} tools...[/cyan]")
 
         findings = await scanner.scan_server(profile, level=level, fingerprint=fingerprint)
 
@@ -1020,7 +1022,7 @@ async def _chains_async(
         analyzer = ToolChainAnalyzer()
         report = analyzer.analyze_server(profile)
 
-        console.print(f"  [cyan]🔍 Analyzed {report.total_tools} tools...[/cyan]\n")
+        console.print(f"  [cyan]Analyzed {report.total_tools} tools...[/cyan]\n")
 
         if report.capabilities_found:
             console.print("📊 [bold]Capabilities Detected:[/bold]")

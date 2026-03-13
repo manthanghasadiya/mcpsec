@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-03-13
+
+### Added
+- **Auto-Discovery Scanner**: New `--auto` flag for `mcpsec scan` that automatically discovers and scans MCP servers from known client configurations (Claude Desktop, Cursor, VS Code, Windsurf, Gemini CLI, Claude Code).
+- **Config Discovery Module**: New `mcpsec/discovery.py` module for platform-agnostic configuration discovery.
+
+### Fixed
+- **Windows Unicode Support**: Resolved `UnicodeEncodeError` on Windows consoles by removing emojis from CLI output and ensuring standard character compatibility.
+- **`Finding` Metadata Handling**: Fixed `AttributeError` by implementing a dictionary-based metadata injection strategy for Pydantic models.
+- **Summary Statistics**: Fixed severity counting in the final scan summary for Enum-based severity values.
+
 ## [2.5.0] - 2026-03-04
 
 ### Added

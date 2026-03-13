@@ -50,6 +50,9 @@ mcpsec scan --stdio "npx @modelcontextprotocol/server-filesystem /tmp"
 # Scan via HTTP with auth
 mcpsec scan --http http://localhost:8080/mcp -H "Authorization: Bearer TOKEN"
 
+# Auto-discover and scan all local servers
+mcpsec scan --auto
+
 # Enumerate attack surface
 mcpsec info --stdio "python my_server.py"
 ```
@@ -181,6 +184,11 @@ mcpsec fuzz --stdio "server" --output results.sarif
 ---
 
 ## Changelog
+
+### v2.6.0 (2026-03-13)
+- **Auto-Discovery Scanner**: New `--auto` flag to automatically find and scan MCP servers from Claude, Cursor, VS Code, Windsurf, etc.
+- **Windows Unicode Fixes**: Comprehensive fix for `UnicodeEncodeError` on Windows consoles.
+- **Pydantic Compatibility**: Resolved `AttributeError` for custom metadata in scan results.
 
 ### v2.5.0 (2026-03-04)
 - **New Scanners**: `code-execution`, `template-injection`, `rag-poisoning`, `idor`, `info-leak`, `deserialization`
