@@ -22,6 +22,7 @@ from rich.table import Table
 from mcpsec import __version__
 from mcpsec.models import TransportType
 from mcpsec.sql_scanner import SQLScanner
+from mcpsec.discovery import discover_mcp_servers, DiscoveredServer, get_server_display_name
 from mcpsec.ui import (
     console,
     get_progress,
@@ -139,6 +140,29 @@ def scan(
         "--exploit",
         help="Automatically launch interactive exploit session after scanning",
     ),
+    auto: bool = typer.Option(
+        False,
+        "--auto",
+        "-a",
+        help="Auto-discover and scan all locally configured MCP servers",
+    ),
+    config: Optional[str] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to specific MCP config file (e.g., claude_desktop_config.json)",
+    ),
+    list_servers: bool = typer.Option(
+        False,
+        "--list",
+        "-l",
+        help="List discovered servers without scanning",
+    ),
+    server_filter: Optional[str] = typer.Option(
+        None,
+        "--server",
+        help="Only scan servers matching this name (supports wildcards)",
+    ),
 ):
     """
     🔍 Scan an MCP server for security vulnerabilities.
@@ -146,29 +170,45 @@ def scan(
     Connect to a running MCP server, enumerate its tools/resources/prompts,
     and run security scanners against them.
     """
-    if not stdio and not http:
-        console.print("[danger]Error: Specify either --stdio or --http[/danger]")
-        raise typer.Exit(1)
-
-    if stdio and http:
-        console.print("[danger]Error: Specify only one of --stdio or --http[/danger]")
-        raise typer.Exit(1)
-
     scanner_names = [s.strip() for s in scanners.split(",")] if scanners else None
 
-    _run_async(
-        _scan_async(
-            stdio_cmd=stdio,
-            http_url=http,
-            scanner_names=scanner_names,
-            output_path=output,
-            output_format=format.lower(),
-            quiet=quiet,
-            ai=ai,
-            headers=_parse_headers(header),
-            exploit=exploit,
+    # Determine scan mode
+    if auto or config or list_servers:
+        # Auto-discovery mode
+        _run_async(
+            _auto_scan_async(
+                config_path=config,
+                scanner_names=scanner_names,
+                output_path=output,
+                output_format=format.lower(),
+                quiet=quiet,
+                ai=ai,
+                list_only=list_servers,
+                server_filter=server_filter,
+                exploit=exploit,
+            )
         )
-    )
+    elif not stdio and not http:
+        console.print("[danger]Error: Specify --stdio, --http, or --auto[/danger]")
+        raise typer.Exit(1)
+    elif stdio and http:
+        console.print("[danger]Error: Specify only one of --stdio or --http[/danger]")
+        raise typer.Exit(1)
+    else:
+        # Original single-server scan mode
+        _run_async(
+            _scan_async(
+                stdio_cmd=stdio,
+                http_url=http,
+                scanner_names=scanner_names,
+                output_path=output,
+                output_format=format.lower(),
+                quiet=quiet,
+                ai=ai,
+                headers=_parse_headers(header),
+                exploit=exploit,
+            )
+        )
 
 
 async def _scan_async(
@@ -452,7 +492,218 @@ async def _scan_async(
     if not exploit and (scan_result.critical_count > 0 or scan_result.high_count > 0):
         raise typer.Exit(1)
 
-
+async def _auto_scan_async(
+    config_path: str | None,
+    scanner_names: list[str] | None,
+    output_path: str | None,
+    output_format: str = "json",
+    quiet: bool = False,
+    ai: bool = False,
+    list_only: bool = False,
+    server_filter: str | None = None,
+    exploit: bool = False,
+):
+    """Auto-discover and scan multiple MCP servers."""
+    import fnmatch
+    from rich.panel import Panel
+    from rich.table import Table
+    
+    from mcpsec.client.mcp_client import MCPSecClient
+    from mcpsec.discovery import discover_mcp_servers, get_server_display_name
+    from mcpsec.engine import run_scan
+    from mcpsec.reporters.json_report import generate_json_report
+    from mcpsec.reporters.sarif_report import generate_sarif_report
+    
+    if not quiet:
+        print_banner()
+    
+    # Discover servers
+    console.print("\n[bold blue]🔍 Discovering MCP Servers...[/bold blue]\n")
+    
+    discovery = discover_mcp_servers(config_path=config_path)
+    
+    # Show discovery results
+    if discovery.configs_found:
+        console.print("[dim]Configs found:[/dim]")
+        for cfg in discovery.configs_found:
+            console.print(f"  [green]✔[/green] {cfg}")
+        console.print()
+    
+    if discovery.errors:
+        console.print("[dim]Errors:[/dim]")
+        for err in discovery.errors:
+            console.print(f"  [yellow]⚠[/yellow] {err}")
+        console.print()
+    
+    if not discovery.servers:
+        console.print("[yellow]No MCP servers found in local configurations.[/yellow]")
+        console.print("\n[dim]Searched locations:[/dim]")
+        for path in discovery.configs_not_found[:5]:
+            console.print(f"  [dim]• {path}[/dim]")
+        if len(discovery.configs_not_found) > 5:
+            console.print(f"  [dim]... and {len(discovery.configs_not_found) - 5} more[/dim]")
+        raise typer.Exit(0)
+    
+    # Apply server filter
+    servers = discovery.servers
+    if server_filter:
+        servers = [
+            s for s in servers 
+            if fnmatch.fnmatch(s.name.lower(), server_filter.lower())
+        ]
+        if not servers:
+            console.print(f"[yellow]No servers match filter '{server_filter}'[/yellow]")
+            raise typer.Exit(0)
+    
+    # Display discovered servers
+    table = Table(title="Discovered MCP Servers", box=box.ROUNDED)
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Name", style="cyan")
+    table.add_column("Client", style="blue")
+    table.add_column("Transport", style="magenta")
+    table.add_column("Command/URL", style="dim", max_width=50)
+    
+    for i, server in enumerate(servers, 1):
+        cmd_or_url = server.url or server.stdio_command or "N/A"
+        if len(cmd_or_url) > 47:
+            cmd_or_url = cmd_or_url[:47] + "..."
+        table.add_row(
+            str(i),
+            server.name,
+            server.source_client,
+            server.transport.upper(),
+            cmd_or_url,
+        )
+    
+    console.print(table)
+    console.print()
+    
+    # If list-only mode, exit here
+    if list_only:
+        console.print(f"[dim]Found {len(servers)} server(s). Use --auto to scan them.[/dim]")
+        raise typer.Exit(0)
+    
+    # Scan each server
+    all_findings = []
+    scan_results = []
+    
+    console.print(f"[bold]Scanning {len(servers)} server(s)...[/bold]\n")
+    console.print("─" * 60)
+    
+    for i, server in enumerate(servers, 1):
+        server_display = get_server_display_name(server)
+        console.print(f"\n[bold cyan]({i}/{len(servers)}) {server_display}[/bold cyan]")
+        
+        async with MCPSecClient() as client:
+            try:
+                if server.transport == "stdio":
+                    if not server.stdio_command:
+                        console.print("  [yellow]⚠ Skipped: No command configured[/yellow]")
+                        continue
+                    
+                    # Set environment variables if specified
+                    import os
+                    old_env = {}
+                    for key, val in server.env.items():
+                        old_env[key] = os.environ.get(key)
+                        os.environ[key] = val
+                    
+                    try:
+                        profile = await client.connect_stdio(server.stdio_command)
+                    finally:
+                        # Restore environment
+                        for key, val in old_env.items():
+                            if val is None:
+                                os.environ.pop(key, None)
+                            else:
+                                os.environ[key] = val
+                else:
+                    if not server.url:
+                        console.print("  [yellow]⚠ Skipped: No URL configured[/yellow]")
+                        continue
+                    profile = await client.connect_http(server.url)
+                
+                console.print(f"  [green]✔[/green] Connected ({len(profile.tools)} tools)")
+                
+                # Run scanners
+                findings = (await run_scan(
+                    client=client,
+                    profile=profile,
+                    scanner_names=scanner_names,
+                )).findings
+                
+                # Tag findings with server name
+                for f in findings:
+                    f.extra = f.extra or {}
+                    f.extra["server_name"] = server.name
+                    f.extra["source_client"] = server.source_client
+                
+                all_findings.extend(findings)
+                
+                # Summarize
+                critical = sum(1 for f in findings if f.severity == "CRITICAL")
+                high = sum(1 for f in findings if f.severity == "HIGH")
+                medium = sum(1 for f in findings if f.severity == "MEDIUM")
+                
+                if critical or high:
+                    console.print(
+                        f"  [red]⚠ {len(findings)} findings[/red] "
+                        f"([red]{critical} CRITICAL[/red], [orange3]{high} HIGH[/orange3], {medium} MEDIUM)"
+                    )
+                elif findings:
+                    console.print(f"  [yellow]⚠ {len(findings)} findings[/yellow]")
+                else:
+                    console.print("  [green]✔ No vulnerabilities found[/green]")
+                
+                scan_results.append({
+                    "server": server.name,
+                    "client": server.source_client,
+                    "tools": len(profile.tools),
+                    "findings": len(findings),
+                    "status": "success",
+                })
+                
+            except Exception as e:
+                console.print(f"  [red]✗ Failed: {e}[/red]")
+                scan_results.append({
+                    "server": server.name,
+                    "client": server.source_client,
+                    "tools": 0,
+                    "findings": 0,
+                    "status": "failed",
+                    "error": str(e),
+                })
+    
+    # Summary
+    console.print("\n" + "─" * 60)
+    console.print("\n[bold]📊 Summary[/bold]\n")
+    
+    total_critical = sum(1 for f in all_findings if f.severity == "CRITICAL")
+    total_high = sum(1 for f in all_findings if f.severity == "HIGH")
+    total_medium = sum(1 for f in all_findings if f.severity == "MEDIUM")
+    total_low = sum(1 for f in all_findings if f.severity == "LOW")
+    
+    console.print(f"Servers scanned: {len([r for r in scan_results if r['status'] == 'success'])}/{len(servers)}")
+    console.print(f"Total findings:  {len(all_findings)}")
+    console.print(
+        f"  [red]CRITICAL: {total_critical}[/red]  "
+        f"[orange3]HIGH: {total_high}[/orange3]  "
+        f"[yellow]MEDIUM: {total_medium}[/yellow]  "
+        f"[dim]LOW: {total_low}[/dim]"
+    )
+    
+    # Output report
+    if output_path and all_findings:
+        if output_format == "sarif":
+            report = generate_sarif_report(all_findings, target="auto-discovery")
+        else:
+            report = generate_json_report(all_findings)
+        
+        with open(output_path, "w") as f:
+            json.dump(report, f, indent=2, default=str)
+        console.print(f"\n[dim]Report saved to {output_path}[/dim]")
+    
+    console.print()
 # ─── EXPLOIT COMMAND ─────────────────────────────────────────────────────────
 
 
