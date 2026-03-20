@@ -7,6 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/mcpsec)](https://pypi.org/project/mcpsec/)
+[![Bugs Fixed](https://img.shields.io/badge/bugs%20fixed-4-green)](https://github.com/manthanghasadiya/mcpsec)
 [![Bugs Reported](https://img.shields.io/badge/bugs%20reported-12+-red)](https://github.com/manthanghasadiya/mcpsec)
 [![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-800+-orange)](https://github.com/manthanghasadiya/mcpsec)
 [![Semgrep Rules](https://img.shields.io/badge/semgrep%20rules-149-purple)](https://github.com/manthanghasadiya/mcpsec)
@@ -24,6 +25,19 @@ MCP (Model Context Protocol) connects AI agents to external tools. Claude Deskto
 Most MCP security tools do static analysis. **mcpsec connects to live servers and proves exploitation.**
 
 ![mcpsec demo](assets/demo.gif)
+
+---
+
+## Real Bugs Found
+
+| Target | Vulnerability | Status |
+|--------|---------------|--------|
+| MCP Python SDK | UnicodeDecodeError DoS | [Fixed - PR #2302](https://github.com/modelcontextprotocol/python-sdk/pull/2302) |
+| mcp-server-fetch | 61 crash cases, exception handling DoS | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
+| mcp-server-git | 61 crash cases | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
+| MCP TypeScript SDK | EPIPE crash | [Issue #1564](https://github.com/modelcontextprotocol/typescript-sdk/issues/1564) |
+
+More findings under responsible disclosure.
 
 ---
 
