@@ -5,6 +5,7 @@ MCP client — connects to MCP servers via stdio or HTTP, enumerates tools/resou
 from __future__ import annotations
 
 import asyncio
+import os
 import shlex
 import shutil
 import sys
@@ -68,7 +69,7 @@ class MCPSecClient:
         server_params = StdioServerParameters(
             command=command,
             args=args,
-            env=env,
+            env=env or os.environ.copy(),
         )
 
         stdio_transport = await self._exit_stack.enter_async_context(stdio_client(server_params))

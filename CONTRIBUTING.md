@@ -60,6 +60,15 @@ Please use the GitHub Issues tab to report bugs or suggest features. Include as 
 - Actual behavior
 - `mcpsec` version
 
+## Pull Request Process
+
+1. Fork the repo and create your branch from `main`
+2. Make your changes
+3. Add entry to CHANGELOG.md under `[Unreleased]`
+4. Ensure tests pass: `pytest tests/ -v`
+5. Ensure linting passes: `ruff check mcpsec/`
+6. Submit PR using the template
+
 ## Code Style
 
 We use `ruff` and `mypy` for linting and formatting. Please run them before submitting a PR:
