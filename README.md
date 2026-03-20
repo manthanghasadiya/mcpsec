@@ -7,6 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/mcpsec)](https://pypi.org/project/mcpsec/)
+[![CI](https://github.com/manthanghasadiya/mcpsec/actions/workflows/ci.yml/badge.svg)](https://github.com/manthanghasadiya/mcpsec/actions/workflows/ci.yml)
 [![Bugs Fixed](https://img.shields.io/badge/bugs%20fixed-4-green)](https://github.com/manthanghasadiya/mcpsec)
 [![Bugs Reported](https://img.shields.io/badge/bugs%20reported-12+-red)](https://github.com/manthanghasadiya/mcpsec)
 [![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-800+-orange)](https://github.com/manthanghasadiya/mcpsec)
@@ -50,6 +51,13 @@ pip install mcpsec
 For AI-powered features:
 ```bash
 pip install mcpsec[ai]
+```
+
+### Nix
+
+```bash
+nix-shell   # basic
+nix-shell --arg withAll true   # all optional deps
 ```
 
 ---
@@ -199,6 +207,12 @@ mcpsec fuzz --stdio "server" --output results.sarif
 
 ## Changelog
 
+### v2.6.1 (2026-03-20)
+- CI/CD pipeline with GitHub Actions for automated testing and PyPI releases
+- PR and Issue templates for better community contributions
+- Nix package support via `shell.nix` for reproducible builds (@AbhiTheModder)
+- Environment variables now properly inherited in `mcp_client.py` (@AbhiTheModder)
+
 ### v2.6.0 (2026-03-13)
 - **Auto-Discovery Scanner**: New `--auto` flag to automatically find and scan MCP servers from Claude, Cursor, VS Code, Windsurf, etc.
 - **Windows Unicode Fixes**: Comprehensive fix for `UnicodeEncodeError` on Windows consoles.
@@ -256,6 +270,14 @@ mcpsec fuzz --stdio "server" --output results.sarif
 - AI-powered validation of security findings
 
 </details>
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+CI runs automatically on all PRs — linting with Ruff and cross-platform tests (Ubuntu, Windows, macOS).
 
 ---
 
