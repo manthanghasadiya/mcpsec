@@ -1487,6 +1487,86 @@ def fuzz(
             console.print(f"  [success]✔ Results saved to {output}[/success]")
 
 
+# ─── EVOLVE COMMAND ──────────────────────────────────────────────────────────
+
+
+@app.command("evolve")
+def evolve_fuzz(
+    stdio: Optional[str] = typer.Option(None, "--stdio", help="Server command for stdio transport"),
+    http: Optional[str] = typer.Option(None, "--http", help="HTTP endpoint URL"),
+    corpus_dir: Optional[str] = typer.Option(None, "--corpus", "-c", help="Corpus directory for persistent fuzzing"),
+    crash_dir: Optional[str] = typer.Option(None, "--crashes", help="Directory to save crash cases"),
+    seed_dir: Optional[str] = typer.Option(None, "--seeds", "-s", help="Directory with seed inputs"),
+    max_iterations: int = typer.Option(100000, "--iterations", "-i", help="Maximum fuzzing iterations"),
+    max_time: int = typer.Option(3600, "--time", "-t", help="Maximum fuzzing time in seconds"),
+    timeout: float = typer.Option(5.0, "--timeout", help="Per-execution timeout in seconds"),
+    mcp_weight: float = typer.Option(0.8, "--mcp-weight", help="Weight for MCP-aware mutations (0.0-1.0)"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug output"),
+):
+    """
+    Coverage-guided evolutionary fuzzer.
+
+    Unlike static fuzzing with fixed payloads, evolve continuously mutates inputs
+    based on server feedback to discover new crash classes automatically.
+
+    Features:
+    - Corpus management with energy-based scheduling
+    - MCP-protocol-aware mutations (80%) + raw byte mutations (20%)
+    - Automatic tool discovery and targeted fuzzing
+    - Crash deduplication by response fingerprint
+    - Persistent corpus across sessions
+
+    Examples:
+        mcpsec evolve --stdio "python server.py"
+        mcpsec evolve --stdio "npx mcp-server" --corpus ./corpus --crashes ./crashes
+        mcpsec evolve --stdio "server" --iterations 10000 --time 600
+        mcpsec evolve --stdio "server" --mcp-weight 0.9  # More logic bugs, fewer parse errors
+    """
+    import asyncio
+    from mcpsec.fuzzer.evolve import EvolveFuzzEngine, EvolveFuzzConfig
+
+    print_banner(small=True)
+
+    if not stdio and not http:
+        console.print("[danger]Error: Must specify --stdio or --http[/danger]")
+        raise typer.Exit(1)
+
+    if http:
+        console.print("[yellow]HTTP transport not yet supported for evolve mode[/yellow]")
+        raise typer.Exit(1)
+
+    config = EvolveFuzzConfig(
+        corpus_dir=Path(corpus_dir) if corpus_dir else Path("./mcpsec_corpus"),
+        crash_dir=Path(crash_dir) if crash_dir else Path("./mcpsec_crashes"),
+        seed_dir=Path(seed_dir) if seed_dir else None,
+        max_iterations=max_iterations,
+        max_time=max_time,
+        timeout=timeout,
+        mcp_mutation_weight=mcp_weight,
+        debug=debug,
+    )
+
+    engine = EvolveFuzzEngine(
+        target_command=stdio,
+        config=config,
+        transport="stdio",
+    )
+
+    try:
+        report = asyncio.run(engine.run())
+
+        # Save report
+        import json
+        report_path = config.crash_dir / "evolve_report.json"
+        with open(report_path, "w") as f:
+            json.dump(report, f, indent=2, default=str)
+        console.print(f"\n[dim]Report saved to {report_path}[/dim]")
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted[/yellow]")
+        raise typer.Exit(0)
+
+
 # ─── CHAINED COMMAND ─────────────────────────────────────────────────────────
 
 

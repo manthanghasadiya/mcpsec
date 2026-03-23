@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.7.0 (2026-03-23)
+
+### New Features
+- **Evolutionary Fuzzer (`mcpsec evolve`)**: Coverage-guided mutation fuzzer inspired by AFL
+  - Energy-based corpus scheduling
+  - MCP-aware mutations (80%) + raw byte mutations (20%)
+  - Response fingerprinting for behavior deduplication
+  - Configurable via `--mcp-weight`, `--iterations`, `--time` flags
+
+### Bugs Found
+- **MCP Python SDK**: ClosedResourceError DoS via invalid UTF-8 bytes ([Issue #2328](https://github.com/modelcontextprotocol/python-sdk/issues/2328))
+- **radare2-mcp**: Multiple SIGSEGV crashes via params type confusion ([Issue #42](https://github.com/radareorg/radare2-mcp/issues/42))
+
+### Usage
+```bash
+mcpsec evolve --stdio "python server.py" --iterations 5000 --time 600
+mcpsec evolve --stdio "server" --corpus ./corpus --crashes ./crashes
+```
+
 ## [2.6.1] - 2026-03-20
 
 ### Added
