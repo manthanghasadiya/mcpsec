@@ -35,6 +35,8 @@ Most MCP security tools do static analysis. **mcpsec connects to live servers an
 |--------|---------------|--------|
 | **MCP Python SDK** | ClosedResourceError DoS (invalid UTF-8) | [Issue #2328](https://github.com/modelcontextprotocol/python-sdk/issues/2328) - Fix in [PR #2334](https://github.com/modelcontextprotocol/python-sdk/pull/2334) |
 | **radare2-mcp** | Multiple SIGSEGV via params type confusion | [Issue #42](https://github.com/radareorg/radare2-mcp/issues/42) |
+| **radare2-mcp** | Arbitrary RCE via shell escape (!) in run_command/run_javascript | [Issue #45](https://github.com/radareorg/radare2-mcp/issues/45) - Fixed in [commit 482cde6](https://github.com/radareorg/radare2-mcp/commit/482cde6) |
+| **radare2-mcp** | SIGSEGV in initialize via params type confusion | [Issue #52](https://github.com/radareorg/radare2-mcp/issues/52) |
 | MCP Python SDK | UnicodeDecodeError DoS | [Fixed - PR #2302](https://github.com/modelcontextprotocol/python-sdk/pull/2302) |
 | mcp-server-fetch | 61 crash cases, exception handling DoS | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
 | mcp-server-git | 61 crash cases | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
