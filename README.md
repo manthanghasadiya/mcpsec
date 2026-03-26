@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/mcpsec)](https://pypi.org/project/mcpsec/)
 [![CI](https://github.com/manthanghasadiya/mcpsec/actions/workflows/ci.yml/badge.svg)](https://github.com/manthanghasadiya/mcpsec/actions/workflows/ci.yml)
 [![Bugs Fixed](https://img.shields.io/badge/bugs%20fixed-4-green)](https://github.com/manthanghasadiya/mcpsec)
-[![Bugs Reported](https://img.shields.io/badge/bugs%20reported-14+-red)](https://github.com/manthanghasadiya/mcpsec)
+[![Bugs Reported](https://img.shields.io/badge/bugs%20reported-15+-red)](https://github.com/manthanghasadiya/mcpsec)
 [![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-800+-orange)](https://github.com/manthanghasadiya/mcpsec)
 [![Semgrep Rules](https://img.shields.io/badge/semgrep%20rules-149-purple)](https://github.com/manthanghasadiya/mcpsec)
 
