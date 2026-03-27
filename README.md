@@ -41,6 +41,7 @@ Most MCP security tools do static analysis. **mcpsec connects to live servers an
 | mcp-server-fetch | 61 crash cases, exception handling DoS | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
 | mcp-server-git | 61 crash cases | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
 | MCP TypeScript SDK | EPIPE crash | [Issue #1564](https://github.com/modelcontextprotocol/typescript-sdk/issues/1564) |
+| MCP TypeScript SDK | Integer overflow DoS (MAX_SAFE_INTEGER+1) | [Issue #1765](https://github.com/modelcontextprotocol/typescript-sdk/issues/1765) |
 
 More findings under responsible disclosure.
 
