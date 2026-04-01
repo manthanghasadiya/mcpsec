@@ -11,9 +11,10 @@
 [![Bugs Fixed](https://img.shields.io/badge/bugs%20fixed-10-green)](https://github.com/manthanghasadiya/mcpsec)
 [![Bugs Reported](https://img.shields.io/badge/bugs%20reported-15+-red)](https://github.com/manthanghasadiya/mcpsec)
 [![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-800+-orange)](https://github.com/manthanghasadiya/mcpsec)
+[![Sink Patterns](https://img.shields.io/badge/sink%20patterns-800+-blueviolet)](https://github.com/manthanghasadiya/mcpsec)
 [![Semgrep Rules](https://img.shields.io/badge/semgrep%20rules-149-purple)](https://github.com/manthanghasadiya/mcpsec)
 
-[Installation](#installation) • [Quick Start](#quick-start) • [Scanners](#scanners) • [Fuzzing](#fuzz-generators)
+[Installation](#installation) • [Quick Start](#quick-start) • [Audit v3](#static-analysis-audit-v3) • [Scanners](#scanners) • [Fuzzing](#fuzz-generators)
 
 </div>
 
@@ -84,6 +85,21 @@ mcpsec scan --auto
 mcpsec info --stdio "python my_server.py"
 ```
 
+### Static Analysis (Audit v3)
+```bash
+# Local source — pattern-based + AI reachability
+mcpsec audit --path ./my-mcp-server
+
+# GitHub repository
+mcpsec audit --github https://github.com/user/mcp-server
+
+# With LLM-powered taint analysis
+mcpsec audit --github https://github.com/user/mcp-server --ai
+
+# Known vulnerable servers
+mcpsec audit --github https://github.com/radareorg/radare2-mcp
+```
+
 ### Protocol Fuzzing
 ```bash
 # Standard fuzzing (~200 cases)
@@ -94,18 +110,6 @@ mcpsec fuzz --stdio "python my_server.py" --intensity high
 
 # AI-powered payload generation
 mcpsec fuzz --stdio "python my_server.py" --ai
-```
-
-### Static Analysis
-```bash
-# Local source
-mcpsec audit --path ./my-mcp-server
-
-# GitHub repository
-mcpsec audit --github https://github.com/user/mcp-server
-
-# With AI validation
-mcpsec audit --github https://github.com/user/mcp-server --ai
 ```
 
 ### Advanced
@@ -122,6 +126,54 @@ mcpsec exploit --stdio "npx vulnerable-server"
 # Rogue server for client-side testing
 mcpsec rogue-server --port 9999 --attack all
 ```
+
+---
+
+## Static Analysis — Audit v3
+
+> **New in v2.8.0-alpha.1** — Complete rewrite of the audit engine with a pattern-based architecture.
+
+### 7-Stage Analysis Pipeline
+
+```
+Source Code
+    │
+    ├─ 1. Fetch        — Clone GitHub repo or load local path
+    ├─ 2. Detect       — Identify language, MCP SDK, and framework
+    ├─ 3. Sink Scan    — 800+ regex patterns across 12 languages
+    ├─ 4. Semgrep      — 149 semantic rules (AST-level)
+    ├─ 5. AST          — Python/JS taint flow analysis
+    ├─ 6. Reachability — LLM taint tracing (heuristic fallback)
+    └─ 7. Deduplicate  — Merge, rank, and report findings
+```
+
+### Pattern Database — 800+ Sink Patterns
+
+| Vulnerability Class | Patterns | Languages |
+|--------------------|----------|-----------|
+| Command Injection   | 181      | Python, JS/TS, Go, Rust, Java, C, C#, Ruby, PHP |
+| SQL / NoSQL Injection | ~100   | All drivers + ORM-specific (Sequelize, SQLAlchemy, Drizzle, Kysely) |
+| Path Traversal      | ~60      | fs, aiofiles, Deno, Bun, tarfile, ZipSlip |
+| SSRF                | ~80      | requests, httpx, aiohttp, gRPC, OkHttp, WebSocket, got |
+| Deserialization     | ~60      | pickle, YAML, torch.load, numpy, joblib, BinaryFormatter |
+| Code Execution      | ~50      | eval, vm, exec, DOM XSS, format strings |
+| Template Injection  | ~30      | Jinja2, Pug, EJS, Handlebars, Lodash, ERB, Velocity, Thymeleaf |
+| Crypto Weaknesses   | ~40      | MD5/SHA-1, RC4, weak keys, JWT `none` alg |
+| XXE                 | ~25      | lxml, untangle, DOMDocument, SAXParser |
+| Log/Header/LDAP     | ~50      | All major frameworks |
+| Prototype Pollution | ~15      | Object.assign, deepmerge, `__proto__` |
+| MCP-Specific        | ~25      | Tool args → sinks, prompt/resource handlers |
+
+### Framework Detection
+
+Automatically identifies:
+- **MCP SDKs**: `@modelcontextprotocol/sdk`, `mcp` (Python), `mcp-go`, `rmcp` (Rust), `mcpx` (C#)
+- **Languages**: TypeScript, JavaScript, Python, Go, Rust, Java, C#, PHP, Ruby, C/C++
+- **Frameworks**: Express, FastAPI, Django, Gin, Axum, Spring Boot, ASP.NET
+
+### Heuristic Fallback
+
+When no LLM is configured, the reachability analyzer uses **confidence scoring** to report findings without false silence — high-confidence patterns (CRITICAL/HIGH + direct taint) are always reported.
 
 ---
 
@@ -162,18 +214,6 @@ mcpsec rogue-server --port 9999 --attack all
 
 ---
 
-## Static Analysis (149 Semgrep Rules)
-
-24 rule files covering:
-
-- **Injection:** Command injection (JS, Go, Rust, .NET, Python, Python async), SQL injection (all drivers + ORM bypass), path traversal
-- **Network:** SSRF patterns, resource URI issues
-- **Secrets:** AWS keys, API tokens, JWT secrets, connection strings, private keys
-- **MCP-Specific:** Dangerous tool names, empty schemas, input reflection, missing auth
-- **Code Quality:** Security TODOs, empty catches, TLS disabled, CORS *, ReDoS patterns
-
----
-
 ## How It Works
 
 ```
@@ -183,9 +223,10 @@ mcpsec rogue-server --port 9999 --attack all
 └────┬────┘                       └────────────┘
      │
      ├── Connect & enumerate attack surface
-     ├── Run 10+ security scanners  
+     ├── Run 10+ security scanners
      ├── Generate 800+ fuzz cases
      ├── Execute AI-powered payload mutations
+     ├── Static audit: 800 sink patterns + 149 Semgrep rules
      └── Report findings with PoC evidence
 ```
 
@@ -211,6 +252,17 @@ mcpsec fuzz --stdio "server" --output results.sarif
 ---
 
 ## Changelog
+
+### v2.8.0-alpha.1 (2026-04-01) — `staging/audit-v3`
+- **Audit v3 — Pattern Database Foundation**: Complete rewrite of the static analysis engine
+- **800+ Sink Patterns**: Pattern database across 12 vulnerability classes and 12 languages
+- **Framework Detector**: Auto-identifies MCP SDK, language, and web framework from source
+- **Sink Scanner**: Regex-based scanner with context capture, comment filtering, and negative patterns
+- **LLM Reachability Analyzer**: AI-powered taint analysis with heuristic fallback scoring
+- **7-Stage Audit Pipeline**: Fetch → Detect → Sink Scan → Semgrep → AST → Reachability → Deduplicate
+- **MCP-Specific Patterns**: Tool argument flows, `server.tool`/`server.prompt`/`server.resource` handlers
+- **ML/AI Sinks**: `torch.load`, `numpy.load(allow_pickle=True)`, joblib, HuggingFace downloads
+- **JWT Patterns**: `none` algorithm, empty secret, disabled verification
 
 ### v2.6.1 (2026-03-20)
 - CI/CD pipeline with GitHub Actions for automated testing and PyPI releases
@@ -258,6 +310,7 @@ mcpsec fuzz --stdio "server" --output results.sarif
 - AI payload engine with context-aware recommendations
 - Exploit playbooks for SQLi, RCE, SSRF, path traversal
 - Automated evidence capture and PoC generation
+
 
 <details>
 <summary>Earlier versions</summary>
