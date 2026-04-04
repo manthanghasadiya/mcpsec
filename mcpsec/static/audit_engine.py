@@ -91,31 +91,68 @@ async def run_audit(
         # Phase 5: Python AST analysis
         _scan_py_files(root, findings)
 
-        # Phase 6: LLM reachability
+        # Phase 6: Sink analysis (Heuristic)
         if scan_result.matches:
+            from mcpsec.static.analysis.reachability import ReachabilityAnalyzer
             analyzer = ReachabilityAnalyzer()
-            if ai and analyzer.available:
-                console.print("  [cyan]AI analyzing reachability...[/cyan]")
-                ai_findings = await analyzer.analyze_sinks(
-                    scan_result.matches,
-                    framework_info,
-                    root,
-                )
-                console.print(f"    AI validated {len(ai_findings)} reachable sinks")
-                findings.extend(ai_findings)
-            else:
-                mode = "(use --ai for better results)" if not ai else "(no LLM configured)"
-                console.print(f"  [cyan]Heuristic analysis {mode}...[/cyan]")
-                heuristic_findings = analyzer._heuristic_analysis(
-                    scan_result.matches,
-                    framework_info,
-                )
-                console.print(f"    Heuristic found {len(heuristic_findings)} high-confidence sinks")
-                findings.extend(heuristic_findings)
+            
+            # We always use heuristic analysis here to avoid making 
+            # multiple LLM calls per sink. The final AI step (Phase 8) 
+            # will classify these sinks along with Semgrep findings.
+            mode = "(use --ai for server-aware classification)" if not ai else "(AI purpose classification pending)"
+            console.print(f"  [cyan]Heuristic sink analysis {mode}...[/cyan]")
+            
+            heuristic_findings = analyzer._heuristic_analysis(
+                scan_result.matches,
+                framework_info,
+            )
+            console.print(f"    Heuristic found {len(heuristic_findings)} potential sinks")
+            findings.extend(heuristic_findings)
 
-        # Phase 7: Deduplicate and heuristics
+        # Phase 7: Deduplicate
         findings = _deduplicate(findings)
-        findings = _apply_design_heuristics(findings, root)
+
+        # Phase 8: AI Classification (Opt-in)
+        if ai and findings:
+            from mcpsec.ai.finding_classifier import classify_server_and_findings
+            from mcpsec.ai.llm_client import LLMClient
+            
+            console.print("  [cyan]AI classifying findings...[/cyan]")
+            try:
+                llm_client = LLMClient()
+                if llm_client.available:
+                    server_profile, findings = await classify_server_and_findings(
+                        root,
+                        findings,
+                        llm_client
+                    )
+                    
+                    # Show server profile summary
+                    console.print(f"    [success]Server type: {server_profile.server_type}[/success]")
+                    if server_profile.notes:
+                        console.print(f"    [dim]Notes: {server_profile.notes}[/dim]")
+                    
+                    # Count classifications
+                    tag_counts = {}
+                    for f in findings:
+                        for tag_name in ["🔴 VULNERABILITY", "🟠 SUSPICIOUS", "🟡 NEEDS REVIEW", 
+                                        "🔵 LIKELY BY DESIGN", "⚪ BY DESIGN"]:
+                            if tag_name in f.title:
+                                tag_counts[tag_name] = tag_counts.get(tag_name, 0) + 1
+                                break
+                    
+                    tag_line = " ".join([f"{t}: {c}" for t, c in tag_counts.items()])
+                    if tag_line:
+                        console.print(f"    [dim]AI Summary: {tag_line}[/dim]")
+                else:
+                    console.print("    [warning]AI skipped: No API key configured[/warning]")
+                    findings = _apply_design_heuristics(findings, root)
+            except Exception as e:
+                console.print(f"    [warning]AI classification failed: {e}[/warning]")
+                findings = _apply_design_heuristics(findings, root)
+        else:
+            # Traditional hardcoded heuristics
+            findings = _apply_design_heuristics(findings, root)
 
     except Exception as e:
         console.print(f"  [danger]Error during audit: {e}[/danger]")
