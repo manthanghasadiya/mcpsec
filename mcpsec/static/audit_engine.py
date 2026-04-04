@@ -21,7 +21,7 @@ from mcpsec.static.source_fetcher import cleanup_temp, fetch_source
 from mcpsec.static.framework.detector import detect_framework
 from mcpsec.static.analysis.sink_scanner import SinkScanner
 from mcpsec.static.analysis.reachability import ReachabilityAnalyzer
-from mcpsec.static.semgrep_engine import run_semgrep
+from mcpsec.static.semgrep_engine import run_semgrep, run_semgrep_with_categories
 from mcpsec.static.py_analyzer import PY_EXTENSIONS, scan_py_file
 from mcpsec.ui import console
 
@@ -31,6 +31,7 @@ async def run_audit(
     github: str | None = None,
     path: str | None = None,
     ai: bool = False,
+    include_tests: bool = False,
 ) -> tuple[List[Finding], str | None]:
     """
     Run the static audit.
@@ -64,9 +65,26 @@ async def run_audit(
         # Phase 4: Semgrep rules
         console.print("  [cyan]Running Semgrep rules...[/cyan]")
         try:
-            semgrep_findings = run_semgrep(root)
-            findings.extend(semgrep_findings)
-            console.print(f"    Semgrep found {len(semgrep_findings)} issues")
+            if include_tests:
+                semgrep_findings = run_semgrep(root, include_tests=True)
+                findings.extend(semgrep_findings)
+                console.print(f"    Semgrep found {len(semgrep_findings)} issues (test files included)")
+            else:
+                production_findings, excluded_counts = run_semgrep_with_categories(root)
+                findings.extend(production_findings)
+                console.print(f"    Semgrep found {len(production_findings)} issues")
+                
+                # Show exclusion summary
+                total_excluded = sum(excluded_counts.values())
+                if total_excluded > 0:
+                    console.print(f"    [dim]Excluded {total_excluded} findings from non-production code:[/dim]")
+                    if excluded_counts.get("test", 0) > 0:
+                        console.print(f"      [dim]• Test files: {excluded_counts['test']}[/dim]")
+                    if excluded_counts.get("demo", 0) > 0:
+                        console.print(f"      [dim]• Demo/example code: {excluded_counts['demo']}[/dim]")
+                    if excluded_counts.get("script", 0) > 0:
+                        console.print(f"      [dim]• Build scripts: {excluded_counts['script']}[/dim]")
+                    console.print(f"    [dim]Use --include-tests to see all findings[/dim]")
         except Exception as e:
             console.print(f"    [warning]Semgrep skipped: {e}[/warning]")
 
@@ -141,48 +159,120 @@ def _deduplicate(findings: List[Finding]) -> List[Finding]:
     return unique
 
 
-def _apply_design_heuristics(findings: List[Finding], root: Path) -> List[Finding]:
-    """Detect intentional shell tools and downgrade command injection severity."""
-    is_shell_tool = False
+def _apply_design_heuristics(findings: List[Finding], source_path: Path) -> List[Finding]:
+    """
+    Detect if project is a 'by design' tool and adjust severity.
+    
+    Server types detected:
+    - Shell/command tools: exec() is expected
+    - Filesystem tools: file operations are expected
+    - Fetch/HTTP tools: URL requests are expected
+    - Database tools: SQL queries are expected
+    """
+    from mcpsec.models import Severity
+    
+    # Detect server type from package.json and README
+    server_types = _detect_server_types(source_path)
+    
+    if not server_types:
+        return findings
+    
+    # Map server types to expected vulnerability patterns
+    expected_patterns = {
+        "shell": ["command", "exec", "spawn", "shell"],
+        "filesystem": ["path", "file", "traversal", "fs-read", "fs-write", "open-non-literal"],
+        "fetch": ["ssrf", "url", "http", "request", "fetch", "axios"],
+        "database": ["sql", "query", "injection", "kysely", "sequelize"],
+    }
+    
+    for f in findings:
+        title_lower = f.title.lower()
+        
+        for server_type, patterns in expected_patterns.items():
+            if server_type in server_types:
+                if any(p in title_lower for p in patterns):
+                    # Downgrade to INFO and add note
+                    if f.severity in (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM):
+                        f.severity = Severity.INFO
+                        f.description += (
+                            f"\n\n⚠️ By Design: This project appears to be a {server_type} server. "
+                            f"This finding may be expected behavior for its intended purpose."
+                        )
+                    break
+    
+    return findings
 
-    for readme in ["README.md", "readme.md", "README.rst"]:
-        readme_path = root / readme
+
+def _detect_server_types(source_path: Path) -> set:
+    """
+    Detect what type of MCP server this is based on package.json and README.
+    
+    Returns set of: 'shell', 'filesystem', 'fetch', 'database'
+    """
+    server_types = set()
+    
+    # Keywords that indicate server type
+    type_keywords = {
+        "shell": [
+            "command", "shell", "exec", "terminal", "commander", 
+            "run command", "execute command", "bash", "powershell"
+        ],
+        "filesystem": [
+            "filesystem", "file system", "file-system", "file access",
+            "read file", "write file", "directory", "folder"
+        ],
+        "fetch": [
+            "fetch", "http client", "web request", "url fetch",
+            "download", "scrape", "crawler"
+        ],
+        "database": [
+            "database", "sql", "sqlite", "postgres", "mysql",
+            "mongodb", "redis", "query"
+        ],
+    }
+    
+    # Check package.json
+    pkg_json = source_path / "package.json"
+    if pkg_json.exists():
+        try:
+            content = pkg_json.read_text(encoding="utf-8", errors="ignore").lower()
+            for server_type, keywords in type_keywords.items():
+                if any(kw in content for kw in keywords):
+                    server_types.add(server_type)
+        except Exception:
+            pass
+    
+    # Check pyproject.toml
+    pyproject = source_path / "pyproject.toml"
+    if pyproject.exists():
+        try:
+            content = pyproject.read_text(encoding="utf-8", errors="ignore").lower()
+            for server_type, keywords in type_keywords.items():
+                if any(kw in content for kw in keywords):
+                    server_types.add(server_type)
+        except Exception:
+            pass
+    
+    # Check README
+    for readme_name in ["README.md", "readme.md", "README.rst", "README.txt"]:
+        readme_path = source_path / readme_name
         if readme_path.exists():
             try:
                 content = readme_path.read_text(encoding="utf-8", errors="ignore").lower()
-                if any(kw in content for kw in [
-                    "execute commands", "run shell", "command execution",
-                    "terminal access", "shell access", "run arbitrary",
-                    "radare2", "debugger",
-                ]):
-                    is_shell_tool = True
-                    break
+                for server_type, keywords in type_keywords.items():
+                    if any(kw in content for kw in keywords):
+                        server_types.add(server_type)
             except Exception:
                 pass
-
-    if not is_shell_tool:
-        pkg_json = root / "package.json"
-        if pkg_json.exists():
-            try:
-                content = pkg_json.read_text(encoding="utf-8", errors="ignore").lower()
-                if any(kw in content for kw in [
-                    "command", "shell", "exec", "terminal",
-                    "desktop commander", "run command",
-                ]):
-                    is_shell_tool = True
-            except Exception:
-                pass
-
-    if is_shell_tool:
-        for f in findings:
-            if "command" in f.title.lower() or "exec" in f.title.lower():
-                f.severity = Severity.INFO
-                f.description += (
-                    "\n\nNote: This project appears to be designed for "
-                    "command execution. This finding may be expected behavior."
-                )
-
-    return findings
+            break
+    
+    # Check directory name
+    dir_name = source_path.name.lower()
+    for server_type, keywords in type_keywords.items():
+        if any(kw.replace(" ", "") in dir_name or kw.replace(" ", "-") in dir_name for kw in keywords):
+            server_types.add(server_type)
+    
+    return server_types
 
 
 def _is_excluded(path: Path) -> bool:

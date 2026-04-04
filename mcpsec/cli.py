@@ -1203,6 +1203,11 @@ def audit(
         "--ai",
         help="Use AI-powered analysis (requires API key: DEEPSEEK_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY)",
     ),
+    include_tests: bool = typer.Option(
+        False,
+        "--include-tests",
+        help="Include findings from test files",
+    ),
 ):
     """
     🔬 Audit source code for vulnerabilities (static analysis).
@@ -1215,7 +1220,7 @@ def audit(
         console.print("[danger]Error: Specify only one source (npm, github, or path)[/danger]")
         raise typer.Exit(1)
 
-    _run_async(_audit_async(npm, github, path, ai, output, format.lower()))
+    _run_async(_audit_async(npm, github, path, ai, include_tests, output, format.lower()))
 
 
 async def _audit_async(
@@ -1223,6 +1228,7 @@ async def _audit_async(
     github: str | None,
     path: str | None,
     ai: bool = False,
+    include_tests: bool = False,
     output_path: str | None = None,
     output_format: str = "json",
 ):
@@ -1232,7 +1238,7 @@ async def _audit_async(
     print_banner(small=True)
     print_section("Static Audit", "🔬")
 
-    findings, source_path = await run_audit(npm, github, path)
+    findings, source_path = await run_audit(npm, github, path, ai, include_tests)
 
     if ai:
         from mcpsec.ai.ai_taint_analyzer import AITaintAnalyzer
