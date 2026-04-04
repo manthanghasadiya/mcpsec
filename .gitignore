@@ -69,3 +69,5 @@ fix_unicode.py
 temp_*.yml
 out.txt
 mypy_output.txt
+
+verify_patterns.py

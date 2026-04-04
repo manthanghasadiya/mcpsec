@@ -22,6 +22,16 @@ class LLMClient:
     def available(self) -> bool:
         return self.provider is not None
 
+    async def complete(
+        self,
+        prompt: str,
+        system: str = None,
+        temperature: float = 0.1,
+        max_tokens: int = 4000,
+    ) -> Optional[str]:
+        """Simplified completion method."""
+        return await self.chat(system or "You are a helpful assistant.", prompt, temperature)
+
     async def chat(self, system: str, user: str, temperature: float = 0.1) -> Optional[str]:
         """Send a chat completion request."""
         if not self.available:

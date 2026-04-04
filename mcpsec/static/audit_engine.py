@@ -1,242 +1,337 @@
 """
-Orchestrates the static analysis process.
+Audit engine v3 -- orchestrates static analysis.
+
+Phases:
+1. Fetch source
+2. Detect framework
+3. Scan for sinks (pattern database)
+4. Run Semgrep rules (additional coverage)
+5. Python AST analysis
+6. LLM reachability analysis (if --ai)
+7. Deduplicate and rank
 """
+
+from __future__ import annotations
 
 from pathlib import Path
 from typing import List
 
-from mcpsec.models import Finding
+from mcpsec.models import Finding, Severity
 from mcpsec.static.source_fetcher import cleanup_temp, fetch_source
-
-# from mcpsec.static.js_analyzer import scan_js_file, JS_EXTENSIONS
-JS_EXTENSIONS = {".js", ".ts", ".mjs", ".cjs", ".jsx", ".tsx"}
-from mcpsec.static.py_analyzer import PY_EXTENSIONS
+from mcpsec.static.framework.detector import detect_framework
+from mcpsec.static.analysis.sink_scanner import SinkScanner
+from mcpsec.static.analysis.reachability import ReachabilityAnalyzer
+from mcpsec.static.semgrep_engine import run_semgrep, run_semgrep_with_categories
+from mcpsec.static.py_analyzer import PY_EXTENSIONS, scan_py_file
 from mcpsec.ui import console
 
 
 async def run_audit(
-    npm: str | None = None, github: str | None = None, path: str | None = None
+    npm: str | None = None,
+    github: str | None = None,
+    path: str | None = None,
+    ai: bool = False,
+    include_tests: bool = False,
 ) -> tuple[List[Finding], str | None]:
     """
     Run the static audit.
     """
 
-    # 1. Fetch Source
+    # Phase 1: Fetch source
     source_path = await fetch_source(npm, github, path)
     if not source_path:
         return [], None
 
-    console.print(f"  [success]Source code available at: {source_path}[/success]")
-    console.print("  Scanning files with Semgrep...")
+    console.print(f"  [success]Source: {source_path}[/success]")
 
-    findings = []
+    findings: List[Finding] = []
+    root = Path(source_path)
 
     try:
-        # Step 1: Semgrep analysis (AST-based taint tracking)
-        from mcpsec.static.semgrep_engine import run_semgrep
+        # Phase 2: Detect framework
+        console.print("  [cyan]Detecting framework...[/cyan]")
+        framework_info = detect_framework(root)
+        console.print(f"    Language : {framework_info.language.value}")
+        console.print(f"    Framework: {framework_info.framework.value}")
 
-        findings.extend(run_semgrep(Path(source_path)))
+        # Phase 3: Sink scanning (pattern database)
+        console.print("  [cyan]Scanning for dangerous sinks...[/cyan]")
+        scanner = SinkScanner()
+        scan_result = scanner.scan(root, framework_info)
+        console.print(f"    Found {len(scan_result.matches)} potential sinks")
+        console.print(f"    Scanned {scan_result.files_scanned} files with "
+                      f"{scan_result.patterns_applied} patterns")
 
-        # Step 2: Python AST checks (supplementary)
-        # We keep py_analyzer as it has some specific python pattern matching
-        # that complements Semgrep rules.
-        root = Path(source_path)
-        files = [root] if root.is_file() else root.rglob("*")
+        # Phase 4: Semgrep rules
+        console.print("  [cyan]Running Semgrep rules...[/cyan]")
+        try:
+            if include_tests:
+                semgrep_findings = run_semgrep(root, include_tests=True)
+                findings.extend(semgrep_findings)
+                console.print(f"    Semgrep found {len(semgrep_findings)} issues (test files included)")
+            else:
+                production_findings, excluded_counts = run_semgrep_with_categories(root)
+                findings.extend(production_findings)
+                console.print(f"    Semgrep found {len(production_findings)} issues")
+                
+                # Show exclusion summary
+                total_excluded = sum(excluded_counts.values())
+                if total_excluded > 0:
+                    console.print(f"    [dim]Excluded {total_excluded} findings from non-production code:[/dim]")
+                    if excluded_counts.get("test", 0) > 0:
+                        console.print(f"      [dim]• Test files: {excluded_counts['test']}[/dim]")
+                    if excluded_counts.get("demo", 0) > 0:
+                        console.print(f"      [dim]• Demo/example code: {excluded_counts['demo']}[/dim]")
+                    if excluded_counts.get("script", 0) > 0:
+                        console.print(f"      [dim]• Build scripts: {excluded_counts['script']}[/dim]")
+                    console.print(f"    [dim]Use --include-tests to see all findings[/dim]")
+        except Exception as e:
+            console.print(f"    [warning]Semgrep skipped: {e}[/warning]")
 
-        for file_path in files:
-            if not file_path.is_file():
-                continue
+        # Phase 5: Python AST analysis
+        _scan_py_files(root, findings)
 
-            # Skip hidden/node_modules/venv
-            if (
-                any(part.startswith(".") for part in file_path.parts)
-                or "node_modules" in file_path.parts
-                or "venv" in file_path.parts
-                or "__pycache__" in file_path.parts
-            ):
-                continue
+        # Phase 6: Sink analysis (Heuristic)
+        if scan_result.matches:
+            from mcpsec.static.analysis.reachability import ReachabilityAnalyzer
+            analyzer = ReachabilityAnalyzer()
+            
+            # We always use heuristic analysis here to avoid making 
+            # multiple LLM calls per sink. The final AI step (Phase 8) 
+            # will classify these sinks along with Semgrep findings.
+            mode = "(use --ai for server-aware classification)" if not ai else "(AI purpose classification pending)"
+            console.print(f"  [cyan]Heuristic sink analysis {mode}...[/cyan]")
+            
+            heuristic_findings = analyzer._heuristic_analysis(
+                scan_result.matches,
+                framework_info,
+            )
+            console.print(f"    Heuristic found {len(heuristic_findings)} potential sinks")
+            findings.extend(heuristic_findings)
 
-            if _is_excluded(file_path):
-                continue
+        # Phase 7: Deduplicate
+        findings = _deduplicate(findings)
 
-            # Scan Python ONLY (Semgrep handles JS/TS fully now)
-            if file_path.suffix.lower() in PY_EXTENSIONS:
-                try:
-                    from mcpsec.static.py_analyzer import scan_py_file
-
-                    findings.extend(scan_py_file(file_path))
-                except Exception:
-                    pass
-
-        # Step 3: Apply "By Design" heuristics
-        findings = _apply_design_heuristics(findings, Path(source_path))
+        # Phase 8: AI Classification (Opt-in)
+        if ai and findings:
+            from mcpsec.ai.finding_classifier import classify_server_and_findings
+            from mcpsec.ai.llm_client import LLMClient
+            
+            console.print("  [cyan]AI classifying findings...[/cyan]")
+            try:
+                llm_client = LLMClient()
+                if llm_client.available:
+                    server_profile, findings = await classify_server_and_findings(
+                        root,
+                        findings,
+                        llm_client
+                    )
+                    
+                    # Show server profile summary
+                    console.print(f"    [success]Server type: {server_profile.server_type}[/success]")
+                    if server_profile.notes:
+                        console.print(f"    [dim]Notes: {server_profile.notes}[/dim]")
+                    
+                    # Count classifications
+                    tag_counts = {}
+                    for f in findings:
+                        for tag_name in ["🔴 VULNERABILITY", "🟠 SUSPICIOUS", "🟡 NEEDS REVIEW", 
+                                        "🔵 LIKELY BY DESIGN", "⚪ BY DESIGN"]:
+                            if tag_name in f.title:
+                                tag_counts[tag_name] = tag_counts.get(tag_name, 0) + 1
+                                break
+                    
+                    tag_line = " ".join([f"{t}: {c}" for t, c in tag_counts.items()])
+                    if tag_line:
+                        console.print(f"    [dim]AI Summary: {tag_line}[/dim]")
+                else:
+                    console.print("    [warning]AI skipped: No API key configured[/warning]")
+                    findings = _apply_design_heuristics(findings, root)
+            except Exception as e:
+                console.print(f"    [warning]AI classification failed: {e}[/warning]")
+                findings = _apply_design_heuristics(findings, root)
+        else:
+            # Traditional hardcoded heuristics
+            findings = _apply_design_heuristics(findings, root)
 
     except Exception as e:
-        console.print(f"  [danger]Error during scan: {e}[/danger]")
+        console.print(f"  [danger]Error during audit: {e}[/danger]")
+        import traceback
+        traceback.print_exc()
     finally:
-        # Cleanup if it was a temp download
-        # If user provided --path, do NOT cleanup
         if npm or github:
             cleanup_temp(source_path)
 
-    # Sort findings by severity
-    findings.sort(key=lambda x: _severity_rank(x.severity), reverse=True)
-
+    # Sort by severity
+    findings.sort(key=lambda f: _severity_rank(f.severity), reverse=True)
     return findings, source_path
 
 
-def _apply_design_heuristics(findings: List[Finding], source_path: Path) -> List[Finding]:
-    """Detect if project is a 'by design' shell tool and adjust severity."""
-    is_shell_tool = False
+# ─── helpers ─────────────────────────────────────────────────────────────────
 
+def _scan_py_files(root: Path, findings: List[Finding]) -> None:
+    """Scan Python files with AST analyzer."""
+    for fp in root.rglob("*"):
+        if not fp.is_file():
+            continue
+        if fp.suffix.lower() not in PY_EXTENSIONS:
+            continue
+        if _is_excluded(fp):
+            continue
+        try:
+            findings.extend(scan_py_file(fp))
+        except Exception:
+            pass
+
+
+def _deduplicate(findings: List[Finding]) -> List[Finding]:
+    """Remove duplicate findings by (file, line, title)."""
+    seen: set[tuple] = set()
+    unique: List[Finding] = []
+    for f in findings:
+        key = (f.file_path, f.line_number, f.title)
+        if key not in seen:
+            seen.add(key)
+            unique.append(f)
+    return unique
+
+
+def _apply_design_heuristics(findings: List[Finding], source_path: Path) -> List[Finding]:
+    """
+    Detect if project is a 'by design' tool and adjust severity.
+    
+    Server types detected:
+    - Shell/command tools: exec() is expected
+    - Filesystem tools: file operations are expected
+    - Fetch/HTTP tools: URL requests are expected
+    - Database tools: SQL queries are expected
+    """
+    from mcpsec.models import Severity
+    
+    # Detect server type from package.json and README
+    server_types = _detect_server_types(source_path)
+    
+    if not server_types:
+        return findings
+    
+    # Map server types to expected vulnerability patterns
+    expected_patterns = {
+        "shell": ["command", "exec", "spawn", "shell"],
+        "filesystem": ["path", "file", "traversal", "fs-read", "fs-write", "open-non-literal"],
+        "fetch": ["ssrf", "url", "http", "request", "fetch", "axios"],
+        "database": ["sql", "query", "injection", "kysely", "sequelize"],
+    }
+    
+    for f in findings:
+        title_lower = f.title.lower()
+        
+        for server_type, patterns in expected_patterns.items():
+            if server_type in server_types:
+                if any(p in title_lower for p in patterns):
+                    # Downgrade to INFO and add note
+                    if f.severity in (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM):
+                        f.severity = Severity.INFO
+                        f.description += (
+                            f"\n\n⚠️ By Design: This project appears to be a {server_type} server. "
+                            f"This finding may be expected behavior for its intended purpose."
+                        )
+                    break
+    
+    return findings
+
+
+def _detect_server_types(source_path: Path) -> set:
+    """
+    Detect what type of MCP server this is based on package.json and README.
+    
+    Returns set of: 'shell', 'filesystem', 'fetch', 'database'
+    """
+    server_types = set()
+    
+    # Keywords that indicate server type
+    type_keywords = {
+        "shell": [
+            "command", "shell", "exec", "terminal", "commander", 
+            "run command", "execute command", "bash", "powershell"
+        ],
+        "filesystem": [
+            "filesystem", "file system", "file-system", "file access",
+            "read file", "write file", "directory", "folder"
+        ],
+        "fetch": [
+            "fetch", "http client", "web request", "url fetch",
+            "download", "scrape", "crawler"
+        ],
+        "database": [
+            "database", "sql", "sqlite", "postgres", "mysql",
+            "mongodb", "redis", "query"
+        ],
+    }
+    
     # Check package.json
     pkg_json = source_path / "package.json"
     if pkg_json.exists():
         try:
             content = pkg_json.read_text(encoding="utf-8", errors="ignore").lower()
-            if any(
-                kw in content
-                for kw in [
-                    "command",
-                    "shell",
-                    "exec",
-                    "terminal",
-                    "desktop commander",
-                    "run command",
-                ]
-            ):
-                is_shell_tool = True
+            for server_type, keywords in type_keywords.items():
+                if any(kw in content for kw in keywords):
+                    server_types.add(server_type)
         except Exception:
             pass
-
+    
+    # Check pyproject.toml
+    pyproject = source_path / "pyproject.toml"
+    if pyproject.exists():
+        try:
+            content = pyproject.read_text(encoding="utf-8", errors="ignore").lower()
+            for server_type, keywords in type_keywords.items():
+                if any(kw in content for kw in keywords):
+                    server_types.add(server_type)
+        except Exception:
+            pass
+    
     # Check README
-    if not is_shell_tool:
-        for readme in ["README.md", "readme.md", "README.rst"]:
-            readme_path = source_path / readme
-            if readme_path.exists():
-                try:
-                    content = readme_path.read_text(encoding="utf-8", errors="ignore").lower()
-                    if any(
-                        kw in content
-                        for kw in [
-                            "execute commands",
-                            "run shell",
-                            "command execution",
-                            "terminal access",
-                            "shell access",
-                            "run arbitrary",
-                        ]
-                    ):
-                        is_shell_tool = True
-                        break
-                except Exception:
-                    pass
-
-    if is_shell_tool:
-        for f in findings:
-            if "command" in f.title.lower() or "exec" in f.title.lower():
-                from mcpsec.models import Severity
-
-                # Only downgrade if it's currently generic command injection
-                # Don't downgrade definitive issues if we can distinguish them,
-                # but for now, widespread exec use in a shell tool is likely intended.
-                f.severity = Severity.INFO
-                f.description += (
-                    "\n\nNote: This project appears to be designed for "
-                    "command execution. This finding may be expected behavior."
-                )
-
-    return findings
+    for readme_name in ["README.md", "readme.md", "README.rst", "README.txt"]:
+        readme_path = source_path / readme_name
+        if readme_path.exists():
+            try:
+                content = readme_path.read_text(encoding="utf-8", errors="ignore").lower()
+                for server_type, keywords in type_keywords.items():
+                    if any(kw in content for kw in keywords):
+                        server_types.add(server_type)
+            except Exception:
+                pass
+            break
+    
+    # Check directory name
+    dir_name = source_path.name.lower()
+    for server_type, keywords in type_keywords.items():
+        if any(kw.replace(" ", "") in dir_name or kw.replace(" ", "-") in dir_name for kw in keywords):
+            server_types.add(server_type)
+    
+    return server_types
 
 
 def _is_excluded(path: Path) -> bool:
     """Check if file should be excluded from audit (tests, build dirs)."""
-    name = path.name.lower()
     parts = [p.lower() for p in path.parts]
-
-    # 1. Directory Exclusions
-    excluded_dirs = {"tests", "__tests__", "test", "build", "dist", "out", "coverage"}
+    excluded_dirs = {"tests", "__tests__", "test", "build", "dist", "out", "coverage", "__pycache__"}
     if any(d in parts for d in excluded_dirs):
         return True
 
-    # 2. File Pattern Exclusions
-    if name.endswith((".test.ts", ".test.js", ".spec.ts", ".spec.js", ".test.jsx", ".test.tsx")):
-        return True
-
-    if name.startswith("test_") or name.endswith("_test.py"):
-        return True
-
-    return False
-
-
-def _severity_rank(severity: str) -> int:
-    ranks = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
-    s = str(severity).lower()
-    return ranks.get(s, 0)
-
-
-def _filter_false_positives(findings: List[Finding]) -> List[Finding]:
-    """Filter out known false positives."""
-    import re
-
-    filtered = []
-    for f in findings:
-        code = f.code_snippet or ""
-
-        # 1. Generic assignment target check (for both regex and taint scanners)
-        # Scan title or description for the variable name
-        var_match = re.search(r"'(.*?)'", f.description)
-        if var_match:
-            var_name = var_match.group(1)
-            if _is_assignment_target(var_name, code):
-                continue
-
-        # 2. RegExp.exec() false positive for regex scanner
-        if f.title == "Command Injection (Variable Argument)":
-            if re.search(r"\w+\.exec\s*\(", code):
-                continue
-
-        filtered.append(f)
-    return filtered
-
-
-def _is_assignment_target(var_name: str, line: str) -> bool:
-    """Check if variable is being assigned FROM the sink (not flowing INTO it)."""
-    import re
-
-    patterns = [
-        rf"(?:const|let|var)\s+{re.escape(var_name)}\s*=",
-        rf"{re.escape(var_name)}\s*=\s*(?:await\s+)?(?:spawn|exec|execAsync|execSync|subprocess|os\.system|os\.popen)",
-    ]
-    return any(re.search(p, line) for p in patterns)
-
-
-def _is_excluded(path: Path) -> bool:
-    """Check if file should be excluded from audit (tests, build dirs)."""
     name = path.name.lower()
-    parts = [p.lower() for p in path.parts]
-
-    # 1. Directory Exclusions
-    excluded_dirs = {"tests", "__tests__", "test", "build", "dist", "out", "coverage"}
-    if any(d in parts for d in excluded_dirs):
+    if name.endswith((".test.ts", ".test.js", ".spec.ts", ".spec.js",
+                       ".test.jsx", ".test.tsx")):
         return True
-
-    # 2. File Pattern Exclusions
-    if name.endswith((".test.ts", ".test.js", ".spec.ts", ".spec.js", ".test.jsx", ".test.tsx")):
-        return True
-
     if name.startswith("test_") or name.endswith("_test.py"):
         return True
-
-    # 3. Exclude analyzer definition files (they contain the patterns!)
+    # Exclude the pattern files themselves
     if name in ("patterns.py", "py_analyzer.py", "taint_analyzer.py"):
         return True
 
     return False
 
 
-def _severity_rank(severity: str) -> int:
+def _severity_rank(severity) -> int:
     ranks = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
-    # Handle both string and Enum if mixed
-    s = str(severity).lower()
-    return ranks.get(s, 0)
+    return ranks.get(str(severity).lower(), 0)
