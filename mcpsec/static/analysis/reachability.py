@@ -17,45 +17,38 @@ from mcpsec.static.framework.detector import FrameworkInfo
 from mcpsec.models import Finding, Severity
 
 
-REACHABILITY_PROMPT = """You are an expert security auditor analyzing MCP server code.
+REACHABILITY_PROMPT_V2 = """You are analyzing MCP server code for vulnerabilities.
 
-TASK: Determine if user-controlled MCP tool input can reach this dangerous sink.
-
-MCP CONTEXT:
-- MCP servers expose "tools" that LLM agents call
-- Each tool receives user-controlled "arguments"
-- Security question: Can attacker data flow from arguments to dangerous sinks?
-
-SINK DETECTED:
+## SINK DETECTED
 - File: {file_path}
 - Line: {line_number}
-- Function: {function_name}
 - Type: {vuln_type}
-- Code: {code_line}
+- Code: `{code_line}`
 
-CODE CONTEXT:
+## FULL FILE CONTEXT
+```{language}
+{full_file}
 ```
-{context}
-```
 
-FRAMEWORK: {framework}
+## FRAMEWORK: {framework}
 
-ANALYSIS STEPS:
-1. Find MCP tool entry points in this file
-2. Trace data flow from tool arguments to the sink
+## INSTRUCTIONS
+1. Find MCP tool entry points (handlers, decorators, tool registrations)
+2. Trace data flow from tool parameters to the sink
 3. Check for sanitizers that would block exploitation
-4. Determine if an attacker can control the sink input
+4. Generate a PoC payload if exploitable
 
-RESPOND WITH JSON ONLY:
+## RESPOND WITH JSON:
 {{
     "reachable": true/false,
-    "confidence": "high"/"medium"/"low",
-    "source_param": "parameter name if reachable, else null",
-    "flow": "step-by-step data flow trace",
+    "confidence": "high/medium/low",
+    "source_tool": "tool name",
+    "source_param": "param name",
+    "taint_flow": ["Step 1...", "Step 2...", "Step 3..."],
     "sanitized": true/false,
     "exploitable": true/false,
-    "poc_suggestion": "example malicious input if exploitable",
-    "explanation": "one sentence summary"
+    "poc_payload": {{"tool": "name", "args": {{"param": "payload"}}}},
+    "explanation": "Summary"
 }}
 """
 
@@ -102,31 +95,39 @@ class ReachabilityAnalyzer:
 
         findings = []
         for sink in sinks:
-            result = await self._analyze_sink(sink, framework_info)
+            result = await self._analyze_sink_v2(sink, framework_info, project_path)
             if result.reachable and result.exploitable:
                 finding = self._create_finding(sink, result)
                 findings.append(finding)
 
         return findings
 
-    async def _analyze_sink(
+    async def _analyze_sink_v2(
         self,
         sink: SinkMatch,
         framework_info: FrameworkInfo,
+        project_path: Path,
     ) -> ReachabilityResult:
-        """Analyze a single sink with LLM."""
-        prompt = REACHABILITY_PROMPT.format(
+        # Read full file (truncate if >50K chars)
+        file_path = Path(sink.file_path)
+        try:
+            full_file = file_path.read_text(encoding="utf-8")[:50000]
+        except Exception:
+            full_file = sink.context
+
+        # Use improved prompt
+        prompt = REACHABILITY_PROMPT_V2.format(
             file_path=sink.file_path,
             line_number=sink.line_number,
-            function_name=sink.pattern.function_name,
             vuln_type=sink.pattern.vuln_type.value,
             code_line=sink.code_line,
-            context=sink.context,
+            language=framework_info.language.value,
+            full_file=full_file,
             framework=framework_info.framework.value,
         )
 
         response = await self.client.chat(
-            system="You are an expert security auditor. Respond with JSON only.",
+            system="Respond with valid JSON only.",
             user=prompt,
         )
 
