@@ -23,6 +23,7 @@ from mcpsec.static.patterns.sinks import (
     injection_extra,
     final_patterns,
     bulk_extension,
+    expanded_patterns,
 )
 from mcpsec.static.patterns.sources import mcp_frameworks
 from mcpsec.static.patterns.sanitizers import sanitizers
@@ -69,6 +70,7 @@ class PatternRegistry:
             injection_extra,
             final_patterns,
             bulk_extension,
+            expanded_patterns,
         ]
         for module in sink_modules:
             if hasattr(module, "PATTERNS"):
