@@ -1,3 +1,4 @@
+import re
 from mcpsec.static.patterns.base import (
     SinkPattern, Language, VulnType, Severity, Confidence
 )
@@ -29154,5 +29155,115 @@ PATTERNS.extend([
         confidence=Confidence.HIGH,
         description="RUBY path traversal",
         cwe="CWE-22",
+    ),
+
+    # === SQL Injection: cursor.execute(variable) ===
+    SinkPattern(
+        id="py-sqli-var-001",
+        vuln_type=VulnType.SQL_INJECTION,
+        languages=[Language.PYTHON],
+        pattern=r"(?:cursor|cur|conn|db)\.execute\s*\(\s*(?![\"\'])[a-zA-Z_]\w*\s*[,\)]",
+        function_name="cursor.execute(variable)",
+        severity=Severity.CRITICAL,
+        confidence=Confidence.HIGH,
+        description="SQL query executed from variable - check if variable contains user input",
+        cwe="CWE-89",
+        remediation="Use parameterized queries: cursor.execute('SELECT * WHERE id = ?', (id,))",
+    ),
+
+    # === Command Injection: subprocess multi-line ===
+    SinkPattern(
+        id="py-cmdi-multiline-001",
+        vuln_type=VulnType.COMMAND_INJECTION,
+        languages=[Language.PYTHON],
+        pattern=r"subprocess\.(?:run|call|Popen|check_output)\s*\([^)]*shell\s*=\s*True",
+        function_name="subprocess.*(shell=True)",
+        severity=Severity.CRITICAL,
+        confidence=Confidence.HIGH,
+        description="subprocess with shell=True - command injection risk",
+        cwe="CWE-78",
+        remediation="Use shell=False and pass command as list",
+        flags=re.DOTALL,  # Match across newlines
+    ),
+
+    # === SSRF: urllib.request.urlopen ===
+    SinkPattern(
+        id="py-ssrf-urllib-001",
+        vuln_type=VulnType.SSRF,
+        languages=[Language.PYTHON],
+        pattern=r"urllib\.request\.urlopen\s*\(\s*(?![\"\'])[a-zA-Z_]\w*",
+        function_name="urllib.request.urlopen(variable)",
+        severity=Severity.HIGH,
+        confidence=Confidence.HIGH,
+        description="HTTP request with user-controlled URL",
+        cwe="CWE-918",
+        remediation="Validate URL against allowlist before making request",
+    ),
+
+    # === Path Traversal: open() with variable ===
+    SinkPattern(
+        id="py-path-open-001",
+        vuln_type=VulnType.PATH_TRAVERSAL,
+        languages=[Language.PYTHON],
+        pattern=r"\bopen\s*\(\s*(?![\"\'])[a-zA-Z_]\w*\s*,",
+        function_name="open(variable, mode)",
+        severity=Severity.HIGH,
+        confidence=Confidence.MEDIUM,
+        description="File open with variable path - check for path traversal",
+        cwe="CWE-22",
+        remediation="Validate path is within allowed directory using os.path.realpath() and startswith()",
+    ),
+
+    # === XXE: ET.fromstring ===
+    SinkPattern(
+        id="py-xxe-etree-001",
+        vuln_type=VulnType.XXE,
+        languages=[Language.PYTHON],
+        pattern=r"ET\.fromstring\s*\(\s*(?![\"\'])[a-zA-Z_]\w*",
+        function_name="ET.fromstring(variable)",
+        severity=Severity.HIGH,
+        confidence=Confidence.MEDIUM,
+        description="XML parsing without disabling external entities",
+        cwe="CWE-611",
+        remediation="Use defusedxml library or disable external entity processing",
+    ),
+    SinkPattern(
+        id="py-xxe-etree-002",
+        vuln_type=VulnType.XXE,
+        languages=[Language.PYTHON],
+        pattern=r"xml\.etree\.ElementTree\.fromstring\s*\(",
+        function_name="xml.etree.ElementTree.fromstring()",
+        severity=Severity.HIGH,
+        confidence=Confidence.MEDIUM,
+        description="XML parsing with default parser - XXE possible",
+        cwe="CWE-611",
+    ),
+
+    # === Hardcoded Secrets ===
+    SinkPattern(
+        id="py-secret-001",
+        vuln_type=VulnType.HARDCODED_SECRET,
+        languages=[Language.PYTHON],
+        pattern=r"(?:TOKEN|SECRET|PASSWORD|API_KEY|APIKEY|PRIVATE_KEY)\s*=\s*[\"'][^\"']{8,}[\"']",
+        function_name="HARDCODED_SECRET = \"...\"",
+        severity=Severity.HIGH,
+        confidence=Confidence.MEDIUM,
+        description="Hardcoded secret or credential in source code",
+        cwe="CWE-798",
+        remediation="Use environment variables or secure secret management",
+    ),
+
+    # === Format String Injection ===
+    SinkPattern(
+        id="py-format-001",
+        vuln_type=VulnType.TEMPLATE_INJECTION,
+        languages=[Language.PYTHON],
+        pattern=r"\.format\s*\(\s*\*\*\s*(?![\"\'])[a-zA-Z_]\w*",
+        function_name="string.format(**variable)",
+        severity=Severity.MEDIUM,
+        confidence=Confidence.MEDIUM,
+        description="Format string with user-controlled kwargs - may leak data",
+        cwe="CWE-134",
+        remediation="Use Template class from string module for untrusted input",
     ),
 ])

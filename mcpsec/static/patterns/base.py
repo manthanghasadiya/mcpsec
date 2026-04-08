@@ -39,6 +39,7 @@ class VulnType(str, Enum):
     LDAP_INJECTION = "ldap-injection"
     LOG_INJECTION = "log-injection"
     PROTOTYPE_POLLUTION = "prototype-pollution"
+    HARDCODED_SECRET = "hardcoded-secret"
 
 
 class Severity(str, Enum):
@@ -73,6 +74,7 @@ class SinkPattern:
     negative_patterns: list[str] = field(default_factory=list)
     context_patterns: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    flags: int = 0
 
     _compiled: Optional[re.Pattern] = field(default=None, repr=False)
     _negative_compiled: list[re.Pattern] = field(default_factory=list, repr=False)
@@ -80,7 +82,7 @@ class SinkPattern:
     def __post_init__(self):
         """Compile regex patterns."""
         try:
-            self._compiled = re.compile(self.pattern, re.MULTILINE)
+            self._compiled = re.compile(self.pattern, re.MULTILINE | self.flags)
         except re.error:
             self._compiled = None
 

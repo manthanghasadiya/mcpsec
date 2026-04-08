@@ -220,7 +220,7 @@ class ReachabilityAnalyzer:
         findings = []
 
         for sink in sinks:
-            if sink.pattern.confidence.value != "high":
+            if sink.pattern.confidence.value == "low":
                 continue
 
             findings.append(Finding(

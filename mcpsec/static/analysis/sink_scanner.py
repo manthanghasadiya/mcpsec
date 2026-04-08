@@ -160,39 +160,49 @@ class SinkScanner:
 
         matches: list[SinkMatch] = []
 
-        for i, line in enumerate(lines, 1):
-            # Skip obvious comments
-            stripped = line.strip()
-            if stripped.startswith("//") or stripped.startswith("#") or stripped.startswith("*"):
-                continue
-            # Skip blank lines
-            if not stripped:
+        for pattern in patterns:
+            if not pattern._compiled:
                 continue
 
-            for pattern in patterns:
-                if pattern.matches(content, line):
-                    # Get surrounding context
-                    start = max(0, i - 1 - self.context_lines)
-                    end = min(len(lines), i + self.context_lines)
+            for match in pattern._compiled.finditer(content):
+                # Verify negative patterns
+                skip = False
+                for neg in pattern._negative_compiled:
+                    if neg.search(content):
+                        skip = True
+                        break
+                if skip:
+                    continue
 
-                    context_before = lines[start: i - 1]
-                    context_after = lines[i:end]
+                start_idx = match.start()
+                line_idx = content.count('\n', 0, start_idx)
+                i = line_idx + 1  # 1-indexed line number
+                
+                if line_idx >= len(lines):
+                    continue
+                    
+                line = lines[line_idx]
+                stripped = line.strip()
+                # Skip obvious comments
+                if stripped.startswith("//") or stripped.startswith("#") or stripped.startswith("*"):
+                    continue
 
-                    # Extract match text
-                    match_text = ""
-                    if pattern._compiled:
-                        m = pattern._compiled.search(line)
-                        if m:
-                            match_text = m.group(0)
+                # Get surrounding context
+                start = max(0, i - 1 - self.context_lines)
+                end = min(len(lines), i + self.context_lines)
 
-                    matches.append(SinkMatch(
-                        pattern=pattern,
-                        file_path=str(file_path),
-                        line_number=i,
-                        code_line=line,
-                        context_before=context_before,
-                        context_after=context_after,
-                        match_text=match_text,
-                    ))
+                context_before = lines[start: i - 1]
+                context_after = lines[i:end]
+                match_text = match.group(0)
+
+                matches.append(SinkMatch(
+                    pattern=pattern,
+                    file_path=str(file_path),
+                    line_number=i,
+                    code_line=line,
+                    context_before=context_before,
+                    context_after=context_after,
+                    match_text=match_text,
+                ))
 
         return matches

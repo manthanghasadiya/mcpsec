@@ -191,14 +191,18 @@ def _scan_py_files(root: Path, findings: List[Finding], explicit: bool = False) 
 
 
 def _deduplicate(findings: List[Finding]) -> List[Finding]:
-    """Remove duplicate findings by (file, line, title)."""
-    seen: set[tuple] = set()
-    unique: List[Finding] = []
+    """Deduplicate findings by file + line + vuln type."""
+    seen = set()
+    unique = []
+    
     for f in findings:
-        key = (f.file_path, f.line_number, f.title)
+        # Create unique key from location and vuln type
+        key = (f.file_path, f.line_number, f.title.split(":")[0] if ":" in f.title else f.title)
+        
         if key not in seen:
             seen.add(key)
             unique.append(f)
+            
     return unique
 
 
