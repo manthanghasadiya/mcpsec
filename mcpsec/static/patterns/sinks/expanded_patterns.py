@@ -29266,4 +29266,18 @@ PATTERNS.extend([
         cwe="CWE-134",
         remediation="Use Template class from string module for untrusted input",
     ),
+
+    # === Code Execution: eval() simple ===
+    SinkPattern(
+        id="py-eval-simple-001",
+        vuln_type=VulnType.CODE_EXECUTION,
+        languages=[Language.PYTHON],
+        pattern=r"\beval\s*\(\s*[a-zA-Z_]\w*\s*[,)]",
+        function_name="eval(variable)",
+        severity=Severity.CRITICAL,
+        confidence=Confidence.HIGH,
+        description="eval() with variable argument - arbitrary code execution",
+        cwe="CWE-94",
+        remediation="Avoid eval(). Use ast.literal_eval() for literals or explicit parsing logic.",
+    ),
 ])
