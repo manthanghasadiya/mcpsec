@@ -57,7 +57,9 @@ async def run_audit(
         # Phase 3: Sink scanning (pattern database)
         console.print("  [cyan]Scanning for dangerous sinks...[/cyan]")
         scanner = SinkScanner()
-        scan_result = scanner.scan(root, framework_info)
+        # explicit=True: user pointed directly at this path; relax exclusions
+        explicit = path is not None
+        scan_result = scanner.scan(root, framework_info, explicit=explicit)
         console.print(f"    Found {len(scan_result.matches)} potential sinks")
         console.print(f"    Scanned {scan_result.files_scanned} files with "
                       f"{scan_result.patterns_applied} patterns")
@@ -89,7 +91,7 @@ async def run_audit(
             console.print(f"    [warning]Semgrep skipped: {e}[/warning]")
 
         # Phase 5: Python AST analysis
-        _scan_py_files(root, findings)
+        _scan_py_files(root, findings, explicit=path is not None)
 
         # Phase 6: Sink analysis (Heuristic)
         if scan_result.matches:
@@ -169,14 +171,18 @@ async def run_audit(
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
-def _scan_py_files(root: Path, findings: List[Finding]) -> None:
+def _scan_py_files(root: Path, findings: List[Finding], explicit: bool = False) -> None:
     """Scan Python files with AST analyzer."""
     for fp in root.rglob("*"):
         if not fp.is_file():
             continue
         if fp.suffix.lower() not in PY_EXTENSIONS:
             continue
-        if _is_excluded(fp):
+        # When the user explicitly targeted this directory, always scan
+        # direct children; only apply exclusions to deeper descendants.
+        if explicit and fp.parent == root:
+            pass
+        elif _is_excluded(fp):
             continue
         try:
             findings.extend(scan_py_file(fp))
@@ -315,7 +321,10 @@ def _detect_server_types(source_path: Path) -> set:
 def _is_excluded(path: Path) -> bool:
     """Check if file should be excluded from audit (tests, build dirs)."""
     parts = [p.lower() for p in path.parts]
-    excluded_dirs = {"tests", "__tests__", "test", "build", "dist", "out", "coverage", "__pycache__"}
+    excluded_dirs = {
+        "tests", "__tests__", "test", "build", "dist", "out",
+        "coverage", "__pycache__", "patterns",
+    }
     if any(d in parts for d in excluded_dirs):
         return True
 
