@@ -35,12 +35,12 @@ Most MCP security tools do static analysis. **mcpsec connects to live servers an
 
 | Target | Vulnerability | Severity | Status |
 |--------|---------------|----------|--------|
-| **mobile-mcp** | URL Scheme Injection (CVE-2026-35394, CVSS 8.3) — Arbitrary code execution via unsanitized tool input | CVSS 8.3 | [Fixed — PR #299](https://github.com/mobile-next/mobile-mcp/pull/299) |
-| **MCP Python SDK** | ClosedResourceError DoS (invalid UTF-8) | High | [Issue #2328](https://github.com/modelcontextprotocol/python-sdk/issues/2328) — Fix in [PR #2334](https://github.com/modelcontextprotocol/python-sdk/pull/2334) |
-| **radare2-mcp** | Arbitrary RCE via shell escape (!) in run_command/run_javascript | Critical | [Issue #45](https://github.com/radareorg/radare2-mcp/issues/45) — Fixed in [commit 482cde6](https://github.com/radareorg/radare2-mcp/commit/482cde6) |
+| **mobile-mcp** | URL Scheme Injection (CVE-2026-35394, CVSS 8.3) - Arbitrary code execution via unsanitized tool input | CVSS 8.3 | [Fixed - PR #299](https://github.com/mobile-next/mobile-mcp/pull/299) |
+| **MCP Python SDK** | ClosedResourceError DoS (invalid UTF-8) | High | [Issue #2328](https://github.com/modelcontextprotocol/python-sdk/issues/2328) - Fix in [PR #2334](https://github.com/modelcontextprotocol/python-sdk/pull/2334) |
+| **radare2-mcp** | Arbitrary RCE via shell escape (!) in run_command/run_javascript | Critical | [Issue #45](https://github.com/radareorg/radare2-mcp/issues/45) - Fixed in [commit 482cde6](https://github.com/radareorg/radare2-mcp/commit/482cde6) |
 | **radare2-mcp** | Multiple SIGSEGV via params type confusion | High | [Issue #42](https://github.com/radareorg/radare2-mcp/issues/42) |
 | **radare2-mcp** | SIGSEGV in initialize via params type confusion | High | [Issue #52](https://github.com/radareorg/radare2-mcp/issues/52) |
-| MCP Python SDK | UnicodeDecodeError DoS | Medium | [Fixed — PR #2302](https://github.com/modelcontextprotocol/python-sdk/pull/2302) |
+| MCP Python SDK | UnicodeDecodeError DoS | Medium | [Fixed - PR #2302](https://github.com/modelcontextprotocol/python-sdk/pull/2302) |
 | mcp-server-fetch | 61 crash cases, exception handling DoS | High | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
 | mcp-server-git | 61 crash cases | High | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
 | MCP TypeScript SDK | EPIPE crash | Medium | [Issue #1564](https://github.com/modelcontextprotocol/typescript-sdk/issues/1564) |
@@ -89,7 +89,7 @@ mcpsec info --stdio "python my_server.py"
 
 ### Static Analysis (Audit v3)
 ```bash
-# Local source — pattern-based + AI reachability
+# Local source - pattern-based + AI reachability
 mcpsec audit --path ./my-mcp-server
 
 # GitHub repository
@@ -131,25 +131,25 @@ mcpsec rogue-server --port 9999 --attack all
 
 ---
 
-## Static Analysis — Audit v3
+## Static Analysis - Audit v3
 
-> **New in v2.7.1** — Complete rewrite of the audit engine with a pattern-based architecture.
+> **New in v2.7.1** - Complete rewrite of the audit engine with a pattern-based architecture.
 
 ### 7-Stage Analysis Pipeline
 
 ```
 Source Code
     │
-    ├─ 1. Fetch        — Clone GitHub repo or load local path
-    ├─ 2. Detect       — Identify language, MCP SDK, and framework
-    ├─ 3. Sink Scan    — 3,450+ regex patterns across 12 languages
-    ├─ 4. Semgrep      — 149 semantic rules (AST-level)
-    ├─ 5. AST          — Python/JS taint flow analysis
-    ├─ 6. Reachability — LLM taint tracing (heuristic fallback)
-    └─ 7. Deduplicate  — Merge, rank, and report findings
+    ├─ 1. Fetch        - Clone GitHub repo or load local path
+    ├─ 2. Detect       - Identify language, MCP SDK, and framework
+    ├─ 3. Sink Scan    - 3,450+ regex patterns across 12 languages
+    ├─ 4. Semgrep      - 149 semantic rules (AST-level)
+    ├─ 5. AST          - Python/JS taint flow analysis
+    ├─ 6. Reachability - LLM taint tracing (heuristic fallback)
+    └─ 7. Deduplicate  - Merge, rank, and report findings
 ```
 
-### Pattern Database — 3,450+ Sink Patterns
+### Pattern Database - 3,450+ Sink Patterns
 
 | Vulnerability Class | Patterns | Languages |
 |--------------------|----------|-----------|
@@ -176,7 +176,7 @@ Automatically identifies:
 
 ### Heuristic Fallback
 
-When no LLM is configured, the reachability analyzer uses **confidence scoring** to report findings without false silence — high-confidence patterns (CRITICAL/HIGH + direct taint) are always reported.
+When no LLM is configured, the reachability analyzer uses **confidence scoring** to report findings without false silence - high-confidence patterns (CRITICAL/HIGH + direct taint) are always reported.
 
 ---
 
@@ -262,7 +262,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-CI runs automatically on all PRs — linting with Ruff and cross-platform tests (Ubuntu, Windows, macOS).
+CI runs automatically on all PRs - linting with Ruff and cross-platform tests (Ubuntu, Windows, macOS).
 
 ---
 
