@@ -131,7 +131,7 @@ mcpsec rogue-server --port 9999 --attack all
 
 ## Static Analysis — Audit v3
 
-> **New in v2.8.0-alpha.1** — Complete rewrite of the audit engine with a pattern-based architecture.
+> **New in v2.7.1** — Complete rewrite of the audit engine with a pattern-based architecture.
 
 ### 7-Stage Analysis Pipeline
 
@@ -253,7 +253,7 @@ mcpsec fuzz --stdio "server" --output results.sarif
 
 ## Changelog
 
-### v2.8.0-alpha.1 (2026-04-01) — `staging/audit-v3`
+### v2.7.1 (2026-04-15) — `staging/audit-v3`
 - **Audit v3 — Pattern Database Foundation**: Complete rewrite of the static analysis engine
 - **800+ Sink Patterns**: Pattern database across 12 vulnerability classes and 12 languages
 - **Framework Detector**: Auto-identifies MCP SDK, language, and web framework from source
