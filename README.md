@@ -8,6 +8,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/mcpsec)](https://pypi.org/project/mcpsec/)
 [![CI](https://github.com/manthanghasadiya/mcpsec/actions/workflows/ci.yml/badge.svg)](https://github.com/manthanghasadiya/mcpsec/actions/workflows/ci.yml)
+[![CVEs](https://img.shields.io/badge/CVEs-1-critical)](https://github.com/manthanghasadiya/mcpsec)
 [![Bugs Fixed](https://img.shields.io/badge/bugs%20fixed-10-green)](https://github.com/manthanghasadiya/mcpsec)
 [![Bugs Reported](https://img.shields.io/badge/bugs%20reported-15+-red)](https://github.com/manthanghasadiya/mcpsec)
 [![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-800+-orange)](https://github.com/manthanghasadiya/mcpsec)
@@ -32,17 +33,18 @@ Most MCP security tools do static analysis. **mcpsec connects to live servers an
 
 ## Real Bugs Found
 
-| Target | Vulnerability | Status |
-|--------|---------------|--------|
-| **MCP Python SDK** | ClosedResourceError DoS (invalid UTF-8) | [Issue #2328](https://github.com/modelcontextprotocol/python-sdk/issues/2328) - Fix in [PR #2334](https://github.com/modelcontextprotocol/python-sdk/pull/2334) |
-| **radare2-mcp** | Multiple SIGSEGV via params type confusion | [Issue #42](https://github.com/radareorg/radare2-mcp/issues/42) |
-| **radare2-mcp** | Arbitrary RCE via shell escape (!) in run_command/run_javascript | [Issue #45](https://github.com/radareorg/radare2-mcp/issues/45) - Fixed in [commit 482cde6](https://github.com/radareorg/radare2-mcp/commit/482cde6) |
-| **radare2-mcp** | SIGSEGV in initialize via params type confusion | [Issue #52](https://github.com/radareorg/radare2-mcp/issues/52) |
-| MCP Python SDK | UnicodeDecodeError DoS | [Fixed - PR #2302](https://github.com/modelcontextprotocol/python-sdk/pull/2302) |
-| mcp-server-fetch | 61 crash cases, exception handling DoS | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
-| mcp-server-git | 61 crash cases | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
-| MCP TypeScript SDK | EPIPE crash | [Issue #1564](https://github.com/modelcontextprotocol/typescript-sdk/issues/1564) |
-| MCP TypeScript SDK | Integer overflow DoS (MAX_SAFE_INTEGER+1) | [Issue #1765](https://github.com/modelcontextprotocol/typescript-sdk/issues/1765) |
+| Target | Vulnerability | Severity | Status |
+|--------|---------------|----------|--------|
+| **mobile-mcp** | URL Scheme Injection (CVE-2026-35394, CVSS 8.3) — Arbitrary code execution via unsanitized tool input | CVSS 8.3 | [Fixed — PR #299](https://github.com/mobile-next/mobile-mcp/pull/299) |
+| **MCP Python SDK** | ClosedResourceError DoS (invalid UTF-8) | High | [Issue #2328](https://github.com/modelcontextprotocol/python-sdk/issues/2328) — Fix in [PR #2334](https://github.com/modelcontextprotocol/python-sdk/pull/2334) |
+| **radare2-mcp** | Arbitrary RCE via shell escape (!) in run_command/run_javascript | Critical | [Issue #45](https://github.com/radareorg/radare2-mcp/issues/45) — Fixed in [commit 482cde6](https://github.com/radareorg/radare2-mcp/commit/482cde6) |
+| **radare2-mcp** | Multiple SIGSEGV via params type confusion | High | [Issue #42](https://github.com/radareorg/radare2-mcp/issues/42) |
+| **radare2-mcp** | SIGSEGV in initialize via params type confusion | High | [Issue #52](https://github.com/radareorg/radare2-mcp/issues/52) |
+| MCP Python SDK | UnicodeDecodeError DoS | Medium | [Fixed — PR #2302](https://github.com/modelcontextprotocol/python-sdk/pull/2302) |
+| mcp-server-fetch | 61 crash cases, exception handling DoS | High | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
+| mcp-server-git | 61 crash cases | High | [Issue #3359](https://github.com/modelcontextprotocol/servers/issues/3359) |
+| MCP TypeScript SDK | EPIPE crash | Medium | [Issue #1564](https://github.com/modelcontextprotocol/typescript-sdk/issues/1564) |
+| MCP TypeScript SDK | Integer overflow DoS (MAX_SAFE_INTEGER+1) | Medium | [Issue #1765](https://github.com/modelcontextprotocol/typescript-sdk/issues/1765) |
 
 More findings under responsible disclosure.
 
@@ -252,83 +254,7 @@ mcpsec fuzz --stdio "server" --output results.sarif
 
 ---
 
-## Changelog
-
-### v2.7.1 (2026-04-15) — `staging/audit-v3`
-- **Audit v3 — Pattern Database Foundation**: Complete rewrite of the static analysis engine
-- **3,450+ Sink Patterns**: Pattern database across 12 vulnerability classes and 12 languages
-- **Framework Detector**: Auto-identifies MCP SDK, language, and web framework from source
-- **Sink Scanner**: Regex-based scanner with context capture, comment filtering, and negative patterns
-- **LLM Reachability Analyzer**: AI-powered taint analysis with heuristic fallback scoring
-- **7-Stage Audit Pipeline**: Fetch → Detect → Sink Scan → Semgrep → AST → Reachability → Deduplicate
-- **MCP-Specific Patterns**: Tool argument flows, `server.tool`/`server.prompt`/`server.resource` handlers
-- **ML/AI Sinks**: `torch.load`, `numpy.load(allow_pickle=True)`, joblib, HuggingFace downloads
-- **JWT Patterns**: `none` algorithm, empty secret, disabled verification
-
-### v2.6.1 (2026-03-20)
-- CI/CD pipeline with GitHub Actions for automated testing and PyPI releases
-- PR and Issue templates for better community contributions
-- Nix package support via `shell.nix` for reproducible builds (@AbhiTheModder)
-- Environment variables now properly inherited in `mcp_client.py` (@AbhiTheModder)
-
-### v2.6.0 (2026-03-13)
-- **Auto-Discovery Scanner**: New `--auto` flag to automatically find and scan MCP servers from Claude, Cursor, VS Code, Windsurf, etc.
-- **Windows Unicode Fixes**: Comprehensive fix for `UnicodeEncodeError` on Windows consoles.
-- **Pydantic Compatibility**: Resolved `AttributeError` for custom metadata in scan results.
-
-### v2.5.0 (2026-03-04)
-- **New Scanners**: `code-execution`, `template-injection`, `rag-poisoning`, `idor`, `info-leak`, `deserialization`
-- **Confirmation Proofs**: Added `mcpsec_cmd_success` execution anchor for command injection
-- **SSRF Expansion**: Support for `file://` protocol and generic fetch success indicators
-- **Robust Parameter Handling**: Automatic dummy argument generation for complex tool schemas
-- **Enhanced Classification**: Massive reduction in false positives for blocked/sandboxed tools
-
-### v2.4.0 (2026-02-28)
-- **SAST Rules Expansion**: 87 new Semgrep rules → **149 total** across 24 rule files
-- Broad patterns for command injection, path traversal, SQL injection, SSRF, deserialization
-- Secrets detection: AWS keys, AI API keys, GitHub/Slack tokens, JWT secrets
-- MCP-specific rules: dangerous tool names, empty schemas, error leaks, input reflection
-- Code smells: security TODOs, empty catches, TLS disabled, CORS *, ReDoS patterns
-
-### v2.3.0 (2026-02-28)
-- **Scanner Nuclear Expansion**: Command injection (138), path traversal (104), SSRF (81) payloads
-- Encoding bypasses, protocol smuggling, shell-specific evasion
-- 5 new fuzz generators: integer boundaries, concurrency, memory exhaustion, regex DoS, deserialization
-- SDK-specific Semgrep rules for Go, Rust, Python async, .NET
-
-### v2.2.0 (2026-02-28)
-- **SARIF 2.1.0 Output** for CI/CD integration
-- CWE mapping and severity scoring
-- Audit report export with `--output` and `--format` flags
-
-### v2.1.0 (2026-02-27)
-- **AI Exploitation Assistant**: `select`, `run`, `next`, `verdict`, `auto` REPL commands
-- Expert controls: `edit`, `aggressive`, `hint` for complex bypasses
-- AI learns from manual `call` commands and response history
-
-### v2.0.3 (2026-02-26)
-- **MCP Repeater**: Interactive REPL for manual/semi-auto finding validation
-- AI payload engine with context-aware recommendations
-- Exploit playbooks for SQLi, RCE, SSRF, path traversal
-- Automated evidence capture and PoC generation
-
-
-<details>
-<summary>Earlier versions</summary>
-
-### v2.0.2 (2026-02-26)
-- Tool chain analysis for dangerous combinations
-- Cross-platform Windows support improvements
-
-### v2.0.1 (2026-02-25)
-- Advanced SQL scanner with modular detection
-- DB fingerprinting for MySQL, Postgres, MSSQL, SQLite
-
-### v2.0.0 (2026-02-24)
-- Fuzzing engine v2 with chained state-machine exploration
-- AI-powered validation of security findings
-
-</details>
+See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ---
 
