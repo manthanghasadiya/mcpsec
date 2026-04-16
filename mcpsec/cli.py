@@ -1203,6 +1203,11 @@ def audit(
         "--ai",
         help="Use AI-powered analysis (requires API key: DEEPSEEK_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY)",
     ),
+    include_tests: bool = typer.Option(
+        False,
+        "--include-tests",
+        help="Include findings from test files",
+    ),
 ):
     """
     🔬 Audit source code for vulnerabilities (static analysis).
@@ -1215,7 +1220,7 @@ def audit(
         console.print("[danger]Error: Specify only one source (npm, github, or path)[/danger]")
         raise typer.Exit(1)
 
-    _run_async(_audit_async(npm, github, path, ai, output, format.lower()))
+    _run_async(_audit_async(npm, github, path, ai, include_tests, output, format.lower()))
 
 
 async def _audit_async(
@@ -1223,6 +1228,7 @@ async def _audit_async(
     github: str | None,
     path: str | None,
     ai: bool = False,
+    include_tests: bool = False,
     output_path: str | None = None,
     output_format: str = "json",
 ):
@@ -1232,50 +1238,23 @@ async def _audit_async(
     print_banner(small=True)
     print_section("Static Audit", "🔬")
 
-    findings, source_path = await run_audit(npm, github, path)
-
-    if ai:
-        from mcpsec.ai.ai_taint_analyzer import AITaintAnalyzer
-        from mcpsec.ai.ai_validator import AIValidator
-
-        analyzer = AITaintAnalyzer()
-        validator = AIValidator()
-
-        if analyzer.available and source_path:
-            console.print("\n  [cyan]🧠 Running AI-powered taint analysis...[/cyan]")
-            ai_findings = await analyzer.analyze_project(Path(source_path))
-
-            if ai_findings:
-                # Deduplicate: skip AI findings on same file+line as existing
-                existing = {(f.file_path, f.line_number) for f in findings if f.line_number}
-                new_ai = [f for f in ai_findings if (f.file_path, f.line_number) not in existing]
-                findings.extend(new_ai)
-                console.print(f"  [cyan]  AI found {len(new_ai)} additional findings[/cyan]")
-
-            # Validate ALL findings (remove false positives)
-            console.print("  [cyan]🧠 AI validating findings...[/cyan]")
-            findings = await validator.validate_findings(findings)
-            console.print(f"  [cyan]  {len(findings)} findings after AI validation[/cyan]")
-        else:
-            console.print(
-                "\n  [yellow]⚠ AI analysis requires an API key.[/yellow]"
-                "\n  [dim]Set DEEPSEEK_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,"
-                " or run Ollama locally.[/dim]"
-            )
+    findings, source_path = await run_audit(npm, github, path, ai, include_tests)
 
     if not findings:
         console.print("\n  [success]✔ No vulnerabilities found.[/success]")
         return
 
-    console.print(f"\n  [danger]Found {len(findings)} issues:[/danger]\n")
-
-    # Identify critical/high findings
+    # Identify critical/high findings (pre-classification summary)
     critical_count = sum(1 for f in findings if f.severity == "critical")
     high_count = sum(1 for f in findings if f.severity == "high")
 
-    # Display findings
-    for f in findings:
-        _print_finding_detail(f)
+    # Display findings (grouped if using AI)
+    if ai:
+        _display_findings_grouped(findings)
+    else:
+        console.print(f"\n  [danger]Found {len(findings)} issues:[/danger]\n")
+        for f in findings:
+            _print_finding_detail(f)
 
     # Save report if output path specified
     if output_path:
@@ -1308,33 +1287,113 @@ async def _audit_async(
 
 def _print_finding_detail(f):
     """Print detailed finding for audit."""
-    color = "red" if f.severity in ("critical", "high") else "yellow"
+    # Tag handling
+    tag_colors = {
+        "🔴 VULNERABILITY": "red bold",
+        "🟠 SUSPICIOUS": "yellow bold",
+        "🟡 NEEDS REVIEW": "yellow",
+        "🔵 LIKELY BY DESIGN": "blue dim",
+        "⚪ BY DESIGN": "white dim",
+    }
+    
+    severity_color = "red" if f.severity in ("critical", "high") else "yellow"
     if f.severity == "info":
-        color = "blue"
+        severity_color = "blue"
 
-    console.print(f"  [{color} bold]{f.severity.upper():<8}[/{color} bold]  {f.title}")
+    # Check for AI tag in title
+    found_tag = False
+    display_title = f.title
+    for tag, color in tag_colors.items():
+        if tag in f.title:
+            severity_color = color
+            found_tag = True
+            break
+
+    console.print(f"  [{severity_color} bold]{f.severity.upper():<8}[/{severity_color} bold]  {display_title}")
+    
     if f.file_path:
-        # Show relative path if possible
-        try:
-            # Just show the name or partial path for cleanliness
-            # p = Path(f.file_path).name
-            # But complete path is better for triage
-            p = f.file_path
-        except:
-            p = f.file_path
-        console.print(f"            [dim]file={p}  line={f.line_number}[/dim]")
+        console.print(f"            [dim]file={f.file_path}  line={f.line_number}[/dim]")
 
     if f.code_snippet:
-        # Indent code snippet
         snippet = "\n".join(f"            {line}" for line in f.code_snippet.splitlines())
         console.print(f"[dim]{snippet}[/dim]")
 
-    console.print(f"            {f.description}")
+    # Logic to separate normal description from AI reasoning
+    description = f.description
+    ai_reason = ""
+    if "🤖 AI Analysis:" in description:
+        parts = description.split("🤖 AI Analysis:")
+        description = parts[0].strip()
+        ai_reason = parts[1].strip()
+
+    if description:
+        console.print(f"            {description}")
+    
+    if ai_reason:
+        console.print(f"            [cyan]🤖 AI Analysis: {ai_reason}[/cyan]")
+        
     if f.remediation:
         console.print(f"            [dim]Remediation: {f.remediation}[/dim]")
     if f.taint_flow:
         console.print(f"            [cyan]Flow: {f.taint_flow}[/cyan]")
     console.print()
+
+
+def _display_findings_grouped(findings):
+    """Display findings grouped by classification."""
+    from typing import List
+    from mcpsec.models import Finding
+    
+    groups = {
+        "🔴 VULNERABILITY": [],
+        "🟠 SUSPICIOUS": [],
+        "🟡 NEEDS REVIEW": [],
+        "🔵 LIKELY BY DESIGN": [],
+        "⚪ BY DESIGN": [],
+        "untagged": [],
+    }
+    
+    for f in findings:
+        grouped = False
+        for tag in groups.keys():
+            if tag in f.title:
+                groups[tag].append(f)
+                grouped = True
+                break
+        if not grouped:
+            groups["untagged"].append(f)
+            
+    display_order = [
+        ("🔴 VULNERABILITY", "red bold", "CONFIRMED VULNERABILITIES"),
+        ("🟠 SUSPICIOUS", "yellow bold", "SUSPICIOUS - NEEDS INVESTIGATION"),
+        ("🟡 NEEDS REVIEW", "yellow", "NEEDS REVIEW"),
+        ("untagged", "white", "UNCLASSIFIED"),
+        ("🔵 LIKELY BY DESIGN", "blue dim", "LIKELY BY DESIGN"),
+        ("⚪ BY DESIGN", "white dim", "BY DESIGN - Expected for this server type"),
+    ]
+    
+    for tag, color, header in display_order:
+        group_findings = groups.get(tag, [])
+        if not group_findings:
+            continue
+            
+        console.print()
+        console.print(f"  [{color}]{'═' * 70}[/{color}]")
+        console.print(f"  [{color}] {tag} {header} ({len(group_findings)})[/{color}]")
+        console.print(f"  [{color}]{'═' * 70}[/{color}]")
+        
+        for f in group_findings:
+            _print_finding_detail(f)
+            
+    # Final AI Summary
+    v_count = len(groups["🔴 VULNERABILITY"])
+    s_count = len(groups["🟠 SUSPICIOUS"])
+    d_count = len(groups["🔵 LIKELY BY DESIGN"]) + len(groups["⚪ BY DESIGN"])
+    
+    console.print("\n  [bold underline]Classification Summary[/bold underline]")
+    if v_count: console.print(f"    [red]• {v_count} Confirmed Vulnerabilities[/red]")
+    if s_count: console.print(f"    [yellow]• {s_count} Suspicious Findings[/yellow]")
+    if d_count: console.print(f"    [dim]• {d_count} Findings tagged as By-Design[/dim]")
 
 
 # ─── FUZZ COMMAND ────────────────────────────────────────────────────────────

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2026-04-15
+
+### Improved
+- **Pattern expansion**: 3,450+ sink patterns (up from ~800), covering Python, TypeScript, Go, Rust, C/C++, Java, Ruby, PHP
+- **Sanitizer patterns**: 105 patterns to detect when dangerous sinks are properly sanitized
+- **MCP source patterns**: 45 patterns for framework-aware detection across 20+ MCP SDKs
+- **Detection accuracy**: 100% on internal test suite (13/13 vulnerabilities detected in blind_test.py)
+- **AI classification**: Improved 5-level severity system (🔴🟠🟡🔵⚪) with better server-type awareness
+
+### Fixed
+- Multi-line pattern matching (subprocess with shell=True across multiple lines now detected)
+- Variable SQL injection detection (cursor.execute(variable) where variable is f-string)
+- eval() detection with nested parentheses
+- Duplicate finding deduplication (same sink no longer reported multiple times)
+- Heuristic confidence filter (medium-confidence sinks no longer dropped)
+
+### Added
+- `--include-tests` flag to include test file findings (excluded by default)
+- Server-type detection for better by-design classification (filesystem, fetch, database servers)
+
 ## v2.7.0 (2026-03-23)
 
 ### New Features

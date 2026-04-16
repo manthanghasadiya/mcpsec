@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcpsec"
-version = "2.7.0"
+version = "2.7.1"
 description = "Security scanner for MCP (Model Context Protocol) servers - pentest your AI agent's tool connections"
 readme = "README.md"
 license = {text = "MIT"}
