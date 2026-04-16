@@ -35,7 +35,7 @@ Most MCP security tools do static analysis. **mcpsec connects to live servers an
 
 | Target | Vulnerability | Severity | Status |
 |--------|---------------|----------|--------|
-| **mobile-mcp** | URL Scheme Injection (CVE-2026-35394, CVSS 8.3) - Arbitrary code execution via unsanitized tool input | CVSS 8.3 | [Fixed - PR #299](https://github.com/mobile-next/mobile-mcp/pull/299) |
+| **mobile-mcp** | URL Scheme Injection (CVE-2026-35394, CVSS 8.3) - Arbitrary code execution via unsanitized tool input | High | [Fixed - PR #299](https://github.com/mobile-next/mobile-mcp/pull/299) |
 | **MCP Python SDK** | ClosedResourceError DoS (invalid UTF-8) | High | [Issue #2328](https://github.com/modelcontextprotocol/python-sdk/issues/2328) - Fix in [PR #2334](https://github.com/modelcontextprotocol/python-sdk/pull/2334) |
 | **radare2-mcp** | Arbitrary RCE via shell escape (!) in run_command/run_javascript | Critical | [Issue #45](https://github.com/radareorg/radare2-mcp/issues/45) - Fixed in [commit 482cde6](https://github.com/radareorg/radare2-mcp/commit/482cde6) |
 | **radare2-mcp** | Multiple SIGSEGV via params type confusion | High | [Issue #42](https://github.com/radareorg/radare2-mcp/issues/42) |
