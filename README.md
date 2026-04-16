@@ -11,7 +11,7 @@
 [![Bugs Fixed](https://img.shields.io/badge/bugs%20fixed-10-green)](https://github.com/manthanghasadiya/mcpsec)
 [![Bugs Reported](https://img.shields.io/badge/bugs%20reported-15+-red)](https://github.com/manthanghasadiya/mcpsec)
 [![Fuzz Cases](https://img.shields.io/badge/fuzz%20cases-800+-orange)](https://github.com/manthanghasadiya/mcpsec)
-[![Sink Patterns](https://img.shields.io/badge/sink%20patterns-800+-blueviolet)](https://github.com/manthanghasadiya/mcpsec)
+[![Sink Patterns](https://img.shields.io/badge/sink%20patterns-3,450+-blueviolet)](https://github.com/manthanghasadiya/mcpsec)
 [![Semgrep Rules](https://img.shields.io/badge/semgrep%20rules-149-purple)](https://github.com/manthanghasadiya/mcpsec)
 
 [Installation](#installation) • [Quick Start](#quick-start) • [Audit v3](#static-analysis-audit-v3) • [Scanners](#scanners) • [Fuzzing](#fuzz-generators)
@@ -140,14 +140,14 @@ Source Code
     │
     ├─ 1. Fetch        — Clone GitHub repo or load local path
     ├─ 2. Detect       — Identify language, MCP SDK, and framework
-    ├─ 3. Sink Scan    — 800+ regex patterns across 12 languages
+    ├─ 3. Sink Scan    — 3,450+ regex patterns across 12 languages
     ├─ 4. Semgrep      — 149 semantic rules (AST-level)
     ├─ 5. AST          — Python/JS taint flow analysis
     ├─ 6. Reachability — LLM taint tracing (heuristic fallback)
     └─ 7. Deduplicate  — Merge, rank, and report findings
 ```
 
-### Pattern Database — 800+ Sink Patterns
+### Pattern Database — 3,450+ Sink Patterns
 
 | Vulnerability Class | Patterns | Languages |
 |--------------------|----------|-----------|
@@ -162,7 +162,8 @@ Source Code
 | XXE                 | ~25      | lxml, untangle, DOMDocument, SAXParser |
 | Log/Header/LDAP     | ~50      | All major frameworks |
 | Prototype Pollution | ~15      | Object.assign, deepmerge, `__proto__` |
-| MCP-Specific        | ~25      | Tool args → sinks, prompt/resource handlers |
+| Sanitizers          | 105      | Command, SQL, Path, XSS sanitizers (Python, JS, Go, Rust) |
+| MCP-Specific        | ~45      | Tool args → sinks, prompt/resource handlers (20+ SDKs) |
 
 ### Framework Detection
 
@@ -226,7 +227,7 @@ When no LLM is configured, the reachability analyzer uses **confidence scoring**
      ├── Run 10+ security scanners
      ├── Generate 800+ fuzz cases
      ├── Execute AI-powered payload mutations
-     ├── Static audit: 800 sink patterns + 149 Semgrep rules
+     ├── Static audit: 3,450+ sink patterns + 149 Semgrep rules
      └── Report findings with PoC evidence
 ```
 
@@ -255,7 +256,7 @@ mcpsec fuzz --stdio "server" --output results.sarif
 
 ### v2.7.1 (2026-04-15) — `staging/audit-v3`
 - **Audit v3 — Pattern Database Foundation**: Complete rewrite of the static analysis engine
-- **800+ Sink Patterns**: Pattern database across 12 vulnerability classes and 12 languages
+- **3,450+ Sink Patterns**: Pattern database across 12 vulnerability classes and 12 languages
 - **Framework Detector**: Auto-identifies MCP SDK, language, and web framework from source
 - **Sink Scanner**: Regex-based scanner with context capture, comment filtering, and negative patterns
 - **LLM Reachability Analyzer**: AI-powered taint analysis with heuristic fallback scoring
