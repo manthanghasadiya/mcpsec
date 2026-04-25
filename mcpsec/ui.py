@@ -104,15 +104,16 @@ def print_target_info(
         )
     except UnicodeEncodeError:
         try:
-            console.print(
-                Panel(
-                    table,
-                    title="Target",
-                    border_style="cyan",
-                    padding=(1, 2),
-                )
-            )
-        except (BrokenPipeError, OSError):
+            # Fallback for Windows consoles that don't support unicode boxes
+            console.print("--- Target ---", style="bold cyan")
+            console.print(f"TARGET: {target}")
+            console.print(f"TRANSPORT: {transport}")
+            console.print(f"TYPE: {target_type}")
+            if headers:
+                for k, v in headers.items():
+                    console.print(f"HEADER: {k}: {_mask_header_value(k, v)}")
+            console.print("-" * 14, style="bold cyan")
+        except Exception:
             pass
     except (BrokenPipeError, OSError):
         pass
