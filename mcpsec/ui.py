@@ -34,7 +34,33 @@ MCPSEC_THEME = Theme(
     }
 )
 
-console = Console(theme=MCPSEC_THEME)
+class SafeConsole(Console):
+    """A wrapper for rich.console.Console that handles encoding errors on legacy Windows terminals."""
+    def print(self, *args, **kwargs):
+        try:
+            super().print(*args, **kwargs)
+        except (UnicodeEncodeError, Exception):
+            try:
+                import re
+                processed_args = []
+                for arg in args:
+                    if isinstance(arg, str):
+                        arg = re.sub(r"\[/?(?:[a-z\._-]+(?:\s*=\s*[^\]]+)?|#[\da-f]{3,6}|rgb\(\d{1,3},\d{1,3},\d{1,3}\))?\]", "", arg)
+                    processed_args.append(arg)
+                print(*processed_args)
+            except Exception:
+                pass
+
+    def rule(self, title="", *args, **kwargs):
+        try:
+            super().rule(title, *args, **kwargs)
+        except (UnicodeEncodeError, Exception):
+            try:
+                print(f"\n--- {title} ---\n")
+            except Exception:
+                pass
+
+console = SafeConsole(theme=MCPSEC_THEME)
 
 # ── ASCII Banner ─────────────────────────────────────────────────────────────
 
@@ -58,18 +84,17 @@ def print_banner(small: bool = False):
     """Print the mcpsec banner."""
     try:
         if small:
-            console.print(SMALL_BANNER)
+            super(SafeConsole, console).print(SMALL_BANNER)
         else:
-            console.print(BANNER)
-    except UnicodeEncodeError:
-        # Fallback for legacy Windows consoles
+            super(SafeConsole, console).print(BANNER)
+    except (UnicodeEncodeError, Exception):
+        # Fallback for legacy Windows consoles or other issues
         try:
-            console.print(f"--- mcpsec v{__version__} ---")
+            banner_text = f"--- mcpsec v{__version__} ---"
+            print(banner_text)
         except Exception:
-            # Ultimate plain print fallback
-            print(f"--- mcpsec v{__version__} ---")
+            pass
     except (BrokenPipeError, OSError):
-        # Pipe closed early
         pass
 
 
@@ -94,7 +119,7 @@ def print_target_info(
 
     title = "◉ Target"
     try:
-        console.print(
+        super(SafeConsole, console).print(
             Panel(
                 table,
                 title=f"[bold cyan]{title}[/bold cyan]",
@@ -102,17 +127,17 @@ def print_target_info(
                 padding=(1, 2),
             )
         )
-    except UnicodeEncodeError:
+    except (UnicodeEncodeError, Exception):
         try:
             # Fallback for Windows consoles that don't support unicode boxes
-            console.print("--- Target ---", style="bold cyan")
-            console.print(f"TARGET: {target}")
-            console.print(f"TRANSPORT: {transport}")
-            console.print(f"TYPE: {target_type}")
+            print("\n--- Target ---")
+            print(f"TARGET: {target}")
+            print(f"TRANSPORT: {transport}")
+            print(f"TYPE: {target_type}")
             if headers:
                 for k, v in headers.items():
-                    console.print(f"HEADER: {k}: {_mask_header_value(k, v)}")
-            console.print("-" * 14, style="bold cyan")
+                    print(f"HEADER: {k}: {_mask_header_value(k, v)}")
+            print("-" * 14 + "\n")
         except Exception:
             pass
     except (BrokenPipeError, OSError):
@@ -136,10 +161,17 @@ def print_tool_info(name: str, description: str, params: dict):
     )
 
     icon = "o"  # Safe fallback
-    console.print(f"  [tool_name]{icon} {name}[/tool_name]  ({param_str})")
-    if description:
-        short = description[:120] + "..." if len(description) > 120 else description
-        console.print(f"    [muted]{short}[/muted]")
+    try:
+        console.print(f"  [tool_name]{icon} {name}[/tool_name]  ({param_str})")
+        if description:
+            short = description[:120] + "..." if len(description) > 120 else description
+            console.print(f"    [muted]{short}[/muted]")
+    except Exception:
+        # Fallback for tool info
+        try:
+            print(f"  o {name} ({', '.join(params.keys()) if params else 'none'})")
+        except Exception:
+            pass
 
 
 def print_finding(severity: str, scanner: str, tool_name: str, title: str, detail: str = ""):
@@ -149,29 +181,36 @@ def print_finding(severity: str, scanner: str, tool_name: str, title: str, detai
     icon = {"critical": "[!]", "high": "[!]", "medium": "[!]", "low": "[?]", "info": "[i]"}.get(
         severity.lower(), "[i]"
     )
-    console.print(
-        f"  {icon} [{sev_style}]{sev_label}[/{sev_style}] [bold white]{title}[/bold white]"
-    )
-    console.print(f"           [muted]scanner={scanner}  tool={tool_name}[/muted]")
-    if detail:
-        for line in detail.split("\n"):
-            console.print(f"           [muted]{escape(line)}[/muted]")
-    console.print()
+    try:
+        console.print(
+            f"  {icon} [{sev_style}]{sev_label}[/{sev_style}] [bold white]{title}[/bold white]"
+        )
+        console.print(f"           [muted]scanner={scanner}  tool={tool_name}[/muted]")
+        if detail:
+            for line in detail.split("\n"):
+                console.print(f"           [muted]{escape(line)}[/muted]")
+        console.print()
+    except Exception:
+        try:
+            print(f"  {icon} {sev_label} {title}")
+            print(f"           scanner={scanner}  tool={tool_name}")
+        except Exception:
+            pass
 
 
 def print_section(title: str, icon: str = "-"):
     """Print a section divider."""
-    console.print()
     try:
-        console.rule(f"[bold cyan] {icon} {title} [/bold cyan]", style="dim cyan")
-    except UnicodeEncodeError:
+        super(SafeConsole, console).print()
+        super(SafeConsole, console).rule(f"[bold cyan] {icon} {title} [/bold cyan]", style="dim cyan")
+        super(SafeConsole, console).print()
+    except (UnicodeEncodeError, Exception):
         try:
-            console.print(f"--- {title} ---")
+            print(f"\n--- {title} ---\n")
         except Exception:
-            print(f"--- {title} ---")
+            pass
     except (BrokenPipeError, OSError):
         pass
-    console.print()
 
 
 def print_summary(total: int, critical: int, high: int, medium: int, low: int, info: int):
