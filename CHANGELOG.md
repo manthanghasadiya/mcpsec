@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.2] - 2026-07-12
+
+### Changed
+- **Codebase Cleanup & Deduplication**: Removed 156 duplicate regexes and consolidated 3,459 sink patterns into 9 organized files by vulnerability type.
+- **Generator Consolidation**: Merged protocol_state generators and renamed memory_exhaustion_v2 for better maintainability.
+- **Dead Code Removal**: Removed unused AI analyzer stubs (	aint_analyzer, py_analyzer) and SQL exploiter stubs.
+- **Test Organization**: Moved test server fixtures from 	ests/ to 	ests/servers/ for cleaner separation of tests and fixtures.
+
+### Fixed
+- **Silent Exception Handling**: Replaced bare except: pass blocks across 130+ files with proper logger.debug statements.
+- **Unicode Errors on Windows**: Fixed UnicodeEncodeError crashes caused by rich console emojis by forcing UTF-8 stdout encoding.
+- **Unused Imports**: Cleaned up stale imports in cli.py.
+
+
 ## [2.7.1] - 2026-04-15
 
 ### Improved
