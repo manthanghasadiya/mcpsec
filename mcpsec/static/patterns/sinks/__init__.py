@@ -1,33 +1,11 @@
-"""Sink pattern modules."""
-
-from mcpsec.static.patterns.sinks import (
-    command_injection,
-    sql_injection,
-    path_traversal,
-    ssrf,
-    deserialization,
+from . import (
     code_execution,
-    xxe,
+    command_injection,
     crypto,
-    additional,
-    web_vulns,
-    injection_extra,
-    final_patterns,
-    bulk_extension,
+    deserialization,
+    misc,
+    path_traversal,
+    sql_injection,
+    ssrf,
+    xxe,
 )
-
-__all__ = [
-    "command_injection",
-    "sql_injection",
-    "path_traversal",
-    "ssrf",
-    "deserialization",
-    "code_execution",
-    "xxe",
-    "crypto",
-    "additional",
-    "web_vulns",
-    "injection_extra",
-    "final_patterns",
-    "bulk_extension",
-]
