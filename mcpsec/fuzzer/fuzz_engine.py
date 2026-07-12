@@ -19,11 +19,10 @@ from mcpsec.fuzzer.generators import (
     integer_boundaries,
     json_edge_cases,
     malformed_json,
-    memory_exhaustion_v2,
+    memory_exhaustion,
     method_mutations,
     param_mutations,
     protocol_state,
-    protocol_state_machine,
     protocol_violation,
     regex_dos,
     resource_exhaustion,
@@ -175,7 +174,6 @@ class FuzzEngine:
             "header_mutations": header_mutations.generate,
             "json_edge_cases": json_edge_cases.generate,
             "protocol_state": protocol_state.generate,
-            "protocol_state_machine": protocol_state_machine.generate,
             "id_confusion": id_confusion.generate,
             "concurrency_attacks": concurrency_attacks.generate,
             "regex_dos": regex_dos.generate,
@@ -184,7 +182,7 @@ class FuzzEngine:
         # Insane: all of the above + resource exhaustion + memory exhaustion (~1500+ cases)
         insane_gens = {
             "resource_exhaustion": resource_exhaustion.generate,
-            "memory_exhaustion_v2": memory_exhaustion_v2.generate,
+            "memory_exhaustion": memory_exhaustion.generate,
         }
 
         gen_map = dict(low_gens)

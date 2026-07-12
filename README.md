@@ -211,9 +211,9 @@ When no LLM is configured, the reachability analyzer uses **confidence scoring**
 
 **Medium (~200 cases):** + `session_attacks`, `encoding_attacks`, `integer_boundaries`
 
-**High (~800 cases):** + `injection_payloads`, `method_mutations`, `param_mutations`, `timing_attacks`, `header_mutations`, `json_edge_cases`, `protocol_state`, `protocol_state_machine`, `id_confusion`, `concurrency_attacks`, `regex_dos`, `deserialization`
+**High (~800 cases):** + `injection_payloads`, `method_mutations`, `param_mutations`, `timing_attacks`, `header_mutations`, `json_edge_cases`, `protocol_state`, `id_confusion`, `concurrency_attacks`, `regex_dos`, `deserialization`
 
-**Insane (~1500+ cases):** + `resource_exhaustion`, `memory_exhaustion_v2`
+**Insane (~1500+ cases):** + `resource_exhaustion`, `memory_exhaustion`
 
 ---
 
