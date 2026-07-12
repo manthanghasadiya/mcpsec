@@ -22,7 +22,6 @@ from mcpsec.static.framework.detector import detect_framework
 from mcpsec.static.analysis.sink_scanner import SinkScanner
 from mcpsec.static.analysis.reachability import ReachabilityAnalyzer
 from mcpsec.static.semgrep_engine import run_semgrep, run_semgrep_with_categories
-from mcpsec.static.py_analyzer import PY_EXTENSIONS, scan_py_file
 from mcpsec.ui import console
 
 
@@ -89,9 +88,6 @@ async def run_audit(
                     console.print(f"    [dim]Use --include-tests to see all findings[/dim]")
         except Exception as e:
             console.print(f"    [warning]Semgrep skipped: {e}[/warning]")
-
-        # Phase 5: Python AST analysis
-        _scan_py_files(root, findings, explicit=path is not None)
 
         # Phase 6: Sink analysis (Heuristic)
         if scan_result.matches:
@@ -170,25 +166,6 @@ async def run_audit(
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
-
-def _scan_py_files(root: Path, findings: List[Finding], explicit: bool = False) -> None:
-    """Scan Python files with AST analyzer."""
-    for fp in root.rglob("*"):
-        if not fp.is_file():
-            continue
-        if fp.suffix.lower() not in PY_EXTENSIONS:
-            continue
-        # When the user explicitly targeted this directory, always scan
-        # direct children; only apply exclusions to deeper descendants.
-        if explicit and fp.parent == root:
-            pass
-        elif _is_excluded(fp):
-            continue
-        try:
-            findings.extend(scan_py_file(fp))
-        except Exception:
-            pass
-
 
 def _deduplicate(findings: List[Finding]) -> List[Finding]:
     """Deduplicate findings by file + line + vuln type."""
@@ -339,7 +316,7 @@ def _is_excluded(path: Path) -> bool:
     if name.startswith("test_") or name.endswith("_test.py"):
         return True
     # Exclude the pattern files themselves
-    if name in ("patterns.py", "py_analyzer.py", "taint_analyzer.py"):
+    if name in ("patterns.py",):
         return True
 
     return False
