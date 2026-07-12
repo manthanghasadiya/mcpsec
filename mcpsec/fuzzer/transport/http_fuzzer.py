@@ -1,10 +1,14 @@
-import json
+import logging
+json
 import time
 from typing import Optional
 
 import httpx
 
 from mcpsec.fuzzer.transport.stdio_fuzzer import FuzzResult
+
+logger = logging.getLogger(__name__)
+
 
 
 class HttpFuzzer:
@@ -82,9 +86,8 @@ class HttpFuzzer:
                 parts = payload.split(b"\r\n\r\n", 1)
                 if b"Content-Length:" in parts[0]:
                     body = parts[1]
-            except Exception:
-                pass
-
+            except Exception as e:
+                logger.debug(f"Exception caught: {e}")
         start = time.perf_counter()
 
         try:
@@ -228,3 +231,5 @@ class HttpFuzzer:
         import asyncio
 
         await asyncio.to_thread(self.send_mcp_message_with_timeout, message, self.timeout)
+
+

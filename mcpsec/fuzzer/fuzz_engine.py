@@ -3,7 +3,8 @@ MCP Protocol Fuzzer Engine.
 Orchestrates test case generation, execution, and crash analysis.
 """
 
-import json
+import logging
+json
 import time
 from typing import List
 
@@ -35,6 +36,9 @@ from mcpsec.fuzzer.generators.base import FuzzCase
 from mcpsec.fuzzer.transport.http_fuzzer import HttpFuzzer
 from mcpsec.fuzzer.transport.stdio_fuzzer import FuzzResult, StdioFuzzer
 from mcpsec.ui import console, get_progress, print_section
+
+logger = logging.getLogger(__name__)
+
 
 
 class FuzzEngine:
@@ -307,9 +311,8 @@ class FuzzEngine:
                                         expected_behavior=case.expected_behavior,
                                     )
                                 )
-                        except Exception:
-                            pass
-                    enriched.append(case)
+                        except Exception as e:
+                            logger.debug(f"Exception caught: {e}")                    enriched.append(case)
                 else:
                     enriched.append(case)
             return enriched
@@ -627,3 +630,5 @@ class FuzzEngine:
                 for case, result in self.interesting
             ],
         }
+
+

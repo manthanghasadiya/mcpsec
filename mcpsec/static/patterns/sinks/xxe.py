@@ -395,3 +395,4 @@ PATTERNS = [
         cwe='CWE-611',
     )
 ]
+

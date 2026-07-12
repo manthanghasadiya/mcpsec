@@ -2,7 +2,8 @@
 mcpsec terminal UI theme — hacker aesthetic.
 """
 
-from rich import box
+import logging
+rich import box
 from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
@@ -11,6 +12,9 @@ from rich.table import Table
 from rich.theme import Theme
 
 from mcpsec import __version__
+
+logger = logging.getLogger(__name__)
+
 
 # ── Custom Theme ─────────────────────────────────────────────────────────────
 
@@ -48,18 +52,16 @@ class SafeConsole(Console):
                         arg = re.sub(r"\[/?(?:[a-z\._-]+(?:\s*=\s*[^\]]+)?|#[\da-f]{3,6}|rgb\(\d{1,3},\d{1,3},\d{1,3}\))?\]", "", arg)
                     processed_args.append(arg)
                 print(*processed_args)
-            except Exception:
-                pass
-
+            except Exception as e:
+                logger.debug(f"Exception caught: {e}")
     def rule(self, title="", *args, **kwargs):
         try:
             super().rule(title, *args, **kwargs)
         except (UnicodeEncodeError, Exception):
             try:
                 print(f"\n--- {title} ---\n")
-            except Exception:
-                pass
-
+            except Exception as e:
+                logger.debug(f"Exception caught: {e}")
 console = SafeConsole(theme=MCPSEC_THEME)
 
 # ── ASCII Banner ─────────────────────────────────────────────────────────────
@@ -92,11 +94,9 @@ def print_banner(small: bool = False):
         try:
             banner_text = f"--- mcpsec v{__version__} ---"
             print(banner_text)
-        except Exception:
-            pass
-    except (BrokenPipeError, OSError):
-        pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")    except (BrokenPipeError, OSError) as e:
+        logger.debug(f"Exception caught: {e}")
 
 def print_target_info(
     target_type: str,
@@ -138,11 +138,9 @@ def print_target_info(
                 for k, v in headers.items():
                     print(f"HEADER: {k}: {_mask_header_value(k, v)}")
             print("-" * 14 + "\n")
-        except Exception:
-            pass
-    except (BrokenPipeError, OSError):
-        pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")    except (BrokenPipeError, OSError) as e:
+        logger.debug(f"Exception caught: {e}")
 
 def _mask_header_value(key: str, value: str) -> str:
     """Mask sensitive header values for display."""
@@ -170,9 +168,8 @@ def print_tool_info(name: str, description: str, params: dict):
         # Fallback for tool info
         try:
             print(f"  o {name} ({', '.join(params.keys()) if params else 'none'})")
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")
 
 def print_finding(severity: str, scanner: str, tool_name: str, title: str, detail: str = ""):
     """Print a vulnerability finding."""
@@ -194,9 +191,8 @@ def print_finding(severity: str, scanner: str, tool_name: str, title: str, detai
         try:
             print(f"  {icon} {sev_label} {title}")
             print(f"           scanner={scanner}  tool={tool_name}")
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")
 
 def print_section(title: str, icon: str = "-"):
     """Print a section divider."""
@@ -207,11 +203,9 @@ def print_section(title: str, icon: str = "-"):
     except (UnicodeEncodeError, Exception):
         try:
             print(f"\n--- {title} ---\n")
-        except Exception:
-            pass
-    except (BrokenPipeError, OSError):
-        pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")    except (BrokenPipeError, OSError) as e:
+        logger.debug(f"Exception caught: {e}")
 
 def print_summary(total: int, critical: int, high: int, medium: int, low: int, info: int):
     """Print scan summary."""
@@ -246,11 +240,9 @@ def print_summary(total: int, critical: int, high: int, medium: int, low: int, i
     except UnicodeEncodeError:
         try:
             console.print(f"Summary: {total} issues ({critical} critical, {high} high)")
-        except (BrokenPipeError, OSError):
-            pass
-    except (BrokenPipeError, OSError):
-        pass
-
+        except (BrokenPipeError, OSError) as e:
+            logger.debug(f"Exception caught: {e}")    except (BrokenPipeError, OSError) as e:
+        logger.debug(f"Exception caught: {e}")
     if critical > 0 or high > 0:
         console.print("\n  [danger]!  Critical/High findings require immediate attention.[/danger]")
     elif total == 0:
@@ -270,3 +262,4 @@ def get_progress() -> Progress:
         TimeElapsedColumn(),
         console=console,
     )
+

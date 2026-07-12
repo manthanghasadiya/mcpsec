@@ -7,7 +7,8 @@ and attempts to escalate them to Remote Code Execution.
 Supports: SQLite, PostgreSQL, MySQL/MariaDB, MSSQL, Oracle
 """
 
-import asyncio
+import logging
+asyncio
 import re
 import time
 from dataclasses import dataclass
@@ -16,6 +17,9 @@ from typing import Optional
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import Finding, ServerProfile, Severity, ToolInfo
 from mcpsec.scanners.base import BaseScanner
+
+logger = logging.getLogger(__name__)
+
 
 
 @dataclass
@@ -864,9 +868,8 @@ class SQLInjectionRCEScanner(BaseScanner):
                 start = time.time()
                 try:
                     await self._test_payload(client, tool_name, param_name, "ping")
-                except Exception:
-                    pass
-                baseline_times.append(time.time() - start)
+                except Exception as e:
+                    logger.debug(f"Exception caught: {e}")                baseline_times.append(time.time() - start)
 
             from mcpsec.scanners.response_classifier import measure_baseline_latency
 
@@ -1140,9 +1143,8 @@ class SQLInjectionRCEScanner(BaseScanner):
                 return True, elapsed
         except asyncio.TimeoutError:
             return True, expected_delay + 5
-        except Exception:
-            pass
-        return False, time.time() - start
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")        return False, time.time() - start
 
     def _is_blocked(self, response: str) -> bool:
         """Check if response indicates common security blocks"""
@@ -1440,3 +1442,4 @@ class SQLInjectionRCEScanner(BaseScanner):
             ),
             cwe="CWE-89",
         )
+

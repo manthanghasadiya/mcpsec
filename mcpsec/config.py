@@ -5,9 +5,13 @@ Config file: ~/.mcpsec/config.json
 Resolution order: env var → config file → None
 """
 
-import json
+import logging
+json
 from pathlib import Path
 from typing import Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
 
 CONFIG_DIR = Path.home() / ".mcpsec"
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -130,8 +134,8 @@ def get_api_key() -> Tuple[Optional[str], Optional[str], Optional[str], Optional
         if resp.status_code == 200:
             info = PROVIDERS["ollama"]
             return ("ollama", "", info["base_url"], info["model"])
-    except Exception:
-        pass
-
+    except Exception as e:
+        logger.debug(f"Exception caught: {e}")
     # 4. Nothing found
     return (None, None, None, None)
+

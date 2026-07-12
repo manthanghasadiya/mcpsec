@@ -145,3 +145,4 @@ class RAGPoisoningScanner(BaseScanner):
                     continue
 
         return findings
+

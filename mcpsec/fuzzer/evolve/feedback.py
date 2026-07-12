@@ -200,3 +200,4 @@ class FeedbackCollector:
             "parse_error_ratio": self.parse_error_count / max(self.total_executions, 1),
             "coverage_percent": (self.unique_behaviors / max(self.total_executions, 1)) * 100,
         }
+

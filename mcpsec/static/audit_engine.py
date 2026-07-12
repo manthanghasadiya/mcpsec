@@ -11,7 +11,8 @@ Phases:
 7. Deduplicate and rank
 """
 
-from __future__ import annotations
+import logging
+__future__ import annotations
 
 from pathlib import Path
 from typing import List
@@ -23,6 +24,9 @@ from mcpsec.static.analysis.sink_scanner import SinkScanner
 from mcpsec.static.analysis.reachability import ReachabilityAnalyzer
 from mcpsec.static.semgrep_engine import run_semgrep, run_semgrep_with_categories
 from mcpsec.ui import console
+
+logger = logging.getLogger(__name__)
+
 
 
 async def run_audit(
@@ -263,9 +267,8 @@ def _detect_server_types(source_path: Path) -> set:
             for server_type, keywords in type_keywords.items():
                 if any(kw in content for kw in keywords):
                     server_types.add(server_type)
-        except Exception:
-            pass
-    
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")    
     # Check pyproject.toml
     pyproject = source_path / "pyproject.toml"
     if pyproject.exists():
@@ -274,9 +277,8 @@ def _detect_server_types(source_path: Path) -> set:
             for server_type, keywords in type_keywords.items():
                 if any(kw in content for kw in keywords):
                     server_types.add(server_type)
-        except Exception:
-            pass
-    
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")    
     # Check README
     for readme_name in ["README.md", "readme.md", "README.rst", "README.txt"]:
         readme_path = source_path / readme_name
@@ -286,9 +288,8 @@ def _detect_server_types(source_path: Path) -> set:
                 for server_type, keywords in type_keywords.items():
                     if any(kw in content for kw in keywords):
                         server_types.add(server_type)
-            except Exception:
-                pass
-            break
+            except Exception as e:
+                logger.debug(f"Exception caught: {e}")            break
     
     # Check directory name
     dir_name = source_path.name.lower()
@@ -325,3 +326,4 @@ def _is_excluded(path: Path) -> bool:
 def _severity_rank(severity) -> int:
     ranks = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
     return ranks.get(str(severity).lower(), 0)
+

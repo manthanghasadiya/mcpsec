@@ -438,3 +438,4 @@ def generate(framing: str = "clrf", intensity: str = "medium") -> list[FuzzCase]
     # Note: intensity scaling isn't rigorously applied to all merged cases for brevity, but we keep the parameter.
 
     return cases
+

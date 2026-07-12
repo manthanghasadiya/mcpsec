@@ -309,9 +309,8 @@ SUCCESS_INDICATORS: dict[str, list[str]] = {
 _CURRENT_USER = ""
 try:
     _CURRENT_USER = getpass.getuser().lower()
-except Exception:
-    pass
-
+except Exception as e:
+    logger.debug(f"Exception caught: {e}")
 # Flatten all payloads into a single list for scanning
 _ALL_PAYLOADS = []
 for category_payloads in PAYLOADS.values():
@@ -463,3 +462,4 @@ class CommandInjectionScanner(BaseScanner):
                         logger.debug(f"Error testing {tool.name}/{param_name}: {e}")
 
         return findings
+

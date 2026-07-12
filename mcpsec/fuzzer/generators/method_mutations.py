@@ -255,3 +255,4 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         )
 
     return cases
+

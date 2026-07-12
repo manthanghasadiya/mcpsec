@@ -181,3 +181,4 @@ def get_sanitizers(
 ) -> list[SanitizerPattern]:
     """Get sanitizer patterns."""
     return PatternRegistry.get().get_sanitizer_patterns(language, vuln_type)
+

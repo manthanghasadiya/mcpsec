@@ -115,3 +115,4 @@ class ChainReporter:
                     "defaultConfiguration": {"level": "error"},
                 }
         return list(rules.values())
+

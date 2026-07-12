@@ -7,7 +7,8 @@ traditional session cookie, any accessible ID retrieval is a potential risk
 if the backing data is multi-tenant or contains sensitive records.
 """
 
-from __future__ import annotations
+import logging
+__future__ import annotations
 
 import re
 from typing import Any
@@ -16,6 +17,9 @@ from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import Finding, ServerProfile, Severity
 from mcpsec.scanners.base import BaseScanner
 from mcpsec.scanners.response_classifier import Verdict, classify_response
+
+logger = logging.getLogger(__name__)
+
 
 ID_PARAM_KEYWORDS = [
     "id",
@@ -92,9 +96,8 @@ class IDORScanner(BaseScanner):
                             re.IGNORECASE,
                         ):
                             successful_responses.add(response_text)
-                    except Exception:
-                        pass
-
+                    except Exception as e:
+                        logger.debug(f"Exception caught: {e}")
                 # If we retrieved multiple distinct records, it's a confirmed IDOR/Data Retrieval point
                 if len(successful_responses) >= 2:
                     findings.append(
@@ -119,3 +122,4 @@ class IDORScanner(BaseScanner):
                     )
 
         return findings
+

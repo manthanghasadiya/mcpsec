@@ -286,3 +286,4 @@ class MutationEngine:
         for mutator in self.byte_mutators:
             if isinstance(mutator, SpliceMutator):
                 mutator.set_corpus(corpus_samples)
+

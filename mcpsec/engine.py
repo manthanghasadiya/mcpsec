@@ -130,3 +130,4 @@ async def run_scan(
 
     result.mark_complete()
     return result
+

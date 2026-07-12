@@ -4580,3 +4580,4 @@ PATTERNS = [
         tags=['mcp', 'prompt-injection'],
     )
 ]
+

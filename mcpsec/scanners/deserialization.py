@@ -224,3 +224,4 @@ class DeserializationScanner(BaseScanner):
                             pass
 
         return findings
+

@@ -41,3 +41,4 @@ def generate_json_report(result: ScanResult, output_path: str) -> bool:
     except Exception:
         # Higher level logic should handle the error/logging
         return False
+

@@ -10,10 +10,14 @@ Classifies MCP server responses into:
 Used by: command_injection, path_traversal, sql_rce, ssrf scanners.
 """
 
-import json
+import logging
+json
 import re
 from enum import Enum
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
 
 
 class Verdict(str, Enum):
@@ -399,9 +403,8 @@ def _is_jsonrpc_safe(response_text: str, raw_result: Any) -> bool:
                             error_code = parsed.get("error", {}).get("code")
                             if error_code in SAFE_JSONRPC_CODES:
                                 return True
-                    except (json.JSONDecodeError, TypeError, AttributeError):
-                        pass
-
+                    except (json.JSONDecodeError, TypeError, AttributeError) as e:
+                        logger.debug(f"Exception caught: {e}")
     # Fallback: try to parse the response text itself
     try:
         parsed = json.loads(response_text)
@@ -409,9 +412,8 @@ def _is_jsonrpc_safe(response_text: str, raw_result: Any) -> bool:
             error_code = parsed.get("error", {}).get("code")
             if error_code in SAFE_JSONRPC_CODES:
                 return True
-    except (json.JSONDecodeError, TypeError):
-        pass
-
+    except (json.JSONDecodeError, TypeError) as e:
+        logger.debug(f"Exception caught: {e}")
     # Check for JSON-RPC error code patterns in text (structured, not string grep)
     # Only match when it appears to be a structured error response
     try:
@@ -428,9 +430,8 @@ def _is_jsonrpc_safe(response_text: str, raw_result: Any) -> bool:
                     return True
             except (json.JSONDecodeError, TypeError):
                 continue
-    except Exception:
-        pass
-
+    except Exception as e:
+        logger.debug(f"Exception caught: {e}")
     return False
 
 
@@ -464,3 +465,4 @@ def _is_normalized_safe(response_text: str) -> bool:
 
 
 """Response classifier module for mcpsec dynamic scanners."""
+

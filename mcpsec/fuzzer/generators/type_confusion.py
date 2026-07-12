@@ -77,3 +77,4 @@ def generate() -> list[FuzzCase]:
         )
 
     return cases
+

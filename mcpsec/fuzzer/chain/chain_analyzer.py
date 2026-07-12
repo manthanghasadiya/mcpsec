@@ -353,3 +353,4 @@ Analyze ALL tools provided. Be thorough - missing a dependency will cause attack
             result[name].injection_point_types = injection_point_types
 
         return result
+

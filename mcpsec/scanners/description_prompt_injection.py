@@ -245,3 +245,4 @@ class DescriptionPromptInjectionScanner(BaseScanner):
                 findings.extend(self._scan_schema(schema["items"], f"{item_type}_items", item_name))
 
         return findings
+

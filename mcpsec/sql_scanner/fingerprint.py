@@ -43,3 +43,4 @@ class SQLFingerprinter:
             if re.search(pattern, response, re.IGNORECASE):
                 return True
         return False
+

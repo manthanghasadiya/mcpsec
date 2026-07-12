@@ -149,3 +149,4 @@ def scan_secrets(file_path: Path) -> list:
                 break  # One finding per line
 
     return findings
+

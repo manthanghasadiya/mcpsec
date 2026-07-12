@@ -1,10 +1,14 @@
 """Scanner for MCP tool description injection attacks."""
 
-import base64
+import logging
+base64
 import re
 from typing import List
 
 from mcpsec.models import Finding, Severity
+
+logger = logging.getLogger(__name__)
+
 
 SCANNER_NAME = "description-injection"
 
@@ -175,9 +179,8 @@ def scan_descriptions(tools: list) -> List[Finding]:
                         )
                     )
                     break
-            except Exception:
-                pass
-
+            except Exception as e:
+                logger.debug(f"Exception caught: {e}")
     return findings
 
 
@@ -202,3 +205,4 @@ def _extract_match_context(text, pattern):
         end = min(len(text), match.end() + 50)
         return text[start:end]
     return text[:200]
+

@@ -50,3 +50,4 @@ SCANNERS = {
     "code-execution": CodeExecutionScanner,
     "template-injection": TemplateInjectionScanner,
 }
+

@@ -137,3 +137,4 @@ class ScanResult(BaseModel):
 
     def mark_complete(self):
         self.completed_at = datetime.now(timezone.utc)
+

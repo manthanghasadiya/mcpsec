@@ -9,7 +9,8 @@ This is the main entry point for chained fuzzing. It:
 5. Reports findings
 """
 
-import asyncio
+import logging
+asyncio
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -25,6 +26,9 @@ from .chain_reporter import ChainReporter
 from .injection_points import InjectionPointIdentifier
 from .state_extractor import StateExtractor
 from .state_manager import StateManager
+
+logger = logging.getLogger(__name__)
+
 
 console = Console()
 
@@ -869,5 +873,6 @@ class ChainEngine:
         if self._transport:
             try:
                 await self._transport.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Exception caught: {e}")
+

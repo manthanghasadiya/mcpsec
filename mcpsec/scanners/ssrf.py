@@ -385,3 +385,4 @@ class SSRFScanner(BaseScanner):
                         logger.debug(f"Error testing {tool.name}/{param_name}: {e}")
 
         return findings
+

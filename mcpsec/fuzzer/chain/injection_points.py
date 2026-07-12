@@ -154,3 +154,4 @@ class InjectionPointIdentifier:
         points.sort(key=lambda p: risk_order.get(p.risk_level, 4))
 
         return points
+

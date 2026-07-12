@@ -117,3 +117,4 @@ class LLMClient:
                 return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
             except Exception:
                 return None
+

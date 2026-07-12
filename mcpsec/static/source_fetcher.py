@@ -153,3 +153,4 @@ def cleanup_temp(path: str):
             shutil.rmtree(path, ignore_errors=True)
         except Exception as e:
             console.print(f"  [muted]Warning: Failed to clean up {path}: {e}[/muted]")
+

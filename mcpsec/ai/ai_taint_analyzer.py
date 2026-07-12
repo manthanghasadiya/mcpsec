@@ -1,12 +1,16 @@
 """AI taint analysis — reads code like a pentester, not a regex engine."""
 
-import json
+import logging
+json
 import re
 from pathlib import Path
 from typing import List
 
 from mcpsec.ai.llm_client import LLMClient
 from mcpsec.models import Finding, Severity
+
+logger = logging.getLogger(__name__)
+
 
 TAINT_SYSTEM_PROMPT = """You are an expert MCP (Model Context Protocol) security auditor performing 
 taint analysis. You trace data flows from user-controlled MCP tool parameters 
@@ -205,9 +209,8 @@ Respond ONLY with JSON array."""
                         context += (
                             f"\n=== {candidate.name} (imported) ===\n```\n{imp_content}\n```\n"
                         )
-                    except Exception:
-                        pass
-                    break
+                    except Exception as e:
+                        logger.debug(f"Exception caught: {e}")                    break
 
         return context
 
@@ -226,9 +229,8 @@ Respond ONLY with JSON array."""
         try:
             items = json.loads(cleaned)
             parsed = True
-        except json.JSONDecodeError:
-            pass
-
+        except json.JSONDecodeError as e:
+            logger.debug(f"Exception caught: {e}")
         # Try finding array brackets
         if not parsed:
             bracket_start = cleaned.find("[")
@@ -237,9 +239,8 @@ Respond ONLY with JSON array."""
                 try:
                     items = json.loads(cleaned[bracket_start : bracket_end + 1])
                     parsed = True
-                except json.JSONDecodeError:
-                    pass
-
+                except json.JSONDecodeError as e:
+                    logger.debug(f"Exception caught: {e}")
         # Try finding individual objects
         if not parsed:
             temp_items = []
@@ -281,3 +282,5 @@ Respond ONLY with JSON array."""
             )
 
         return findings
+
+

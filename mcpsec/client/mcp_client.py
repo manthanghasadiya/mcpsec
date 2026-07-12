@@ -199,3 +199,4 @@ class MCPSecClient:
     async def close(self):
         """Clean up connections."""
         await self._exit_stack.aclose()
+

@@ -5210,3 +5210,4 @@ PATTERNS = [
         cwe='CWE-78',
     )
 ]
+

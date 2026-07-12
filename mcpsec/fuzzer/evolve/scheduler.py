@@ -32,3 +32,4 @@ class Scheduler:
 
         if self.cycle_count % 10 == 0:
             self.corpus.minimize()
+
