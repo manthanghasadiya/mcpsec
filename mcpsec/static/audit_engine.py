@@ -11,8 +11,8 @@ Phases:
 7. Deduplicate and rank
 """
 
+from __future__ import annotations
 import logging
-__future__ import annotations
 
 from pathlib import Path
 from typing import List
@@ -268,7 +268,8 @@ def _detect_server_types(source_path: Path) -> set:
                 if any(kw in content for kw in keywords):
                     server_types.add(server_type)
         except Exception as e:
-            logger.debug(f"Exception caught: {e}")    
+            logger.debug(f"Exception caught: {e}")
+    
     # Check pyproject.toml
     pyproject = source_path / "pyproject.toml"
     if pyproject.exists():
@@ -278,7 +279,8 @@ def _detect_server_types(source_path: Path) -> set:
                 if any(kw in content for kw in keywords):
                     server_types.add(server_type)
         except Exception as e:
-            logger.debug(f"Exception caught: {e}")    
+            logger.debug(f"Exception caught: {e}")
+    
     # Check README
     for readme_name in ["README.md", "readme.md", "README.rst", "README.txt"]:
         readme_path = source_path / readme_name
@@ -289,7 +291,8 @@ def _detect_server_types(source_path: Path) -> set:
                     if any(kw in content for kw in keywords):
                         server_types.add(server_type)
             except Exception as e:
-                logger.debug(f"Exception caught: {e}")            break
+                logger.debug(f"Exception caught: {e}")
+            break
     
     # Check directory name
     dir_name = source_path.name.lower()

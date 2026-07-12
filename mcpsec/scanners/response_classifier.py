@@ -11,7 +11,7 @@ Used by: command_injection, path_traversal, sql_rce, ssrf scanners.
 """
 
 import logging
-json
+import json
 import re
 from enum import Enum
 from typing import Any

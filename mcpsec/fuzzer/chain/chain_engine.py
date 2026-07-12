@@ -10,7 +10,7 @@ This is the main entry point for chained fuzzing. It:
 """
 
 import logging
-asyncio
+import asyncio
 import time
 from dataclasses import dataclass, field
 from enum import Enum

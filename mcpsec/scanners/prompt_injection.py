@@ -13,8 +13,8 @@ We check for:
 5. Cross-tool manipulation — descriptions that reference other tools
 """
 
+from __future__ import annotations
 import logging
-__future__ import annotations
 
 import base64
 import re

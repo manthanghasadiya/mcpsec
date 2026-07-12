@@ -1,7 +1,7 @@
 """AI finding validator — triages and ranks findings like a senior pentester."""
 
 import logging
-json
+import json
 import re
 from typing import List
 

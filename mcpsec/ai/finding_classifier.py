@@ -249,7 +249,8 @@ def _parse_ai_response(response: str) -> Optional[dict]:
         # Direct parse
         return json.loads(text)
     except json.JSONDecodeError as e:
-        logger.debug(f"Exception caught: {e}")    
+        logger.debug(f"Exception caught: {e}")
+    
     # Try to extract JSON from text
     import re
     json_match = re.search(r'\{[\s\S]*\}', text)
@@ -257,7 +258,8 @@ def _parse_ai_response(response: str) -> Optional[dict]:
         try:
             return json.loads(json_match.group())
         except json.JSONDecodeError as e:
-            logger.debug(f"Exception caught: {e}")    
+            logger.debug(f"Exception caught: {e}")
+    
     return None
 
 

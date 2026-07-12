@@ -7,8 +7,8 @@ traditional session cookie, any accessible ID retrieval is a potential risk
 if the backing data is multi-tenant or contains sensitive records.
 """
 
+from __future__ import annotations
 import logging
-__future__ import annotations
 
 import re
 from typing import Any

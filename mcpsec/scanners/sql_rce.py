@@ -8,7 +8,7 @@ Supports: SQLite, PostgreSQL, MySQL/MariaDB, MSSQL, Oracle
 """
 
 import logging
-asyncio
+import asyncio
 import re
 import time
 from dataclasses import dataclass
@@ -869,7 +869,8 @@ class SQLInjectionRCEScanner(BaseScanner):
                 try:
                     await self._test_payload(client, tool_name, param_name, "ping")
                 except Exception as e:
-                    logger.debug(f"Exception caught: {e}")                baseline_times.append(time.time() - start)
+                    logger.debug(f"Exception caught: {e}")
+                baseline_times.append(time.time() - start)
 
             from mcpsec.scanners.response_classifier import measure_baseline_latency
 
@@ -1144,7 +1145,8 @@ class SQLInjectionRCEScanner(BaseScanner):
         except asyncio.TimeoutError:
             return True, expected_delay + 5
         except Exception as e:
-            logger.debug(f"Exception caught: {e}")        return False, time.time() - start
+            logger.debug(f"Exception caught: {e}")
+        return False, time.time() - start
 
     def _is_blocked(self, response: str) -> bool:
         """Check if response indicates common security blocks"""

@@ -2,8 +2,8 @@
 Framework detection -- identify which MCP SDK/framework is used.
 """
 
+from __future__ import annotations
 import logging
-__future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path

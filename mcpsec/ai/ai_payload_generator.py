@@ -1,7 +1,7 @@
 """AI payload generator — creates targeted exploits per MCP tool."""
 
 import logging
-json
+import json
 import re
 from typing import Any, Dict, List
 

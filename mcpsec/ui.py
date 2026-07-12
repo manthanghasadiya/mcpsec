@@ -3,7 +3,7 @@ mcpsec terminal UI theme — hacker aesthetic.
 """
 
 import logging
-rich import box
+from rich import box
 from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
@@ -95,7 +95,8 @@ def print_banner(small: bool = False):
             banner_text = f"--- mcpsec v{__version__} ---"
             print(banner_text)
         except Exception as e:
-            logger.debug(f"Exception caught: {e}")    except (BrokenPipeError, OSError) as e:
+            logger.debug(f"Exception caught: {e}")
+    except (BrokenPipeError, OSError) as e:
         logger.debug(f"Exception caught: {e}")
 
 def print_target_info(
@@ -139,7 +140,8 @@ def print_target_info(
                     print(f"HEADER: {k}: {_mask_header_value(k, v)}")
             print("-" * 14 + "\n")
         except Exception as e:
-            logger.debug(f"Exception caught: {e}")    except (BrokenPipeError, OSError) as e:
+            logger.debug(f"Exception caught: {e}")
+    except (BrokenPipeError, OSError) as e:
         logger.debug(f"Exception caught: {e}")
 
 def _mask_header_value(key: str, value: str) -> str:
@@ -204,7 +206,8 @@ def print_section(title: str, icon: str = "-"):
         try:
             print(f"\n--- {title} ---\n")
         except Exception as e:
-            logger.debug(f"Exception caught: {e}")    except (BrokenPipeError, OSError) as e:
+            logger.debug(f"Exception caught: {e}")
+    except (BrokenPipeError, OSError) as e:
         logger.debug(f"Exception caught: {e}")
 
 def print_summary(total: int, critical: int, high: int, medium: int, low: int, info: int):
@@ -241,7 +244,8 @@ def print_summary(total: int, critical: int, high: int, medium: int, low: int, i
         try:
             console.print(f"Summary: {total} issues ({critical} critical, {high} high)")
         except (BrokenPipeError, OSError) as e:
-            logger.debug(f"Exception caught: {e}")    except (BrokenPipeError, OSError) as e:
+            logger.debug(f"Exception caught: {e}")
+    except (BrokenPipeError, OSError) as e:
         logger.debug(f"Exception caught: {e}")
     if critical > 0 or high > 0:
         console.print("\n  [danger]!  Critical/High findings require immediate attention.[/danger]")

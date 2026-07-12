@@ -4,7 +4,7 @@ Orchestrates test case generation, execution, and crash analysis.
 """
 
 import logging
-json
+import json
 import time
 from typing import List
 
@@ -312,7 +312,8 @@ class FuzzEngine:
                                     )
                                 )
                         except Exception as e:
-                            logger.debug(f"Exception caught: {e}")                    enriched.append(case)
+                            logger.debug(f"Exception caught: {e}")
+                    enriched.append(case)
                 else:
                     enriched.append(case)
             return enriched

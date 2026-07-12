@@ -2,8 +2,8 @@
 Base classes for the pattern database.
 """
 
+from __future__ import annotations
 import logging
-__future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional

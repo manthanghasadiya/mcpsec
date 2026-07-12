@@ -6,8 +6,8 @@ stack traces, and scans existing responses for leaked secrets, API keys,
 environment variables, and paths.
 """
 
+from __future__ import annotations
 import logging
-__future__ import annotations
 
 import re
 from typing import Any
@@ -73,7 +73,8 @@ class InfoLeakScanner(BaseScanner):
                     response_text = _extract_response(result)
                     self._check_leaks(tool.name, "none", response_text, findings)
                 except Exception as e:
-                    logger.debug(f"Exception caught: {e}")                continue
+                    logger.debug(f"Exception caught: {e}")
+                continue
 
             for param_name in target_params:
                 for payload in FAULT_PAYLOADS:

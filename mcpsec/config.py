@@ -6,7 +6,7 @@ Resolution order: env var → config file → None
 """
 
 import logging
-json
+import json
 from pathlib import Path
 from typing import Optional, Tuple
 

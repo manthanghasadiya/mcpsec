@@ -1,7 +1,7 @@
 """Main evolutionary fuzzing engine."""
 
+from __future__ import annotations
 import logging
-__future__ import annotations
 
 import asyncio
 import json
@@ -303,7 +303,8 @@ class EvolveFuzzEngine:
                 try:
                     self.process.kill()
                 except Exception as e:
-                    logger.debug(f"Exception caught: {e}")            self.process = None
+                    logger.debug(f"Exception caught: {e}")
+            self.process = None
 
     async def _fuzz_one(self):
         """Execute one fuzzing iteration."""

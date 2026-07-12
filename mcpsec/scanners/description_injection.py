@@ -1,7 +1,7 @@
 """Scanner for MCP tool description injection attacks."""
 
 import logging
-base64
+import base64
 import re
 from typing import List
 

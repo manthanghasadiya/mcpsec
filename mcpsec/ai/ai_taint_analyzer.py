@@ -1,7 +1,7 @@
 """AI taint analysis — reads code like a pentester, not a regex engine."""
 
 import logging
-json
+import json
 import re
 from pathlib import Path
 from typing import List
@@ -210,7 +210,8 @@ Respond ONLY with JSON array."""
                             f"\n=== {candidate.name} (imported) ===\n```\n{imp_content}\n```\n"
                         )
                     except Exception as e:
-                        logger.debug(f"Exception caught: {e}")                    break
+                        logger.debug(f"Exception caught: {e}")
+                    break
 
         return context
 
