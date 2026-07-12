@@ -324,3 +324,4 @@ def run_semgrep_with_categories(source_path: Path) -> Tuple[List[Finding], dict]
         
     except Exception:
         return [], {}
+

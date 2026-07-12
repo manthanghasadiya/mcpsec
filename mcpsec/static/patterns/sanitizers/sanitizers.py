@@ -855,3 +855,4 @@ PATTERNS: list[SanitizerPattern] = [
 ]
 
 PATTERN_COUNT = len(PATTERNS)
+

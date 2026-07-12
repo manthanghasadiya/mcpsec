@@ -209,3 +209,4 @@ class Corpus:
             "crash_entries": len(self.crash_entries),
             "avg_entry_size": sum(len(e.data) for e in self.entries.values()) / max(len(self.entries), 1),
         }
+

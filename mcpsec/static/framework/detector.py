@@ -3,11 +3,15 @@ Framework detection -- identify which MCP SDK/framework is used.
 """
 
 from __future__ import annotations
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 import re
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
 
 
 class Language(str, Enum):
@@ -185,9 +189,8 @@ def _detect_framework(project_path: Path, language: Language) -> Framework:
                 for pkg in sigs.get("package_json", []):
                     if pkg in content:
                         return fw
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")
     # Check requirements.txt / pyproject.toml
     for req_file in ["requirements.txt", "pyproject.toml"]:
         req_path = _path / req_file
@@ -198,9 +201,8 @@ def _detect_framework(project_path: Path, language: Language) -> Framework:
                     for req in sigs.get("requirements", []):
                         if req in content:
                             return fw
-            except Exception:
-                pass
-
+            except Exception as e:
+                logger.debug(f"Exception caught: {e}")
     # Check go.mod
     go_mod = _path / "go.mod"
     if go_mod.exists():
@@ -210,9 +212,8 @@ def _detect_framework(project_path: Path, language: Language) -> Framework:
                 for mod in sigs.get("go_mod", []):
                     if mod in content:
                         return fw
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")
     # Check Cargo.toml
     cargo_toml = _path / "Cargo.toml"
     if cargo_toml.exists():
@@ -222,9 +223,8 @@ def _detect_framework(project_path: Path, language: Language) -> Framework:
                 for dep in sigs.get("cargo_toml", []):
                     if dep in content:
                         return fw
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")
     # Fall back to code pattern matching (scan a few files)
     _root = _path if _path.is_dir() else _path.parent
     scanned = 0
@@ -268,3 +268,4 @@ def _map_language(lang: Language):
         Language.CSHARP: PatternLanguage.CSHARP,
     }
     return mapping.get(lang)
+

@@ -1,3 +1,4 @@
+import logging
 import asyncio
 import json
 import shutil
@@ -6,6 +7,9 @@ import sys
 import time
 from dataclasses import dataclass
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
 
 try:
     import psutil
@@ -189,9 +193,8 @@ class StdioFuzzer:
                 if any(ind in stderr_tail for ind in crash_indicators):
                     reason = "crash_with_stacktrace"
                     return True, reason
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")
         # Non-zero exit without clear stack trace - could be error handling
         # Be conservative: only count as crash if exit code suggests crash
         # Common crash codes: 1 (general), 134 (SIGABRT), 139 (SIGSEGV), 143 (SIGTERM)
@@ -450,9 +453,8 @@ class StdioFuzzer:
                     try:
                         length = int(l_line.split(":", 1)[1].strip())
                         break
-                    except ValueError:
-                        pass
-
+                    except ValueError as e:
+                        logger.debug(f"Exception caught: {e}")
             # 3. Read body
             body = b""
             while len(body) < length:
@@ -479,9 +481,8 @@ class StdioFuzzer:
                 try:
                     self.process.kill()
                     self.process.terminate()
-                except:
-                    pass
-
+                except Exception as e:
+                    logger.debug(f"Exception caught: {e}")
     def send_mcp_message_with_timeout(self, message: dict, timeout: float) -> FuzzResult:
         """Send formatted message with custom timeout."""
         json_bytes = json.dumps(message).encode("utf-8")
@@ -530,3 +531,5 @@ class StdioFuzzer:
             payload = f"Content-Length: {len(json_bytes)}\r\n\r\n".encode() + json_bytes
 
         await asyncio.to_thread(self.send_notification, payload)
+
+

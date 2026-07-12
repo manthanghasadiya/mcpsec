@@ -10,11 +10,10 @@ from . import (
     integer_boundaries,
     json_edge_cases,
     malformed_json,
-    memory_exhaustion_v2,
+    memory_exhaustion,
     method_mutations,
     param_mutations,
     protocol_state,
-    protocol_state_machine,
     protocol_violation,
     regex_dos,
     resource_exhaustion,
@@ -23,3 +22,4 @@ from . import (
     type_confusion,
     unicode_attacks,
 )
+

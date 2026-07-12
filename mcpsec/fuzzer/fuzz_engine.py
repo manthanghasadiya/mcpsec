@@ -3,6 +3,7 @@ MCP Protocol Fuzzer Engine.
 Orchestrates test case generation, execution, and crash analysis.
 """
 
+import logging
 import json
 import time
 from typing import List
@@ -19,11 +20,10 @@ from mcpsec.fuzzer.generators import (
     integer_boundaries,
     json_edge_cases,
     malformed_json,
-    memory_exhaustion_v2,
+    memory_exhaustion,
     method_mutations,
     param_mutations,
     protocol_state,
-    protocol_state_machine,
     protocol_violation,
     regex_dos,
     resource_exhaustion,
@@ -36,6 +36,9 @@ from mcpsec.fuzzer.generators.base import FuzzCase
 from mcpsec.fuzzer.transport.http_fuzzer import HttpFuzzer
 from mcpsec.fuzzer.transport.stdio_fuzzer import FuzzResult, StdioFuzzer
 from mcpsec.ui import console, get_progress, print_section
+
+logger = logging.getLogger(__name__)
+
 
 
 class FuzzEngine:
@@ -175,7 +178,6 @@ class FuzzEngine:
             "header_mutations": header_mutations.generate,
             "json_edge_cases": json_edge_cases.generate,
             "protocol_state": protocol_state.generate,
-            "protocol_state_machine": protocol_state_machine.generate,
             "id_confusion": id_confusion.generate,
             "concurrency_attacks": concurrency_attacks.generate,
             "regex_dos": regex_dos.generate,
@@ -184,7 +186,7 @@ class FuzzEngine:
         # Insane: all of the above + resource exhaustion + memory exhaustion (~1500+ cases)
         insane_gens = {
             "resource_exhaustion": resource_exhaustion.generate,
-            "memory_exhaustion_v2": memory_exhaustion_v2.generate,
+            "memory_exhaustion": memory_exhaustion.generate,
         }
 
         gen_map = dict(low_gens)
@@ -309,8 +311,8 @@ class FuzzEngine:
                                         expected_behavior=case.expected_behavior,
                                     )
                                 )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Exception caught: {e}")
                     enriched.append(case)
                 else:
                     enriched.append(case)
@@ -629,3 +631,5 @@ class FuzzEngine:
                 for case, result in self.interesting
             ],
         }
+
+

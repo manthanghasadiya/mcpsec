@@ -105,3 +105,4 @@ def generate_js_template_variants(
             cwe=cwe,
         ))
     return patterns
+

@@ -321,3 +321,4 @@ class AuthAuditScanner(BaseScanner):
             )
 
         return findings
+

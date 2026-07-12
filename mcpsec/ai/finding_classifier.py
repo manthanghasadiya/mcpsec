@@ -248,8 +248,8 @@ def _parse_ai_response(response: str) -> Optional[dict]:
     try:
         # Direct parse
         return json.loads(text)
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as e:
+        logger.debug(f"Exception caught: {e}")
     
     # Try to extract JSON from text
     import re
@@ -257,8 +257,8 @@ def _parse_ai_response(response: str) -> Optional[dict]:
     if json_match:
         try:
             return json.loads(json_match.group())
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            logger.debug(f"Exception caught: {e}")
     
     return None
 
@@ -348,3 +348,5 @@ def classify_findings_sync(
     return loop.run_until_complete(
         classify_server_and_findings(source_path, findings, llm_client)
     )
+
+

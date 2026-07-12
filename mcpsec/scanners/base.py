@@ -75,3 +75,4 @@ class BaseScanner(ABC):
                 args[req_param] = []
 
         return args
+

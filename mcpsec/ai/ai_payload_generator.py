@@ -1,10 +1,14 @@
 """AI payload generator — creates targeted exploits per MCP tool."""
 
+import logging
 import json
 import re
 from typing import Any, Dict, List
 
 from mcpsec.ai.llm_client import LLMClient
+
+logger = logging.getLogger(__name__)
+
 
 PAYLOAD_SYSTEM_PROMPT = """You are a penetration tester generating exploit payloads for MCP 
 (Model Context Protocol) server tools. You generate TARGETED payloads, not generic 
@@ -131,9 +135,8 @@ Respond ONLY with JSON array."""
             items = json.loads(cleaned)
             if isinstance(items, list):
                 return [i for i in items if isinstance(i, dict) and "payload" in i]
-        except json.JSONDecodeError:
-            pass
-
+        except json.JSONDecodeError as e:
+            logger.debug(f"Exception caught: {e}")
         # Try to find JSON array in the response
         # Handle case where LLM wraps response in explanation text
         bracket_start = cleaned.find("[")
@@ -145,9 +148,8 @@ Respond ONLY with JSON array."""
                 items = json.loads(json_str)
                 if isinstance(items, list):
                     return [i for i in items if isinstance(i, dict) and "payload" in i]
-            except json.JSONDecodeError:
-                pass
-
+            except json.JSONDecodeError as e:
+                logger.debug(f"Exception caught: {e}")
         # Last resort: try to find individual JSON objects
         # Some LLMs return one object per line
         items = []
@@ -160,3 +162,5 @@ Respond ONLY with JSON array."""
                 continue
 
         return items
+
+

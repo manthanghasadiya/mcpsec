@@ -140,3 +140,4 @@ class CodeExecutionScanner(BaseScanner):
                 if hasattr(block, "text"):
                     text += block.text
         return text
+

@@ -55,3 +55,4 @@ ATTACK_TYPES = {
     "render_preview": xss_electron,
     "normalize_text": unicode_spoof,
 }
+

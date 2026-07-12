@@ -18,3 +18,4 @@ class FuzzCase:
     delay_between: float = 0.0
     expects_error: bool = False
     crash_indicates_bug: bool = True
+

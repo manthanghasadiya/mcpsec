@@ -25,3 +25,4 @@ class SQLConfirmer:
             return True
         except:
             return False
+

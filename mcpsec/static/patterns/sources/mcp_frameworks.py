@@ -385,3 +385,4 @@ PATTERNS: list[SourcePattern] = [
 ]
 
 PATTERN_COUNT = len(PATTERNS)
+

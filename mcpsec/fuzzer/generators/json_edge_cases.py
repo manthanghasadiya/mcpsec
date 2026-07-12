@@ -292,3 +292,4 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
     _add("just_false", b"false", "Just boolean false")
 
     return cases
+

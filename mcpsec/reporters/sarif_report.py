@@ -482,3 +482,4 @@ def save_sarif_from_fuzz(fuzz_summary: dict, target: str, output_path: str) -> b
         return True
     except Exception:
         return False
+

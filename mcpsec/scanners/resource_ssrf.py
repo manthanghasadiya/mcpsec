@@ -221,3 +221,4 @@ class ResourceSSRFScanner(BaseScanner):
                 )
 
         return None
+

@@ -150,3 +150,4 @@ class TemplateInjectionScanner(BaseScanner):
                 if hasattr(block, "text"):
                     text += block.text
         return text
+

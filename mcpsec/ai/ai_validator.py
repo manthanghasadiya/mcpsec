@@ -1,11 +1,15 @@
 """AI finding validator — triages and ranks findings like a senior pentester."""
 
+import logging
 import json
 import re
 from typing import List
 
 from mcpsec.ai.llm_client import LLMClient
 from mcpsec.models import Finding, Severity
+
+logger = logging.getLogger(__name__)
+
 
 VALIDATOR_SYSTEM_PROMPT = """You are a security finding validator for MCP (Model Context Protocol) 
 servers. You receive findings from Semgrep (AST-based static analysis) and must 
@@ -180,9 +184,8 @@ Respond ONLY with JSON array."""
         try:
             items = json.loads(cleaned)
             parsed = True
-        except json.JSONDecodeError:
-            pass
-
+        except json.JSONDecodeError as e:
+            logger.debug(f"Exception caught: {e}")
         # Try finding array brackets
         if not parsed:
             bracket_start = cleaned.find("[")
@@ -191,9 +194,8 @@ Respond ONLY with JSON array."""
                 try:
                     items = json.loads(cleaned[bracket_start : bracket_end + 1])
                     parsed = True
-                except json.JSONDecodeError:
-                    pass
-
+                except json.JSONDecodeError as e:
+                    logger.debug(f"Exception caught: {e}")
         # Try finding individual objects
         if not parsed:
             temp_items = []
@@ -212,3 +214,5 @@ Respond ONLY with JSON array."""
             return {}
 
         return {item.get("index", -1): item for item in items if isinstance(item, dict)}
+
+

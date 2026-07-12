@@ -62,3 +62,4 @@ class SQLScanner:
                 break
 
         return name_match or desc_match or param_match
+

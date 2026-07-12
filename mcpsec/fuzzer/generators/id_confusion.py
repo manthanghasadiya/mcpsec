@@ -229,3 +229,4 @@ def generate(intensity: str = "medium") -> list[dict[str, Any]]:
 
     # Limit to intensity level
     return cases[:max_cases]
+

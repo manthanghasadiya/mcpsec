@@ -93,3 +93,4 @@ class StateManager:
                 elif isinstance(value, list):
                     refs.extend([v for v in value if isinstance(v, str)])
         return refs
+

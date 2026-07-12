@@ -285,3 +285,4 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         _add(n, _call("test", args), f"Unicode edge case: {n}")
 
     return cases
+

@@ -13,3 +13,4 @@ __all__ = [
     "generate_sarif_from_fuzz",
     "save_sarif_from_fuzz",
 ]
+

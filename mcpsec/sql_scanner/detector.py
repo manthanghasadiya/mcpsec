@@ -228,3 +228,4 @@ class SQLInjectionDetector:
                     )
 
         return TestResult(is_vulnerable=False)
+

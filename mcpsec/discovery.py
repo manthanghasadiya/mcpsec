@@ -265,3 +265,4 @@ def discover_mcp_servers(
 def get_server_display_name(server: DiscoveredServer) -> str:
     """Return a display-friendly name for a server."""
     return f"{server.name} ({server.source_client})"
+

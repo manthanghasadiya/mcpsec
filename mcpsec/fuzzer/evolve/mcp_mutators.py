@@ -269,3 +269,4 @@ class MCPToolCallMutator(Mutator):
             return json.dumps(obj, ensure_ascii=False).encode("utf-8")
         except (TypeError, ValueError):
             return data
+

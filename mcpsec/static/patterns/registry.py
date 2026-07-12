@@ -18,12 +18,7 @@ from mcpsec.static.patterns.sinks import (
     code_execution,
     xxe,
     crypto,
-    additional,
-    web_vulns,
-    injection_extra,
-    final_patterns,
-    bulk_extension,
-    expanded_patterns,
+    misc,
 )
 from mcpsec.static.patterns.sources import mcp_frameworks
 from mcpsec.static.patterns.sanitizers import sanitizers
@@ -65,16 +60,28 @@ class PatternRegistry:
             code_execution,
             xxe,
             crypto,
-            additional,
-            web_vulns,
-            injection_extra,
-            final_patterns,
-            bulk_extension,
-            expanded_patterns,
+            misc,
         ]
         for module in sink_modules:
             if hasattr(module, "PATTERNS"):
                 self._sink_patterns.extend(module.PATTERNS)
+
+        # Ensure ID uniqueness (keep first occurrence)
+        unique_sinks = []
+        seen_ids = set()
+        duplicates = set()
+        for p in self._sink_patterns:
+            if p.id in seen_ids:
+                duplicates.add(p.id)
+            else:
+                seen_ids.add(p.id)
+                unique_sinks.append(p)
+        
+        if duplicates:
+            import logging
+            logging.warning(f"Duplicate pattern IDs found and deduplicated: {duplicates}")
+        
+        self._sink_patterns = unique_sinks
 
         if hasattr(mcp_frameworks, "PATTERNS"):
             self._source_patterns.extend(mcp_frameworks.PATTERNS)
@@ -174,3 +181,4 @@ def get_sanitizers(
 ) -> list[SanitizerPattern]:
     """Get sanitizer patterns."""
     return PatternRegistry.get().get_sanitizer_patterns(language, vuln_type)
+

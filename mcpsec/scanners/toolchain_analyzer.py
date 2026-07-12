@@ -282,3 +282,4 @@ class ToolChainAnalyzer:
                 max_severity = score
 
         return max_severity
+

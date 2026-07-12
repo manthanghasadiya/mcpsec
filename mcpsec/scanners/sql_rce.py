@@ -7,6 +7,7 @@ and attempts to escalate them to Remote Code Execution.
 Supports: SQLite, PostgreSQL, MySQL/MariaDB, MSSQL, Oracle
 """
 
+import logging
 import asyncio
 import re
 import time
@@ -16,6 +17,9 @@ from typing import Optional
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import Finding, ServerProfile, Severity, ToolInfo
 from mcpsec.scanners.base import BaseScanner
+
+logger = logging.getLogger(__name__)
+
 
 
 @dataclass
@@ -864,8 +868,8 @@ class SQLInjectionRCEScanner(BaseScanner):
                 start = time.time()
                 try:
                     await self._test_payload(client, tool_name, param_name, "ping")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Exception caught: {e}")
                 baseline_times.append(time.time() - start)
 
             from mcpsec.scanners.response_classifier import measure_baseline_latency
@@ -1140,8 +1144,8 @@ class SQLInjectionRCEScanner(BaseScanner):
                 return True, elapsed
         except asyncio.TimeoutError:
             return True, expected_delay + 5
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")
         return False, time.time() - start
 
     def _is_blocked(self, response: str) -> bool:
@@ -1440,3 +1444,4 @@ class SQLInjectionRCEScanner(BaseScanner):
             ),
             cwe="CWE-89",
         )
+

@@ -7,6 +7,7 @@ environment variables, and paths.
 """
 
 from __future__ import annotations
+import logging
 
 import re
 from typing import Any
@@ -14,6 +15,9 @@ from typing import Any
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import Finding, ServerProfile, Severity
 from mcpsec.scanners.base import BaseScanner
+
+logger = logging.getLogger(__name__)
+
 
 FAULT_PAYLOADS = [
     "'",
@@ -68,8 +72,8 @@ class InfoLeakScanner(BaseScanner):
                     result = await client.call_tool(tool.name, {})
                     response_text = _extract_response(result)
                     self._check_leaks(tool.name, "none", response_text, findings)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Exception caught: {e}")
                 continue
 
             for param_name in target_params:
@@ -78,9 +82,8 @@ class InfoLeakScanner(BaseScanner):
                         result = await client.call_tool(tool.name, {param_name: payload})
                         response_text = _extract_response(result)
                         self._check_leaks(tool.name, param_name, response_text, findings)
-                    except Exception:
-                        pass
-
+                    except Exception as e:
+                        logger.debug(f"Exception caught: {e}")
         # Deduplicate findings by title and tool
         unique_findings = {}
         for f in findings:
@@ -128,3 +131,4 @@ class InfoLeakScanner(BaseScanner):
                             cwe="CWE-200",  # Exposure of Sensitive Information to an Unauthorized Actor
                         )
                     )
+

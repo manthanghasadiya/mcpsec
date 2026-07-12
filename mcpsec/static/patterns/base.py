@@ -3,10 +3,14 @@ Base classes for the pattern database.
 """
 
 from __future__ import annotations
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 import re
+
+logger = logging.getLogger(__name__)
+
 
 
 class Language(str, Enum):
@@ -90,9 +94,8 @@ class SinkPattern:
         for neg in self.negative_patterns:
             try:
                 self._negative_compiled.append(re.compile(neg, re.MULTILINE))
-            except re.error:
-                pass
-
+            except re.error as e:
+                logger.debug(f"Exception caught: {e}")
     def matches(self, code: str, line: str) -> bool:
         """Check if pattern matches and no negative patterns match."""
         if not self._compiled:
@@ -187,3 +190,4 @@ class SinkMatch:
         """Compact 3-line context."""
         lines = self.context_before[-2:] + [self.code_line] + self.context_after[:2]
         return "\n".join(lines)
+

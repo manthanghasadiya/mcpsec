@@ -1,6 +1,7 @@
 """Main evolutionary fuzzing engine."""
 
 from __future__ import annotations
+import logging
 
 import asyncio
 import json
@@ -21,6 +22,9 @@ from .feedback import FeedbackCollector, ResponseFingerprint, ResponseType
 from .mutators import MutationEngine
 from .mcp_mutators import MCPStructureMutator, MCPToolCallMutator
 from .scheduler import Scheduler
+
+logger = logging.getLogger(__name__)
+
 
 
 console = Console()
@@ -298,8 +302,8 @@ class EvolveFuzzEngine:
             except Exception:
                 try:
                     self.process.kill()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Exception caught: {e}")
             self.process = None
 
     async def _fuzz_one(self):
@@ -395,9 +399,8 @@ class EvolveFuzzEngine:
                 try:
                     stderr = self.process.stderr.read(4096).decode(errors="replace")
                     result["stderr"] = stderr
-                except Exception:
-                    pass
-
+                except Exception as e:
+                    logger.debug(f"Exception caught: {e}")
         except Exception as e:
             result["crashed"] = True
             result["stderr"] = str(e)
@@ -499,3 +502,5 @@ class EvolveFuzzEngine:
                 console.print(f"  - {crash.data_hash}: {crash.data[:100]!r}")
 
         return report
+
+

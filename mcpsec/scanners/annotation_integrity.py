@@ -139,3 +139,4 @@ def scan_annotations(tools: list) -> list[Finding]:
                 )
 
     return findings
+

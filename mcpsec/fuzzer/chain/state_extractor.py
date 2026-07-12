@@ -229,3 +229,4 @@ class StateExtractor:
         refs.extend(matches)
 
         return list(set(refs))  # Deduplicate
+

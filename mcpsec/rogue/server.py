@@ -240,3 +240,4 @@ class RogueMCPServer:
         # Keep running
         while True:
             await asyncio.sleep(3600)
+

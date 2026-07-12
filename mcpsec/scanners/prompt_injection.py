@@ -14,6 +14,7 @@ We check for:
 """
 
 from __future__ import annotations
+import logging
 
 import base64
 import re
@@ -21,6 +22,9 @@ import re
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import Finding, ServerProfile, Severity, ToolInfo
 from mcpsec.scanners.base import BaseScanner
+
+logger = logging.getLogger(__name__)
+
 
 # ── Detection Patterns ───────────────────────────────────────────────────────
 
@@ -270,16 +274,15 @@ class PromptInjectionScanner(BaseScanner):
             decoded = base64.b64decode(encoded).decode("utf-8", errors="replace")
             if decoded.isprintable() and len(decoded) > 4:
                 return f"base64 → {decoded[:100]}"
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")
         # Try hex
         try:
             cleaned = encoded.replace("\\x", "")
             decoded = bytes.fromhex(cleaned).decode("utf-8", errors="replace")
             if decoded.isprintable() and len(decoded) > 4:
                 return f"hex → {decoded[:100]}"
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Exception caught: {e}")
         return "(could not decode)"
+
