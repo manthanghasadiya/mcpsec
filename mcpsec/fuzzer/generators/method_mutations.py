@@ -7,6 +7,7 @@ from .base import FuzzCase
 # All valid MCP methods
 MCP_METHODS = [
     "initialize",
+    "server/discover",
     "ping",
     "tools/list",
     "tools/call",
@@ -18,6 +19,9 @@ MCP_METHODS = [
     "prompts/get",
     "completion/complete",
     "logging/setLevel",
+    "tasks/get",
+    "tasks/update",
+    "subscriptions/listen",
     "notifications/initialized",
     "notifications/cancelled",
 ]
@@ -58,6 +62,10 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         ("prompts/list", ["prompt/list", "prompts/listt"]),
         ("prompts/get", ["prompts/gett", "prompt/get"]),
         ("completion/complete", ["completion/complet", "completions/complete"]),
+        ("server/discover", ["server/discoverr", "servers/discover", "server/discovers"]),
+        ("tasks/get", ["task/get", "tasks/gett", "tasks/get/"]),
+        ("tasks/update", ["task/update", "tasks/updat", "tasks/updatee"]),
+        ("subscriptions/listen", ["subscription/listen", "subscriptions/listenn"]),
     ]
     for correct, typos in typo_pairs:
         for t in typos:
@@ -75,6 +83,9 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         "Ping",
         "RESOURCES/LIST",
         "Resources/Read",
+        "SERVER/DISCOVER",
+        "TASKS/GET",
+        "SUBSCRIPTIONS/LISTEN",
     ]
     for v in case_variants:
         _add(f"case_{v.replace('/', '_').lower()}", _rpc(v), f"Case variation: '{v}'")

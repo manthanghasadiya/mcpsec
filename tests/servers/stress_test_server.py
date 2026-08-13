@@ -23,10 +23,13 @@ import subprocess
 import json
 import pickle
 import base64
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
+from mcp.server import Server
 import mcp.types as types
-from mcp.server.stdio import stdio_server
+
+try:
+    from compat import register_handlers, run_server
+except ImportError:
+    from tests.servers.compat import register_handlers, run_server
 
 server = Server("mcpsec-stress-test")
 
@@ -52,15 +55,13 @@ with open(os.path.join(ALLOWED_DIR, "allowed_file.txt"), "w") as f:
 # Simple memory store for RAG poisoning test
 memory_store = {}
 
-@server.list_tools()
-async def handle_list_tools():
-    return [
-        # ============================================
-        # TRUE POSITIVES - Real Vulnerabilities
-        # ============================================
-        
-        # TP-1: SQL Injection (Classic)
-        types.Tool(
+TOOLS = [
+    # ============================================
+    # TRUE POSITIVES - Real Vulnerabilities
+    # ============================================
+    
+    # TP-1: SQL Injection (Classic)
+    types.Tool(
             name="tp_sql_login",
             description="Authenticate user against database. TRUE POSITIVE: Classic SQL injection via string concatenation.",
             inputSchema={
@@ -393,10 +394,9 @@ async def handle_list_tools():
                 "required": ["template"],
             },
         ),
-    ]
+]
 
 
-@server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
     args = arguments or {}
     
@@ -719,20 +719,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
 
+register_handlers(server, TOOLS, handle_call_tool)
+
+
 async def main():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="mcpsec-stress-test",
-                server_version="1.0.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
-                ),
-            ),
-        )
+    await run_server(server)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ from mcpsec.fuzzer.generators import (
     deserialization,
     encoding_attacks,
     header_mutations,
+    header_routing,
     id_confusion,
     injection_payloads,
     # Nuclear expansion generators
@@ -176,6 +177,7 @@ class FuzzEngine:
             "param_mutations": param_mutations.generate,
             "timing_attacks": timing_attacks.generate,
             "header_mutations": header_mutations.generate,
+            "header_routing": header_routing.generate,
             "json_edge_cases": json_edge_cases.generate,
             "protocol_state": protocol_state.generate,
             "id_confusion": id_confusion.generate,
@@ -364,7 +366,10 @@ class FuzzEngine:
 
         # 4. Execution loop (for repeat)
         for i in range(max(1, case.repeat)):
-            result = fuzzer.send_raw(case.payload)
+            if isinstance(fuzzer, HttpFuzzer):
+                result = fuzzer.send_raw(case.payload, headers=case.headers)
+            else:
+                result = fuzzer.send_raw(case.payload)
             result.generator = case.generator
             self.results.append(result)
 
@@ -387,22 +392,15 @@ class FuzzEngine:
                 time.sleep(case.delay_between)
 
     def _do_initialize(self, fuzzer: StdioFuzzer) -> FuzzResult | None:
-        """Send proper initialize handshake with startup timeout and framing detection."""
+        """Send proper initialize handshake with startup timeout and framing detection.
+
+        Tries the stateless `server/discover` probe (2026-07-28+) first, then
+        falls back to the legacy `initialize` handshake for older servers.
+        """
         if not fuzzer.process:
             fuzzer.start_server()
 
         import json
-
-        init_msg = {
-            "jsonrpc": "2.0",
-            "method": "initialize",
-            "id": 1,
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "mcpsec-fuzzer", "version": "0.3.0"},
-            },
-        }
 
         strategies = []
         if self.framing == "auto":
@@ -421,30 +419,77 @@ class FuzzEngine:
             if strategy != strategies[0]:
                 fuzzer.restart_server()
 
-            result = fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
-
+            result = self._probe_server(fuzzer, strategy)
             if result and result.response and not result.timeout and not result.crashed:
                 # Success!
                 if self.framing == "auto" and self.debug:
                     console.print(f"  [success]✔ Auto-detected framing: {strategy}[/success]")
-
-                # Send initialized notification
-                notif_json = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
-                if getattr(fuzzer, "framing", None) == "jsonl":
-                    notif_payload = (notif_json + "\n").encode("utf-8")
-                else:
-                    body = notif_json.encode("utf-8")
-                    notif_payload = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
-
-                if fuzzer.process and fuzzer.process.stdin:
-                    fuzzer.process.stdin.write(notif_payload)
-                    fuzzer.process.stdin.flush()
-                else:
-                    fuzzer.send_raw(notif_payload)
                 return result
 
             if self.debug:
                 console.print(f"  [dim][DEBUG] {strategy} framing failed. Retrying...[/dim]")
+
+        return result
+
+    def _probe_server(self, fuzzer: StdioFuzzer, strategy: str) -> FuzzResult | None:
+        """Probe a server with server/discover, falling back to legacy initialize."""
+        import json
+
+        discover_msg = {
+            "jsonrpc": "2.0",
+            "method": "server/discover",
+            "id": 1,
+            "params": {
+                "protocolVersion": "2026-07-28",
+                "capabilities": {},
+                "clientInfo": {"name": "mcpsec-fuzzer", "version": "0.3.0"},
+            },
+        }
+
+        result = fuzzer.send_mcp_message_with_timeout(discover_msg, self.startup_timeout)
+        if result and result.response and not result.timeout and not result.crashed:
+            try:
+                resp_text = result.response.decode("utf-8", errors="replace")
+                if "\r\n\r\n" in resp_text:
+                    resp_text = resp_text.split("\r\n\r\n", 1)[1]
+                resp_data = json.loads(resp_text)
+                if "result" in resp_data:
+                    return result
+            except Exception:
+                pass
+
+        # Legacy fallback: initialize handshake
+        if not fuzzer.is_alive():
+            fuzzer.restart_server()
+            fuzzer.framing = strategy
+
+        init_msg = {
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "id": 1,
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "mcpsec-fuzzer", "version": "0.3.0"},
+            },
+        }
+
+        result = fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
+
+        if result and result.response and not result.timeout and not result.crashed:
+            # Send initialized notification
+            notif_json = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
+            if getattr(fuzzer, "framing", None) == "jsonl":
+                notif_payload = (notif_json + "\n").encode("utf-8")
+            else:
+                body = notif_json.encode("utf-8")
+                notif_payload = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
+
+            if fuzzer.process and fuzzer.process.stdin:
+                fuzzer.process.stdin.write(notif_payload)
+                fuzzer.process.stdin.flush()
+            else:
+                fuzzer.send_raw(notif_payload)
 
         return result
 
@@ -466,33 +511,8 @@ class FuzzEngine:
             if not fuzzer.is_alive():
                 fuzzer.restart_server()
                 fuzzer.framing = framing
-                # Re-initialize
-                init_msg = {
-                    "jsonrpc": "2.0",
-                    "method": "initialize",
-                    "id": 1,
-                    "params": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {},
-                        "clientInfo": {"name": "mcpsec-fuzzer", "version": "1.0.0"},
-                    },
-                }
-                init_result = fuzzer.send_mcp_message_with_timeout(init_msg, self.startup_timeout)
-                if not init_result or init_result.crashed:
-                    continue
-                # Send initialized notification
-                notif_json = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
-                if framing == "jsonl":
-                    notif_payload = (notif_json + "\n").encode("utf-8")
-                else:
-                    body = notif_json.encode("utf-8")
-                    notif_payload = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
-
-                if fuzzer.process and fuzzer.process.stdin:
-                    fuzzer.process.stdin.write(notif_payload)
-                    fuzzer.process.stdin.flush()
-                else:
-                    fuzzer.send_raw(notif_payload)
+                # Re-initialize (discover first, legacy fallback)
+                self._probe_server(fuzzer, framing)
                 time.sleep(0.5)
 
             result = fuzzer.send_mcp_message_with_timeout(tools_msg, self.startup_timeout)

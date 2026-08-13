@@ -25,10 +25,13 @@ import subprocess
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
+from mcp.server import Server
 import mcp.types as types
-from mcp.server.stdio import stdio_server
+
+try:
+    from compat import register_handlers, run_server
+except ImportError:
+    from tests.servers.compat import register_handlers, run_server
 
 server = Server("acme-workspace-server")
 
@@ -66,14 +69,11 @@ db.commit()
 config_store = {}
 note_store = {}
 
-
-@server.list_tools()
-async def handle_list_tools():
-    return [
-        # ============================================
-        # TOOL SET 1: Document Management
-        # ============================================
-        types.Tool(
+TOOLS = [
+    # ============================================
+    # TOOL SET 1: Document Management
+    # ============================================
+    types.Tool(
             name="search_documents",
             description="Search company documents by keyword. Returns matching document titles and snippets.",
             inputSchema={
@@ -310,10 +310,9 @@ async def handle_list_tools():
                 "properties": {},
             },
         ),
-    ]
+]
 
 
-@server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
     args = arguments or {}
     
@@ -634,20 +633,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
 
+register_handlers(server, TOOLS, handle_call_tool)
+
+
 async def main():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="acme-workspace-server",
-                server_version="2.1.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
-                ),
-            ),
-        )
+    await run_server(server)
 
 
 if __name__ == "__main__":

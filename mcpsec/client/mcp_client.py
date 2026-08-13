@@ -14,7 +14,11 @@ from typing import Any
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.client.streamable_http import streamablehttp_client
+
+try:
+    from mcp.client.streamable_http import streamable_http_client
+except ImportError:  # mcp < 2.0.0
+    from mcp.client.streamable_http import streamablehttp_client as streamable_http_client
 
 from mcpsec.models import (
     PromptInfo,
@@ -77,20 +81,41 @@ class MCPSecClient:
         self.session = await self._exit_stack.enter_async_context(
             ClientSession(read_stream, write_stream)
         )
-        await self.session.initialize()
+        await self._initialize()
         return await self._enumerate()
 
     async def connect_http(self, url: str, headers: dict | None = None) -> ServerProfile:
         """Connect to an MCP server via streamable HTTP transport."""
-        http_transport = await self._exit_stack.enter_async_context(
-            streamablehttp_client(url=url, headers=headers)
-        )
+        try:
+            from mcp.client.streamable_http import create_mcp_http_client
+
+            http_client = create_mcp_http_client(headers=headers or {})
+        except ImportError:  # mcp < 2.0.0
+            http_client = None
+
+        if http_client is not None:
+            http_transport = await self._exit_stack.enter_async_context(
+                streamable_http_client(url=url, http_client=http_client)
+            )
+        else:
+            http_transport = await self._exit_stack.enter_async_context(
+                streamable_http_client(url=url, headers=headers)
+            )
         read_stream, write_stream = http_transport[0], http_transport[1]
         self.session = await self._exit_stack.enter_async_context(
             ClientSession(read_stream, write_stream)
         )
-        await self.session.initialize()
+        await self._initialize()
         return await self._enumerate()
+
+    async def _initialize(self):
+        """Initialize the session, preferring the stateless server/discover probe."""
+        if not self.session:
+            raise RuntimeError("Not connected")
+        try:
+            await self.session.discover()
+        except Exception:
+            await self.session.initialize()
 
     async def call_tool(
         self, tool_name: str, arguments: dict[str, Any], timeout: float = 30.0
@@ -124,9 +149,12 @@ class MCPSecClient:
             for tool in tools_result.tools:
                 params = {}
                 raw_schema = {}
-                if tool.inputSchema and "properties" in tool.inputSchema:
-                    raw_schema = tool.inputSchema
-                    for param_name, param_def in tool.inputSchema["properties"].items():
+                input_schema = getattr(tool, "inputSchema", None) or getattr(
+                    tool, "input_schema", None
+                )
+                if input_schema and "properties" in input_schema:
+                    raw_schema = input_schema
+                    for param_name, param_def in input_schema["properties"].items():
                         param_type = param_def.get("type", "any")
                         params[param_name] = param_type
 
