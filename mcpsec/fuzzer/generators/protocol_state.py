@@ -118,6 +118,139 @@ def generate(framing: str = "clrf", intensity: str = "medium") -> list[FuzzCase]
     rapid_pings = b"".join(_f(_rpc("ping", req_id=i)) for i in range(1, 101))
     _add("rapid_100_pings", rapid_pings, "100 pings sent rapidly")
 
+    # ── Stateless protocol (2026-07-28) ─────────────────────────────
+    DISCOVER_PARAMS = {
+        "protocolVersion": "2026-07-28",
+        "capabilities": {},
+        "clientInfo": {"name": "mcpsec-fuzzer", "version": "1.0.0"},
+    }
+
+    # Normal stateless flow: discover → list → call (no session)
+    stateless_lifecycle = (
+        _f(_rpc("server/discover", DISCOVER_PARAMS, 1))
+        + _f(_rpc("tools/list", req_id=2))
+        + _f(_rpc("tools/call", {"name": "nonexistent", "arguments": {}}, 3))
+    )
+    _add("stateless_lifecycle", stateless_lifecycle, "Discover → list → call (no session)")
+
+    # Discover with legacy version
+    _add(
+        "discover_legacy_version",
+        _f(_rpc("server/discover", {**DISCOVER_PARAMS, "protocolVersion": "2024-11-05"}, 1)),
+        "server/discover proposing legacy protocol version",
+    )
+
+    # Discover with no params
+    _add("discover_no_params", _f(_rpc("server/discover", req_id=1)), "server/discover with no params")
+
+    # Discover with null capabilities
+    _add(
+        "discover_null_caps",
+        _f(_rpc("server/discover", {"protocolVersion": "2026-07-28", "capabilities": None}, 1)),
+        "server/discover with null capabilities",
+    )
+
+    # Discover with prototype pollution
+    _add(
+        "discover_proto_pollution",
+        _f(
+            _rpc(
+                "server/discover",
+                {"protocolVersion": "2026-07-28", "capabilities": {}, "__proto__": {"admin": True}},
+                1,
+            )
+        ),
+        "server/discover with prototype pollution fields",
+    )
+
+    # Discover with huge clientInfo
+    _add(
+        "discover_huge_client_info",
+        _f(
+            _rpc(
+                "server/discover",
+                {"protocolVersion": "2026-07-28", "capabilities": {}, "clientInfo": {"name": "A" * 100000, "version": "1"}},
+                1,
+            )
+        ),
+        "server/discover with 100KB clientInfo name",
+    )
+
+    # MRTR: input_required round-trip (SEP-2322)
+    _add(
+        "mrtr_roundtrip",
+        _f(
+            _rpc(
+                "tools/call",
+                {
+                    "name": "test",
+                    "arguments": {},
+                    "inputResponses": [{"requestId": "req-1", "responses": [{"type": "text", "text": "yes"}]}],
+                },
+                1,
+            )
+        ),
+        "tools/call with inputResponses (MRTR round-trip)",
+    )
+
+    # MRTR: inputResponses without requestId
+    _add(
+        "mrtr_no_request_id",
+        _f(
+            _rpc(
+                "tools/call",
+                {"name": "test", "arguments": {}, "inputResponses": [{"responses": [{"type": "text", "text": "x"}]}]},
+                1,
+            )
+        ),
+        "MRTR inputResponses missing requestId",
+    )
+
+    # MRTR: inputResponses as non-array
+    _add(
+        "mrtr_string_responses",
+        _f(
+            _rpc(
+                "tools/call",
+                {"name": "test", "arguments": {}, "inputResponses": "not-an-array"},
+                1,
+            )
+        ),
+        "MRTR inputResponses as string instead of array",
+    )
+
+    # Tasks extension (io.modelcontextprotocol/tasks)
+    _add(
+        "tasks_get_missing_id",
+        _f(_rpc("tasks/get", {}, 1)),
+        "tasks/get with empty params (missing taskId)",
+    )
+    _add(
+        "tasks_get_fake",
+        _f(_rpc("tasks/get", {"taskId": "nonexistent-task"}, 1)),
+        "tasks/get with nonexistent taskId",
+    )
+    _add(
+        "tasks_update_fake",
+        _f(_rpc("tasks/update", {"taskId": "nonexistent-task", "status": "completed"}, 1)),
+        "tasks/update on nonexistent task",
+    )
+    _add(
+        "tasks_update_bad_status",
+        _f(_rpc("tasks/update", {"taskId": "task-1", "status": "not-a-status"}, 1)),
+        "tasks/update with invalid status",
+    )
+    _add(
+        "subscriptions_listen_empty",
+        _f(_rpc("subscriptions/listen", {}, 1)),
+        "subscriptions/listen with empty params",
+    )
+    _add(
+        "subscriptions_listen_bad_types",
+        _f(_rpc("subscriptions/listen", {"notificationTypes": ["not/a/type"]}, 1)),
+        "subscriptions/listen with unknown notification type",
+    )
+
     # ── Resources operations ─────────────────────────────────────────
     _add(
         "resources_read_no_uri",
@@ -248,6 +381,7 @@ def generate(framing: str = "clrf", intensity: str = "medium") -> list[FuzzCase]
 
     # ===========================================
     # Category 1: Methods before initialize
+    # (Valid in 2026-07-28 stateless protocol — server must process them)
     # ===========================================
     pre_init_methods = [
         {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
@@ -259,6 +393,9 @@ def generate(framing: str = "clrf", intensity: str = "medium") -> list[FuzzCase]
         {"jsonrpc": "2.0", "id": 7, "method": "completion/complete", "params": {"ref": {"type": "ref/prompt", "name": "test"}, "argument": {"name": "arg", "value": "val"}}},
         {"jsonrpc": "2.0", "id": 8, "method": "logging/setLevel", "params": {"level": "debug"}},
         {"jsonrpc": "2.0", "id": 9, "method": "sampling/createMessage", "params": {"messages": [{"role": "user", "content": {"type": "text", "text": "test"}}], "maxTokens": 100}},
+        {"jsonrpc": "2.0", "id": 10, "method": "tasks/get", "params": {"taskId": "task-1"}},
+        {"jsonrpc": "2.0", "id": 11, "method": "tasks/update", "params": {"taskId": "task-1", "status": "completed"}},
+        {"jsonrpc": "2.0", "id": 12, "method": "subscriptions/listen", "params": {"notificationTypes": ["tasks/updated"]}},
     ]
 
     for msg in pre_init_methods:
@@ -267,9 +404,9 @@ def generate(framing: str = "clrf", intensity: str = "medium") -> list[FuzzCase]
                 name=f"pre_init_{msg['method'].replace('/', '_')}",
                 generator="protocol_state",
                 payload=_f(json.dumps(msg).encode()),
-                description=f"Call {msg['method']} before initialize - should fail gracefully",
+                description=f"Call {msg['method']} without any handshake - valid in 2026-07-28",
                 expected_behavior="Server handles state correctly",
-                expects_error=True,
+                expects_error=False,
                 crash_indicates_bug=True,
                 skip_init=True,
             )

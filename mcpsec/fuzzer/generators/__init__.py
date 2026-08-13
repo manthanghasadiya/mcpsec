@@ -4,6 +4,7 @@ from . import (
     deserialization,
     encoding_attacks,
     header_mutations,
+    header_routing,
     id_confusion,
     injection_payloads,
     # Nuclear expansion generators

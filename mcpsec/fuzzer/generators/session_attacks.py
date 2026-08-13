@@ -14,7 +14,7 @@ def _frame(body: bytes, framing: str = "clrf") -> bytes:
 def generate(framing: str = "clrf") -> list[FuzzCase]:
     cases = []
 
-    # 1. tools/call BEFORE initialize
+    # 1. tools/call BEFORE initialize — valid in 2026-07-28 (stateless)
     cases.append(
         FuzzCase(
             name="pre_init_tool_call",
@@ -30,10 +30,69 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
                 ).encode(),
                 framing,
             ),
-            description="Send tools/call before initialize",
-            expected_behavior="Server rejects with error or returns initRequired",
+            description="Send tools/call without any handshake (valid in 2026-07-28)",
+            expected_behavior="Server processes the request (stateless protocol)",
         )
     )
+
+    # 1b. MRTR: input_required round-trip (SEP-2322)
+    cases.append(
+        FuzzCase(
+            name="mrtr_input_required",
+            generator="session_attacks",
+            payload=_frame(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "test",
+                            "arguments": {},
+                            "inputResponses": [
+                                {
+                                    "requestId": "req-1",
+                                    "responses": [{"type": "text", "text": "yes"}],
+                                }
+                            ],
+                        },
+                    }
+                ).encode(),
+                framing,
+            ),
+            description="tools/call with inputResponses (MRTR) without prior input_required",
+            expected_behavior="Server handles gracefully or rejects",
+        )
+    )
+
+    # 1c. MRTR: input_required with malformed inputResponses
+    mrtr_variants = [
+        ("mrtr_null_responses", {"requestId": "req-1", "responses": None}),
+        ("mrtr_empty_responses", {"requestId": "req-1", "responses": []}),
+        ("mrtr_missing_request_id", {"responses": [{"type": "text", "text": "x"}]}),
+        ("mrtr_string_responses", {"requestId": "req-1", "responses": "not-an-array"}),
+        ("mrtr_huge", {"requestId": "req-1", "responses": [{"type": "text", "text": "A" * 100000}]}),
+    ]
+    for name, input_resp in mrtr_variants:
+        cases.append(
+            FuzzCase(
+                name=name,
+                generator="session_attacks",
+                payload=_frame(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "tools/call",
+                            "params": {"name": "test", "arguments": {}, "inputResponses": [input_resp]},
+                        }
+                    ).encode(),
+                    framing,
+                ),
+                description=f"MRTR malformed inputResponses: {name}",
+                expected_behavior="Server handles gracefully",
+            )
+        )
 
     # 2. Wrong protocol version
     cases.append(
@@ -157,7 +216,7 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         )
     )
 
-    # 8. Rapid initialize flood (resource exhaustion)
+    # 8. Rapid server/discover flood (resource exhaustion)
     flood = b""
     for i in range(50):
         flood += _frame(
@@ -165,9 +224,9 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
                 {
                     "jsonrpc": "2.0",
                     "id": i + 1,
-                    "method": "initialize",
+                    "method": "server/discover",
                     "params": {
-                        "protocolVersion": "2024-11-05",
+                        "protocolVersion": "2026-07-28",
                         "capabilities": {},
                         "clientInfo": {"name": "flood", "version": "1.0"},
                     },
@@ -177,10 +236,10 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         )
     cases.append(
         FuzzCase(
-            name="rapid_init_flood",
+            name="rapid_discover_flood",
             generator="session_attacks",
             payload=flood,
-            description="Send 50 rapid initialize requests",
+            description="Send 50 rapid server/discover requests",
             expected_behavior="Server handles without crash or resource leak",
         )
     )

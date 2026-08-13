@@ -41,6 +41,23 @@ class RogueMCPServer:
                 },
             }
 
+        # Stateless protocol (2026-07-28): server/discover probe
+        if method == "server/discover":
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "protocolVersion": "2026-07-28",
+                    "supportedVersions": ["2026-07-28", "2024-11-05"],
+                    "capabilities": {
+                        "tools": {"listChanged": True},
+                        "resources": {"subscribe": True},
+                        "prompts": {"listChanged": True},
+                    },
+                    "serverInfo": {"name": "ROGUE-SERVER", "version": "6.6.6"},
+                },
+            }
+
         # 2. Check for 'tools/list'
         if method == "tools/list":
             # List various tools, each triggering a different attack

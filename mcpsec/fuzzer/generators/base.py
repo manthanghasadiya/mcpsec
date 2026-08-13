@@ -18,4 +18,5 @@ class FuzzCase:
     delay_between: float = 0.0
     expects_error: bool = False
     crash_indicates_bug: bool = True
+    headers: dict | None = None  # Extra HTTP headers (2026-07-28 header routing)
 

@@ -69,7 +69,8 @@ class MCPStructureMutator(Mutator):
         """Change the method to something unexpected."""
         methods = [
             "tools/call", "tools/list", "resources/read", "resources/list",
-            "prompts/get", "initialize", "ping", "shutdown",
+            "prompts/get", "initialize", "server/discover", "tasks/get",
+            "tasks/update", "subscriptions/listen", "ping", "shutdown",
             "../../../etc/passwd", "'; DROP TABLE tools;--",
             "AAAA" * 100, "", None, 12345, {"nested": "method"},
             "tools/call\x00hidden", "tools/../../call",

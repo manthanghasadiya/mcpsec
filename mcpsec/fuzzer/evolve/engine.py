@@ -182,8 +182,8 @@ class EvolveFuzzEngine:
     def _create_default_seeds(self):
         """Create initial seed inputs."""
         seeds = [
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
-                "protocolVersion": "2024-11-05",
+            {"jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": {
+                "protocolVersion": "2026-07-28",
                 "capabilities": {},
                 "clientInfo": {"name": "mcpsec-evolve", "version": "1.0"}
             }},
@@ -193,6 +193,9 @@ class EvolveFuzzEngine:
             {"jsonrpc": "2.0", "id": 5, "method": "ping"},
             {"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {
                 "name": "test", "arguments": {}
+            }},
+            {"jsonrpc": "2.0", "id": 7, "method": "tasks/get", "params": {
+                "taskId": "task-1"
             }},
         ]
 
@@ -212,7 +215,22 @@ class EvolveFuzzEngine:
         try:
             self.process = await self._start_server()
 
-            # Send initialize
+            # Send server/discover (2026-07-28 stateless), fall back to initialize
+            discover_req = json.dumps({
+                "jsonrpc": "2.0", "id": 1, "method": "server/discover",
+                "params": {
+                    "protocolVersion": "2026-07-28",
+                    "capabilities": {},
+                    "clientInfo": {"name": "mcpsec-evolve", "version": "1.0"}
+                }
+            }).encode() + b"\n"
+
+            self.process.stdin.write(discover_req)
+            self.process.stdin.flush()
+
+            await asyncio.sleep(0.5)
+
+            # Legacy fallback: initialize handshake
             init_req = json.dumps({
                 "jsonrpc": "2.0", "id": 1, "method": "initialize",
                 "params": {

@@ -37,18 +37,64 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
         )
     )
 
-    # 3. Call tools/list BEFORE initialize
+    # 3. Call tools/list BEFORE initialize — now valid in 2026-07-28 (stateless)
     cases.append(
         FuzzCase(
             name="tools_before_init",
             generator="protocol_violation",
             payload=_frame({"jsonrpc": "2.0", "method": "tools/list", "id": 1}, framing),
-            description="Calling tools/list before initialize handshake",
-            expected_behavior="Server rejects — must initialize first",
+            description="Calling tools/list without any handshake (valid in 2026-07-28)",
+            expected_behavior="Server processes the request (stateless protocol)",
         )
     )
 
-    # 4. Double initialize
+    # 3b. server/discover with malformed params
+    discover_variants = [
+        ("discover_no_params", {"jsonrpc": "2.0", "method": "server/discover", "id": 1}),
+        (
+            "discover_bad_version",
+            {
+                "jsonrpc": "2.0",
+                "method": "server/discover",
+                "id": 1,
+                "params": {"protocolVersion": "9999.99.99", "capabilities": {}, "clientInfo": {}},
+            },
+        ),
+        (
+            "discover_null_caps",
+            {
+                "jsonrpc": "2.0",
+                "method": "server/discover",
+                "id": 1,
+                "params": {"protocolVersion": "2026-07-28", "capabilities": None},
+            },
+        ),
+        (
+            "discover_proto_pollution",
+            {
+                "jsonrpc": "2.0",
+                "method": "server/discover",
+                "id": 1,
+                "params": {
+                    "protocolVersion": "2026-07-28",
+                    "capabilities": {},
+                    "__proto__": {"admin": True},
+                },
+            },
+        ),
+    ]
+    for name, msg in discover_variants:
+        cases.append(
+            FuzzCase(
+                name=name,
+                generator="protocol_violation",
+                payload=_frame(msg, framing),
+                description=f"server/discover variant: {name}",
+                expected_behavior="Server handles gracefully",
+            )
+        )
+
+    # 4. Double initialize — legacy servers reject; modern servers return method not found
     init_msg = {
         "jsonrpc": "2.0",
         "method": "initialize",
@@ -64,8 +110,8 @@ def generate(framing: str = "clrf") -> list[FuzzCase]:
             name="double_initialize",
             generator="protocol_violation",
             payload=_frame(init_msg, framing),  # Second init
-            description="Sending initialize twice",
-            expected_behavior="Server rejects second initialize",
+            description="Sending initialize twice (retired in 2026-07-28)",
+            expected_behavior="Server rejects second initialize or returns method not found",
         )
     )
 

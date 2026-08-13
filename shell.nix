@@ -33,7 +33,7 @@ let
   ] ++ (extraPyPkgs ps));
 in
 pkgs.mkShell {
-  packages = [ pythonEnv ];
+  packages = [ pythonEnv pkgs.nodejs pkgs.uv ];
   PATH="${pythonEnv}/bin:$PATH";
   PYTHONPATH="${pythonEnv}/${pythonEnv.sitePackages}";
 }

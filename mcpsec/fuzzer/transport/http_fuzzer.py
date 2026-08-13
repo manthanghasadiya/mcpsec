@@ -73,7 +73,28 @@ class HttpFuzzer:
         """HTTP fuzzer cannot detect remote server crashes easily."""
         return False, ""
 
-    def send_raw(self, payload: bytes) -> FuzzResult:
+    def _derive_headers(self, body: bytes) -> dict:
+        """Derive Mcp-Method/Mcp-Name/MCP-Protocol-Version headers from a JSON-RPC body.
+
+        Required by SEP-2243 for the 2026-07-28 stateless protocol. Harmless
+        for legacy servers, which ignore unknown headers.
+        """
+        headers = {}
+        try:
+            msg = json.loads(body)
+            method = msg.get("method")
+            if isinstance(method, str) and method:
+                headers["Mcp-Method"] = method
+                if method == "tools/call":
+                    name = msg.get("params", {}).get("name")
+                    if isinstance(name, str) and name:
+                        headers["Mcp-Name"] = name
+        except Exception:
+            pass
+        headers["MCP-Protocol-Version"] = "2026-07-28"
+        return headers
+
+    def send_raw(self, payload: bytes, headers: Optional[dict] = None) -> FuzzResult:
         """Send raw bytes via POST and capture response."""
         self.test_count += 1
 
@@ -90,9 +111,15 @@ class HttpFuzzer:
                 logger.debug(f"Exception caught: {e}")
         start = time.perf_counter()
 
+        request_headers = dict(self.headers)
+        if headers:
+            request_headers.update(headers)
+        else:
+            request_headers.update(self._derive_headers(body))
+
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(self.url, content=body, headers=self.headers)
+                response = client.post(self.url, content=body, headers=request_headers)
 
             elapsed = (time.perf_counter() - start) * 1000
 

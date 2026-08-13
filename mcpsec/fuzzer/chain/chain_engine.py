@@ -264,18 +264,18 @@ class ChainEngine:
         if hasattr(self._transport, "framing"):
             self._transport.framing = "jsonl"
 
-        init_msg = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "mcpsec-chained", "version": "1.0.0"},
-            },
-        }
-
-        init_response = await self._transport.send_request_async(init_msg)
+        init_response = await self._transport.send_request_async(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "server/discover",
+                "params": {
+                    "protocolVersion": "2026-07-28",
+                    "capabilities": {},
+                    "clientInfo": {"name": "mcpsec-chained", "version": "1.0.0"},
+                },
+            }
+        )
 
         # If JSONL didn't work, try CRLF framing (Node servers)
         if not init_response or "result" not in init_response:
@@ -295,7 +295,53 @@ class ChainEngine:
 
             if hasattr(self._transport, "framing"):
                 self._transport.framing = "crlf"
+            init_response = await self._transport.send_request_async(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "server/discover",
+                    "params": {
+                        "protocolVersion": "2026-07-28",
+                        "capabilities": {},
+                        "clientInfo": {"name": "mcpsec-chained", "version": "1.0.0"},
+                    },
+                }
+            )
+
+        # Legacy fallback: initialize handshake
+        if not init_response or "result" not in init_response:
+            if self.config.verbose:
+                console.print("  [dim]server/discover failed, trying legacy initialize...[/dim]")
+
+            if hasattr(self._transport, "restart_async"):
+                await self._transport.restart_async()
+            else:
+                restart_fn = getattr(self._transport, "restart", None)
+                if restart_fn:
+                    await asyncio.to_thread(restart_fn)
+            await asyncio.sleep(1.0)
+
+            init_msg = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "mcpsec-chained", "version": "1.0.0"},
+                },
+            }
             init_response = await self._transport.send_request_async(init_msg)
+
+            if init_response and "result" in init_response:
+                # Send initialized notification (no ID!)
+                await self._transport.send_notification_async(
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "notifications/initialized",
+                    }
+                )
+                await asyncio.sleep(0.5)
 
         if not init_response or "result" not in init_response:
             console.print("[yellow]  Warning: Server did not respond to initialize[/yellow]")
@@ -304,16 +350,6 @@ class ChainEngine:
         if self.config.verbose:
             framing = getattr(self._transport, "framing", "unknown")
             console.print(f"  [dim]Using framing: {framing}[/dim]")
-
-        # Send initialized notification (no ID!)
-        await self._transport.send_notification_async(
-            {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized",
-            }
-        )
-
-        await asyncio.sleep(0.5)  # Give server time to process
 
         # Get tools list
         tools_response = await self._transport.send_request_async(
@@ -803,25 +839,38 @@ class ChainEngine:
         await self._transport.restart()
         await asyncio.sleep(1.0)
 
-        # Re-initialize
-        await self._transport.send_request_async(
+        # Re-initialize (discover first, legacy fallback)
+        init_response = await self._transport.send_request_async(
             {
                 "jsonrpc": "2.0",
                 "id": 1,
-                "method": "initialize",
+                "method": "server/discover",
                 "params": {
-                    "protocolVersion": "2024-11-05",
+                    "protocolVersion": "2026-07-28",
                     "capabilities": {},
                     "clientInfo": {"name": "mcpsec-chained", "version": "1.0.0"},
                 },
             }
         )
-        await self._transport.send_notification_async(
-            {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized",
-            }
-        )
+        if not init_response or "result" not in init_response:
+            await self._transport.send_request_async(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {"name": "mcpsec-chained", "version": "1.0.0"},
+                    },
+                }
+            )
+            await self._transport.send_notification_async(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/initialized",
+                }
+            )
         await asyncio.sleep(0.5)
 
     def _print_dependency_graph(self, graph: dict) -> None:

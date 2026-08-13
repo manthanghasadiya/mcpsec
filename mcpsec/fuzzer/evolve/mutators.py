@@ -213,6 +213,8 @@ class DictionaryMutator(Mutator):
         b'"initialize"', b'"tools/list"', b'"tools/call"',
         b'"resources/read"', b'"resources/list"', b'"prompts/list"',
         b'"notifications/initialized"', b'"ping"',
+        b'"server/discover"', b'"tasks/get"', b'"tasks/update"',
+        b'"subscriptions/listen"', b'"inputResponses"', b'"input_required"',
         b'"protocolVersion"', b'"capabilities"', b'"clientInfo"',
         b'"name"', b'"version"', b'"arguments"',
         b'null', b'true', b'false', b'{}', b'[]',
