@@ -1,4 +1,3 @@
-"""mcpsec — Security scanner for MCP server implementations."""
+"""mcpsec - Security scanner for MCP server implementations."""
 
-__version__ = "2.7.2"
-
+__version__ = "2.7.3"

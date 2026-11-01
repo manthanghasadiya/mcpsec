@@ -28,6 +28,7 @@ from mcpsec.fuzzer.generators import (
     protocol_violation,
     regex_dos,
     resource_exhaustion,
+    schema_fuzzer,
     session_attacks,
     timing_attacks,
     type_confusion,
@@ -131,8 +132,20 @@ class FuzzEngine:
                 f"  [dim]Initialization successful (framing={detected_framing}). Starting fuzzing...[/dim]"
             )
 
+        # Discover tools from initialized server
+        self._discovered_tools = self._discover_server_tools(fuzzer, detected_framing)
+
         # 2. Collect test cases using the detected framing
         all_cases = self._collect_cases(generators, detected_framing)
+
+        # 2a. Schema-aware argument fuzzing
+        if self._discovered_tools and (generators is None or "schema_fuzzer" in generators):
+            schema_cases = schema_fuzzer.generate_for_tools(
+                self._discovered_tools,
+                framing=detected_framing,
+                intensity=self.intensity,
+            )
+            all_cases.extend(schema_cases)
 
         # 2b. AI-generated fuzz cases (per-tool)
         if self.ai:
@@ -163,6 +176,7 @@ class FuzzEngine:
             "type_confusion": type_confusion.generate,
             "boundary": boundary_testing.generate,
             "unicode": unicode_attacks.generate,
+            "schema_fuzzer": schema_fuzzer.generate,
         }
         # Medium: + session + encoding + integer boundaries (~200 cases)
         medium_gens = {
@@ -277,8 +291,9 @@ class FuzzEngine:
                 if case.generator == "injection_payloads":
                     for tool in self._discovered_tools:
                         tool_name = tool.get("name", "test_tool")
-                        schema = tool.get("inputSchema", {})
-                        real_params = list(schema.get("properties", {}).keys())
+                        schema = tool.get("inputSchema", {}) if isinstance(tool.get("inputSchema"), dict) else {}
+                        props = schema.get("properties", {}) if isinstance(schema.get("properties"), dict) else {}
+                        req_keys = set(schema.get("required", [])) if isinstance(schema.get("required"), list) else set()
                         try:
                             raw = case.payload
                             if b"\r\n\r\n" in raw:
@@ -290,29 +305,62 @@ class FuzzEngine:
                             msg = json.loads(body)
                             if msg.get("method") == "tools/call":
                                 msg["params"]["name"] = tool_name
-                                if real_params:
-                                    old_args = msg["params"].get("arguments", {})
-                                    payload_val = next(iter(old_args.values()), "")
-                                    msg["params"]["arguments"] = {
-                                        p: payload_val for p in real_params
-                                    }
-                                new_body = json.dumps(msg).encode()
-                                if framing == "jsonl":
-                                    framed = new_body + b"\n"
+                                old_args = msg["params"].get("arguments", {})
+                                payload_val = next(iter(old_args.values()), "") if old_args else ""
+
+                                if props:
+                                    # Schema-aware targeting: fill required baselines, inject into string/untyped params
+                                    target_candidates = [
+                                        p for p, p_schema in props.items()
+                                        if isinstance(p_schema, dict) and p_schema.get("type", "string") == "string"
+                                    ] or list(props.keys())
+
+                                    for target_param in target_candidates:
+                                        call_args = {}
+                                        for r in req_keys:
+                                            if r != target_param and r in props:
+                                                call_args[r] = schema_fuzzer.generate_baseline_value(props[r])
+                                        call_args[target_param] = payload_val
+
+                                        tool_msg = dict(msg)
+                                        tool_msg["params"] = dict(msg["params"])
+                                        tool_msg["params"]["arguments"] = call_args
+                                        new_body = json.dumps(tool_msg).encode()
+                                        if framing == "jsonl":
+                                            framed = new_body + b"\n"
+                                        else:
+                                            framed = (
+                                                f"Content-Length: {len(new_body)}\r\n\r\n".encode()
+                                                + new_body
+                                            )
+                                        enriched.append(
+                                            FuzzCase(
+                                                name=f"{case.name}_{tool_name}_{target_param}",
+                                                generator=case.generator,
+                                                payload=framed,
+                                                description=f"{case.description} (tool: {tool_name}, param: {target_param})",
+                                                expected_behavior=case.expected_behavior,
+                                            )
+                                        )
                                 else:
-                                    framed = (
-                                        f"Content-Length: {len(new_body)}\r\n\r\n".encode()
-                                        + new_body
+                                    msg["params"]["arguments"] = {"input": payload_val}
+                                    new_body = json.dumps(msg).encode()
+                                    if framing == "jsonl":
+                                        framed = new_body + b"\n"
+                                    else:
+                                        framed = (
+                                            f"Content-Length: {len(new_body)}\r\n\r\n".encode()
+                                            + new_body
+                                        )
+                                    enriched.append(
+                                        FuzzCase(
+                                            name=f"{case.name}_{tool_name}",
+                                            generator=case.generator,
+                                            payload=framed,
+                                            description=f"{case.description} (tool: {tool_name})",
+                                            expected_behavior=case.expected_behavior,
+                                        )
                                     )
-                                enriched.append(
-                                    FuzzCase(
-                                        name=f"{case.name}_{tool_name}",
-                                        generator=case.generator,
-                                        payload=framed,
-                                        description=f"{case.description} (tool: {tool_name})",
-                                        expected_behavior=case.expected_behavior,
-                                    )
-                                )
                         except Exception as e:
                             logger.debug(f"Exception caught: {e}")
                     enriched.append(case)
@@ -492,6 +540,43 @@ class FuzzEngine:
                 fuzzer.send_raw(notif_payload)
 
         return result
+
+    def _discover_server_tools(self, fuzzer: StdioFuzzer, framing: str) -> list[dict]:
+        """Discover tools exposed by the MCP server via tools/list."""
+        if not fuzzer.is_alive():
+            fuzzer.restart_server()
+            fuzzer.framing = framing
+            self._probe_server(fuzzer, framing)
+
+        tools_msg = {"jsonrpc": "2.0", "method": "tools/list", "id": 9999, "params": {}}
+        result = None
+        for attempt in range(3):
+            if not fuzzer.is_alive():
+                fuzzer.restart_server()
+                fuzzer.framing = framing
+                self._probe_server(fuzzer, framing)
+                time.sleep(0.5)
+
+            result = fuzzer.send_mcp_message_with_timeout(tools_msg, self.startup_timeout)
+            if result and result.response and not result.crashed and not result.timeout:
+                break
+            time.sleep(0.5)
+
+        if not result or not result.response:
+            return []
+
+        try:
+            resp_text = result.response.decode("utf-8", errors="replace")
+            if "\r\n\r\n" in resp_text:
+                resp_text = resp_text.split("\r\n\r\n", 1)[1]
+            resp_data = json.loads(resp_text)
+            tools = resp_data.get("result", {}).get("tools", [])
+            if isinstance(tools, list):
+                return tools
+        except Exception as e:
+            logger.debug(f"Failed to parse tools/list response: {e}")
+
+        return []
 
     def _generate_ai_cases(self, fuzzer: StdioFuzzer, framing: str) -> list[FuzzCase]:
         """Use AI to generate custom adversarial payloads per tool."""
