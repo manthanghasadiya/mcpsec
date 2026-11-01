@@ -18,9 +18,9 @@ from . import (
     protocol_violation,
     regex_dos,
     resource_exhaustion,
+    schema_fuzzer,
     session_attacks,
     timing_attacks,
     type_confusion,
     unicode_attacks,
 )
-

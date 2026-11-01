@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [2.7.3] - 2026-11-01
+
+### Added
+- **Schema-Aware Argument Fuzzer (schema_fuzzer)**: Per-parameter, type-targeted mutation fuzzing driven by tool inputSchema.
+  - Type-targeted mutation catalog for strings (path traversal, command injection, template injection, SSRF, length abuse, unicode, format and pattern violations), numbers and integers (numeric boundaries, floats, NaN/Infinity tokens, min/max bounds), booleans (type confusion), arrays (item recursion, min/max bounds, deep nesting), and objects (prototype pollution, unexpected keys, deep nesting).
+  - Out-of-enum value generation for enum properties.
+  - Baseline value generation for non-targeted required parameters to ensure valid payloads reach tool handlers instead of failing schema validation.
+  - Schema-less tool support (defaults to untyped string argument fuzzing).
+  - Configurable intensity scaling (low, medium, high, insane).
+  - Comprehensive unit test suite in 	ests/test_schema_fuzzer.py.
+
+### Improved
+- **Fuzz Engine Wiring**: Automatically discovers server tools on startup and executes targeted schema fuzzing.
+- Replaced naive single-value spray in uzz_engine.py with schema-aware parameter targeting and baseline parameter population.
+
+## [2.7.2] - 2026-07-28
+
+### Added
+- Support for MCP 2026-07-28 stateless protocol lifecycle (server/discover).
 ## [2.7.1] - 2026-04-15
 
 ### Improved
