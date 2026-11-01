@@ -31,6 +31,8 @@ class FuzzResult:
     crashed: bool  # Server process died
     timeout: bool  # No response within timeout
     error_message: str = ""
+    verdict: str = ""
+    verdict_reason: str = ""
 
 
 class StdioFuzzer:
@@ -177,15 +179,12 @@ class StdioFuzzer:
                 stderr_tail = f.read().decode("utf-8", errors="replace").lower()
 
                 crash_indicators = [
-                    "traceback",
+                    "traceback (most recent call last)",
                     "panic:",
                     "fatal",
                     "segfault",
                     "sigsegv",
-                    "exception",
-                    "error:",
                     "stack trace",
-                    "at object.",
                     "uncaughtexception",
                     "unhandledrejection",
                 ]

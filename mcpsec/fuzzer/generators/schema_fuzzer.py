@@ -131,6 +131,24 @@ def generate_baseline_value(prop_schema: dict) -> Any:
     return "test"
 
 
+def build_valid_arguments(schema: dict) -> dict[str, Any]:
+    """Build a complete valid arguments dictionary from an inputSchema.
+
+    Iterates over properties in the schema and generates a deterministic,
+    valid baseline value for each property using generate_baseline_value.
+    """
+    if not isinstance(schema, dict):
+        return {}
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return {}
+    return {
+        param_name: generate_baseline_value(prop_schema)
+        for param_name, prop_schema in properties.items()
+        if isinstance(prop_schema, dict)
+    }
+
+
 def _make_deep_array(depth: int) -> list:
     curr = ["item"]
     for _ in range(depth):
