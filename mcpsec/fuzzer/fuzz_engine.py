@@ -34,9 +34,11 @@ from mcpsec.fuzzer.generators import (
     type_confusion,
     unicode_attacks,
 )
+from mcpsec.fuzzer.baseline import ToolBaseline, Verdict, build_baseline, classify
 from mcpsec.fuzzer.generators.base import FuzzCase
 from mcpsec.fuzzer.transport.http_fuzzer import HttpFuzzer
 from mcpsec.fuzzer.transport.stdio_fuzzer import FuzzResult, StdioFuzzer
+from mcpsec.scanners.response_classifier import _is_jsonrpc_safe
 from mcpsec.ui import console, get_progress, print_section
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,7 @@ class FuzzEngine:
         self.results: List[FuzzResult] = []
         self.interesting: List[tuple[FuzzCase, FuzzResult]] = []
         self._discovered_tools: list[dict] = []
+        self.baselines: dict[str, ToolBaseline] = {}
 
     def run(self, generators: list[str] | None = None) -> dict:
         """Run the full fuzzing campaign."""
@@ -134,6 +137,29 @@ class FuzzEngine:
 
         # Discover tools from initialized server
         self._discovered_tools = self._discover_server_tools(fuzzer, detected_framing)
+
+        # Build baseline fingerprints for discovered tools
+        self.baselines = {}
+        if self._discovered_tools:
+            if self.debug:
+                console.print("  [dim]Building tool baselines...[/dim]")
+
+            def benign_send(payload: bytes) -> FuzzResult:
+                if not fuzzer.is_alive():
+                    fuzzer.restart_server()
+                    fuzzer.framing = detected_framing
+                    self._probe_server(fuzzer, detected_framing)
+                return fuzzer.send_raw(payload)
+
+            for tool in self._discovered_tools:
+                tool_name = tool.get("name")
+                if tool_name:
+                    try:
+                        self.baselines[tool_name] = build_baseline(
+                            tool, benign_send, framing=detected_framing
+                        )
+                    except Exception as e:
+                        logger.debug(f"Failed to build baseline for {tool_name}: {e}")
 
         # 2. Collect test cases using the detected framing
         all_cases = self._collect_cases(generators, detected_framing)
@@ -433,7 +459,48 @@ class FuzzEngine:
                     )
 
             # Check if interesting
-            if result.crashed or result.timeout or self._is_anomalous(result):
+            target_tool = self._get_target_tool_for_case(case)
+            baseline = self.baselines.get(target_tool) if target_tool else None
+
+            is_interesting = False
+            if result.crashed:
+                result.verdict = Verdict.DEVIATION.value
+                result.verdict_reason = result.error_message or "server crashed"
+                is_interesting = True
+            elif result.timeout:
+                result.verdict = Verdict.DEVIATION.value
+                result.verdict_reason = "request timeout"
+                is_interesting = True
+            elif baseline is not None:
+                verdict, reason = classify(result, baseline, case.payload)
+                result.verdict = verdict.value
+                result.verdict_reason = reason
+                if verdict == Verdict.DEVIATION:
+                    is_interesting = True
+            else:
+                # Fallback for schema-less or non-tool cases
+                if self._is_anomalous(result):
+                    result.verdict = Verdict.DEVIATION.value
+                    result.verdict_reason = "anomalous response"
+                    is_interesting = True
+                else:
+                    resp_bytes = result.response or b""
+                    resp_text = (
+                        resp_bytes.decode("utf-8", errors="replace")
+                        if isinstance(resp_bytes, bytes)
+                        else str(resp_bytes)
+                    )
+                    clean_text = resp_text
+                    if "\r\n\r\n" in clean_text:
+                        clean_text = clean_text.split("\r\n\r\n", 1)[1]
+                    if _is_jsonrpc_safe(clean_text.strip(), None) or _is_jsonrpc_safe(resp_text, None):
+                        result.verdict = Verdict.TRANSPORT_REJECT.value
+                        result.verdict_reason = "JSON-RPC safe error"
+                    else:
+                        result.verdict = Verdict.CLEAN.value
+                        result.verdict_reason = "matches baseline"
+
+            if is_interesting:
                 self.interesting.append((case, result))
 
             if case.repeat > 1 and i < case.repeat - 1 and case.delay_between > 0:
@@ -699,15 +766,47 @@ class FuzzEngine:
 
         return cases
 
+    def _get_target_tool_for_case(self, case: FuzzCase) -> str | None:
+        """Identify which tool a fuzz case targets, if any."""
+        try:
+            raw = case.payload
+            if b"\r\n\r\n" in raw:
+                body = raw.split(b"\r\n\r\n", 1)[1]
+            else:
+                body = raw
+            data = json.loads(body)
+            if isinstance(data, dict) and data.get("method") == "tools/call":
+                params = data.get("params")
+                if isinstance(params, dict):
+                    name = params.get("name")
+                    if name and name in self.baselines:
+                        return name
+        except Exception:
+            pass
+
+        for tool_name in self.baselines:
+            if (
+                f"_{tool_name}_" in case.name
+                or case.name.endswith(f"_{tool_name}")
+                or case.name.startswith(f"schema_{tool_name}")
+                or case.name.startswith(f"ai_{tool_name}")
+            ):
+                return tool_name
+
+        return None
+
     def _is_anomalous(self, result: FuzzResult) -> bool:
-        """Detect anomalous responses that might indicate bugs."""
+        """Detect anomalous responses that might indicate bugs (conservative fallback)."""
         if not result.response:
             return False
         try:
             text = result.response.decode("utf-8", errors="replace")
         except Exception:
             return True
-        if any(x in text.lower() for x in ["traceback", "stack trace", "error:", "panic:"]):
+        if any(
+            x in text.lower()
+            for x in ["traceback (most recent call last)", "stack trace", "panic:"]
+        ):
             return True
         if result.elapsed_ms > 2000:
             return True
@@ -732,6 +831,8 @@ class FuzzEngine:
                     "timeout": result.timeout,
                     "elapsed_ms": result.elapsed_ms,
                     "error": result.error_message,
+                    "verdict": getattr(result, "verdict", ""),
+                    "verdict_reason": getattr(result, "verdict_reason", ""),
                 }
                 for case, result in self.interesting
             ],
