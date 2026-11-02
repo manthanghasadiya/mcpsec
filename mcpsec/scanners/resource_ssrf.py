@@ -9,11 +9,15 @@ can make the server fetch internal resources or cloud metadata.
 from __future__ import annotations
 
 import logging
+import re
+import time
 from typing import Any
+import urllib.parse
 
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import Finding, ServerProfile, Severity
 from mcpsec.scanners.base import BaseScanner
+from mcpsec.scanners.oracles import OOBCollector
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,9 @@ class ResourceSSRFScanner(BaseScanner):
 
     name = "resource-ssrf"
     description = "Tests resource endpoints for Server-Side Request Forgery (SSRF)"
+
+    def __init__(self, oob_host: str | None = None) -> None:
+        self.oob_host = oob_host
 
     # SSRF test payloads
     SSRF_PAYLOADS = [
@@ -86,12 +93,6 @@ class ResourceSSRFScanner(BaseScanner):
         # Redis
         "redis_version",
         "connected_clients",
-        # Generic internal
-        "admin",
-        "password",
-        "secret",
-        "token",
-        "private",
     ]
 
     async def scan(
@@ -103,35 +104,82 @@ class ResourceSSRFScanner(BaseScanner):
         if not profile.resources:
             return findings
 
-        # Find resources that might accept URIs
-        for resource in profile.resources:
-            uri = resource.uri
-            name = resource.name or "unknown"
+        with OOBCollector(advertise_host=self.oob_host) as collector:
+            # Find resources that might accept URIs
+            for resource in profile.resources:
+                uri = resource.uri
+                name = resource.name or "unknown"
 
-            # Check if this resource has parameterized URI template or looks like a fetcher
-            if "{" in uri or self._looks_like_fetch_resource(resource):
-                # Static analysis finding first if not testing dynamically
-                if not client:
-                    findings.append(
-                        Finding(
-                            severity=Severity.MEDIUM,
-                            scanner=self.name,
-                            tool_name=name,
-                            title="Resource may be vulnerable to SSRF",
-                            description=f"Resource '{name}' accepts URI input - potential SSRF vector",
-                            detail=f"URI Template: {uri}",
-                            remediation="Validate and whitelist allowed URI schemes and hosts",
+                # Check if this resource has parameterized URI template or looks like a fetcher
+                if "{" in uri or self._looks_like_fetch_resource(resource):
+                    # Static analysis finding first if not testing dynamically
+                    if not client or not client.session:
+                        findings.append(
+                            Finding(
+                                severity=Severity.MEDIUM,
+                                scanner=self.name,
+                                tool_name=name,
+                                title="Resource may be vulnerable to SSRF",
+                                description=f"Resource '{name}' accepts URI input - potential SSRF vector",
+                                detail=f"URI Template: {uri}",
+                                remediation="Validate and whitelist allowed URI schemes and hosts",
+                            )
                         )
-                    )
-                    continue
+                        continue
 
-                # Test SSRF payloads dynamically
-                for payload_name, payload_uri, description in self.SSRF_PAYLOADS:
-                    finding = await self._test_ssrf(
-                        client, name, uri, payload_name, payload_uri, description
-                    )
-                    if finding:
-                        findings.append(finding)
+                    # 1. Authoritative path: Out-of-band HTTP oracle
+                    confirmed_oob = False
+                    try:
+                        token, probe_url = collector.new_probe()
+                        if "{" in uri:
+                            target_uri = re.sub(r"\{[^}]+\}", probe_url, uri)
+                        else:
+                            target_uri = probe_url
+
+                        try:
+                            await client.session.read_resource(target_uri)
+                        except Exception:
+                            pass
+
+                        hit = collector.received(token, settle=2.0)
+                        if hit is not None:
+                            src_ip = hit.get("source_ip", "unknown")
+                            method = hit.get("method", "GET")
+                            path = hit.get("path", f"/{token}")
+                            ts = hit.get("timestamp", time.time())
+                            evidence = (
+                                f"Out-of-band HTTP request received for token '{token}' from {src_ip} "
+                                f"({method} {path} at {ts})"
+                            )
+                            findings.append(
+                                Finding(
+                                    severity=Severity.CRITICAL,
+                                    scanner=self.name,
+                                    tool_name=name,
+                                    title=f"Resource SSRF in '{name}' [CONFIRMED]",
+                                    description=f"Resource '{name}' fetched an out-of-band URL via resource read.",
+                                    detail=f"Oracle: oob-http\nPayload: {probe_url}\nEvidence: {evidence}",
+                                    evidence=evidence,
+                                    confidence="confirmed",
+                                    remediation="Implement strict URI validation, whitelist allowed schemes (https only), block internal IPs",
+                                    cwe="CWE-918",
+                                )
+                            )
+                            confirmed_oob = True
+                    except Exception as e:
+                        logger.debug(f"Error testing resource OOB SSRF: {e}")
+
+                    if confirmed_oob:
+                        continue
+
+                    # 2. Secondary path: Test SSRF payloads dynamically with reflection guard
+                    for payload_name, payload_uri, description in self.SSRF_PAYLOADS:
+                        finding = await self._test_ssrf(
+                            client, name, uri, payload_name, payload_uri, description
+                        )
+                        if finding:
+                            findings.append(finding)
+                            break
 
         return findings
 
@@ -156,13 +204,14 @@ class ResourceSSRFScanner(BaseScanner):
         if not client.session:
             return None
 
+        target_uri = (
+            re.sub(r"\{[^}]+\}", payload_uri, uri_template) if "{" in uri_template else payload_uri
+        )
+
         try:
-            # Dynamic testing - actually try the payload via read_resource
-            # We use payload_uri as the URI to read
-            result = await client.session.read_resource(payload_uri)
+            result = await client.session.read_resource(target_uri)
 
             if result:
-                # result is usually a ReadResourceResult which has contents
                 content_text = ""
                 for content in result.contents:
                     if hasattr(content, "text"):
@@ -170,12 +219,24 @@ class ResourceSSRFScanner(BaseScanner):
                     elif hasattr(content, "blob"):
                         content_text += str(content.blob)
 
-                result_str = content_text.lower()
+                clean_text = content_text.replace(target_uri, "").replace(payload_uri, "")
+                try:
+                    decoded = urllib.parse.unquote(payload_uri)
+                    if decoded != payload_uri:
+                        clean_text = clean_text.replace(decoded, "")
+                except Exception:
+                    pass
 
-                # Check for SSRF success indicators
+                result_str = clean_text.lower()
+
+                # Check for SSRF success indicators with reflection guard
                 evidence = ""
                 for indicator in self.SSRF_SUCCESS_INDICATORS:
-                    if indicator.lower() in result_str:
+                    ind_lower = indicator.lower()
+                    if ind_lower in result_str:
+                        # Reflection guard: if indicator is in the payload URI, ignore
+                        if ind_lower in payload_uri.lower() or ind_lower in target_uri.lower():
+                            continue
                         evidence = f"Matched indicator: '{indicator}'"
                         break
 
@@ -186,39 +247,18 @@ class ResourceSSRFScanner(BaseScanner):
                         tool_name=resource_name,
                         title="SSRF Vulnerability Confirmed",
                         description=f"Resource '{resource_name}' fetched internal/sensitive data via {description}",
-                        detail=f"Payload: {payload_uri}\nEvidence: {evidence}",
-                        evidence=result_str[:500],
+                        detail=f"Payload: {target_uri}\nEvidence: {evidence}",
+                        evidence=clean_text[:500],
+                        confidence="confirmed",
                         remediation="Implement strict URI validation, whitelist allowed schemes (https only), block internal IPs",
+                        cwe="CWE-918",
                     )
 
-                # Even without indicators, getting a response is suspicious
-                return Finding(
-                    severity=Severity.HIGH,
-                    scanner=self.name,
-                    tool_name=resource_name,
-                    title="Potential SSRF - Unexpected Response",
-                    description=f"Resource '{resource_name}' returned data for {description}",
-                    detail=f"Payload: {payload_uri}\nResponse Length: {len(result_str)}",
-                    evidence=result_str[:200],
-                    remediation="Investigate why the server fetched this URI. Implement allowlist.",
-                )
+                # Bare response without matching indicator is NOT a finding
+                return None
 
         except Exception as e:
-            # Errors are expected for blocked requests
-            error_str = str(e).lower()
-
-            # Some errors indicate partial success (connection made but blocked)
-            suspicious_errors = ["timeout", "connection refused", "reset", "forbidden"]
-            if any(err in error_str for err in suspicious_errors):
-                return Finding(
-                    severity=Severity.LOW,
-                    scanner=self.name,
-                    tool_name=resource_name,
-                    title="SSRF Partially Blocked",
-                    description=f"Server attempted connection to {description} but was blocked",
-                    detail=f"Payload: {payload_uri}\nError: {error_str[:200]}",
-                    remediation="Good - connection was blocked. Ensure all internal IPs are blocked.",
-                )
+            logger.debug(f"Error testing resource {resource_name}: {e}")
 
         return None
 

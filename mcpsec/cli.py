@@ -163,6 +163,11 @@ def scan(
         "--server",
         help="Only scan servers matching this name (supports wildcards)",
     ),
+    oob_host: Optional[str] = typer.Option(
+        None,
+        "--oob-host",
+        help="Host/IP advertised in out-of-band (OOB) payload URLs for SSRF detection (default: 127.0.0.1)",
+    ),
 ):
     """
     Scan an MCP server for security vulnerabilities.
@@ -186,6 +191,7 @@ def scan(
                 list_only=list_servers,
                 server_filter=server_filter,
                 exploit=exploit,
+                oob_host=oob_host,
             )
         )
     elif not stdio and not http:
@@ -207,6 +213,7 @@ def scan(
                 ai=ai,
                 headers=_parse_headers(header),
                 exploit=exploit,
+                oob_host=oob_host,
             )
         )
 
@@ -221,6 +228,7 @@ async def _scan_async(
     ai: bool = False,
     headers: dict[str, str] | None = None,
     exploit: bool = False,
+    oob_host: str | None = None,
 ):
     from mcpsec.client.mcp_client import MCPSecClient
     from mcpsec.engine import run_scan
@@ -449,6 +457,7 @@ async def _scan_async(
             scanner_names=scanner_names,
             target=target,
             transport=transport,
+            oob_host=oob_host,
         )
 
         # Merge AI findings into result
@@ -502,6 +511,7 @@ async def _auto_scan_async(
     list_only: bool = False,
     server_filter: str | None = None,
     exploit: bool = False,
+    oob_host: str | None = None,
 ):
     """Auto-discover and scan multiple MCP servers."""
     import fnmatch
@@ -631,6 +641,7 @@ async def _auto_scan_async(
                     client=client,
                     profile=profile,
                     scanner_names=scanner_names,
+                    oob_host=oob_host,
                 )).findings
                 
                 # Convert findings to dict early so we can safely inject metadata
