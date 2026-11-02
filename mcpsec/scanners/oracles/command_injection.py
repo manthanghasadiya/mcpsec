@@ -1,7 +1,7 @@
 """Command Injection Oracle — confirms command injection vulnerabilities by effect.
 
 Distinguishes actual command execution from argument reflection using:
-1. Unique random canary nonces with strict reflection-vs-execution guards.
+1. Computed canary nonces joined via shell subshell concatenation.
 2. Baseline-aware differential time-based confirmation.
 """
 
@@ -11,7 +11,6 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 import math
-import re
 import secrets
 from typing import Any, Callable
 
@@ -40,6 +39,28 @@ async def _invoke_call_fn(
     return str(res), 0.0
 
 
+def build_computed_canary_payloads(a: str, b: str) -> list[str]:
+    """Build computed canary payloads using subshell concatenation across common separators.
+
+    The proof string {a}{b} is NEVER present contiguously in any payload sent.
+    Only execution by a subshell can collapse $(echo {a}) to {a} and append {b}.
+    """
+    substitutions = [
+        f"$(echo {a}){b}",
+        f"`echo {a}`{b}",
+        f"echo $(echo {a}){b}",
+        f"echo `echo {a}`{b}",
+    ]
+    prefixes = ["", "; ", "| ", "& ", "\n", "&& ", "|| "]
+    payloads = []
+    for sub in substitutions:
+        for prefix in prefixes:
+            p = f"{prefix}{sub}"
+            if p not in payloads:
+                payloads.append(p)
+    return payloads
+
+
 async def confirm_command_injection(
     call_fn: Callable[..., Any],
     tool_name: str,
@@ -47,7 +68,7 @@ async def confirm_command_injection(
     base_args: dict[str, Any] | None = None,
     baseline_latency_ms: float = 0.0,
 ) -> OracleResult:
-    """Confirm command execution via unique canary echo or baseline-aware timing.
+    """Confirm command execution via computed canary or baseline-aware timing.
 
     Args:
         call_fn: Callable(tool_name, args) -> (response_text, elapsed_seconds)
@@ -62,39 +83,31 @@ async def confirm_command_injection(
     base_args = dict(base_args or {})
 
     # ═══════════════════════════════════════════════════════════════
-    # METHOD 1: Unique-canary echo (distinguishes execution from reflection)
+    # METHOD 1: Computed-canary subshell concatenation
     # ═══════════════════════════════════════════════════════════════
-    token = "mcpsec_" + secrets.token_hex(6)
-    canary_templates = [
-        "; echo {token}",
-        "| echo {token}",
-        "& echo {token}",
-        "$(echo {token})",
-        "`echo {token}`",
-    ]
+    # Two independent nonces placed non-adjacently in sent bytes.
+    # The proof string {a}{b} appears ONLY if the shell executes the subshell.
+    a = secrets.token_hex(4)
+    b = secrets.token_hex(4)
+    proof = f"{a}{b}"
 
-    for template in canary_payloads_for_token(canary_templates, token):
+    canary_payloads = build_computed_canary_payloads(a, b)
+
+    for payload in canary_payloads:
         test_args = dict(base_args)
-        test_args[param_name] = template
+        test_args[param_name] = payload
 
         try:
             resp_text, elapsed = await _invoke_call_fn(call_fn, tool_name, test_args)
         except Exception:
             continue
 
-        if token in resp_text:
-            # Reflection guard:
-            # When a shell executes `echo <token>`, stdout contains only `<token>`.
-            # If the response echoes the injected command verbatim or contains
-            # `echo <token>`, the argument was reflected as text without execution.
-            if template in resp_text or re.search(rf"\becho\s+{re.escape(token)}", resp_text):
-                continue
-
+        if proof in resp_text:
             return OracleResult(
                 confirmed=True,
                 method="canary",
-                evidence=f"Unique canary nonce '{token}' found in output without command syntax",
-                payload=template,
+                evidence=f"Computed canary '{proof}' (joined from nonces '{a}' and '{b}') executed via subshell concatenation",
+                payload=payload,
             )
 
     # ═══════════════════════════════════════════════════════════════
@@ -151,11 +164,6 @@ async def confirm_command_injection(
         evidence="No command execution confirmed",
         payload="",
     )
-
-
-def canary_payloads_for_token(templates: list[str], token: str) -> list[str]:
-    """Format template payloads with unique canary token."""
-    return [t.format(token=token) for t in templates]
 
 
 def confirm_command_injection_sync(

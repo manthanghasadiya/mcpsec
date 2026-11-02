@@ -23,6 +23,8 @@ from typing import Any
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import Finding, ServerProfile, Severity
 from mcpsec.scanners.base import BaseScanner
+from mcpsec.scanners.oracles.command_injection import confirm_command_injection
+from mcpsec.scanners.response_classifier import is_tool_relevant
 
 logger = logging.getLogger(__name__)
 
@@ -390,9 +392,6 @@ class CommandInjectionScanner(BaseScanner):
         if not client:
             return findings
 
-        from mcpsec.scanners.oracles.command_injection import confirm_command_injection
-        from mcpsec.scanners.response_classifier import is_tool_relevant
-
         for tool in profile.tools:
             # Scanner scoping: skip tools unlikely to shell out
             if not is_tool_relevant(tool.name, tool.description, "command-injection"):
@@ -434,73 +433,45 @@ class CommandInjectionScanner(BaseScanner):
                 return text, dur
 
             for param_name in injectable_params:
-                found_vuln = False
                 template_args = self._get_dummy_args(tool, param_name, "test")
 
-                # Fast pass through categorized payloads
-                for payload in _ALL_PAYLOADS:
-                    if found_vuln:
-                        break
-                    try:
-                        start = time.monotonic()
-                        call_args = self._get_dummy_args(tool, param_name, payload)
-                        result = await client.call_tool(tool.name, call_args)
-                        elapsed = time.monotonic() - start
+                # Check if param or tool name is shell-relevant
+                is_shell_name = (
+                    any(kw in param_name.lower() for kw in COMMAND_PARAM_KEYWORDS)
+                    or any(
+                        kw in tool.name.lower()
+                        for kw in ("cmd", "cmdi", "exec", "command", "shell", "bash", "sh", "run")
+                    )
+                )
 
-                        response_text = _extract_response(result)
+                looks_shell_relevant = is_shell_name
 
-                        # Check indicators (with classifier integration and reflection downgrade)
-                        evidence, confidence = _check_indicators(
-                            response_text, result, payload=payload
-                        )
+                # If not flagged by name, run cheap reflection/indicator pass over payloads
+                if not looks_shell_relevant:
+                    for payload in _ALL_PAYLOADS:
+                        try:
+                            start = time.monotonic()
+                            call_args = self._get_dummy_args(tool, param_name, payload)
+                            result = await client.call_tool(tool.name, call_args)
+                            elapsed = time.monotonic() - start
 
-                        # Check baseline-aware delay for sleep payloads (no fixed 5s threshold)
-                        base_sec = tool_baseline_latency_ms / 1000.0
-                        if not evidence and "sleep" in payload and elapsed >= (base_sec + 2.0):
-                            evidence = f"Potential time-based delay detected: {elapsed:.2f}s"
-                            confidence = "LIKELY"
-
-                        if evidence:
-                            # Payload looks interesting! Call oracle to get a real verdict
-                            oracle_res = await confirm_command_injection(
-                                call_fn,
-                                tool.name,
-                                param_name,
-                                base_args=template_args,
-                                baseline_latency_ms=tool_baseline_latency_ms,
+                            response_text = _extract_response(result)
+                            evidence, _ = _check_indicators(
+                                response_text, result, payload=payload
                             )
-                            if oracle_res.confirmed:
-                                findings.append(
-                                    Finding(
-                                        severity=Severity.CRITICAL,
-                                        scanner=self.name,
-                                        tool_name=tool.name,
-                                        parameter=param_name,
-                                        title=f"Command Injection in '{param_name}' [CONFIRMED]",
-                                        description=(
-                                            f"Tool '{tool.name}' is vulnerable to command injection "
-                                            f"via the '{param_name}' parameter."
-                                        ),
-                                        detail=f"Payload: {oracle_res.payload}\nEvidence: {oracle_res.evidence}",
-                                        evidence=oracle_res.evidence,
-                                        confidence="confirmed",
-                                        remediation=(
-                                            "Avoid passing user input to shell commands. "
-                                            "Use subprocess.run(['cmd', 'arg'], shell=False). "
-                                            "Validate input against a strict allowlist."
-                                        ),
-                                        cwe="CWE-78",
-                                    )
-                                )
-                                found_vuln = True
+
+                            base_sec = tool_baseline_latency_ms / 1000.0
+                            if not evidence and "sleep" in payload and elapsed >= (base_sec + 2.0):
+                                evidence = f"Potential time-based delay detected: {elapsed:.2f}s"
+
+                            if evidence:
+                                looks_shell_relevant = True
                                 break
+                        except Exception as e:
+                            logger.debug(f"Error testing {tool.name}/{param_name}: {e}")
 
-                    except Exception as e:
-                        logger.debug(f"Error testing {tool.name}/{param_name}: {e}")
-
-                # If fast pass did not trigger, unconditionally verify via oracle for relevant tools
-                # (vital for blind execution where echo never produces indicators)
-                if not found_vuln:
+                # Call oracle at most ONCE per (tool, param)
+                if looks_shell_relevant:
                     try:
                         oracle_res = await confirm_command_injection(
                             call_fn,
@@ -532,7 +503,6 @@ class CommandInjectionScanner(BaseScanner):
                                     cwe="CWE-78",
                                 )
                             )
-                            found_vuln = True
                     except Exception as e:
                         logger.debug(
                             f"Error in oracle verification for {tool.name}/{param_name}: {e}"

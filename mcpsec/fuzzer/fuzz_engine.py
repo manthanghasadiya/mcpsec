@@ -6,7 +6,7 @@ Orchestrates test case generation, execution, and crash analysis.
 import logging
 import json
 import time
-from typing import Any, List
+from typing import List
 
 from mcpsec.fuzzer.generators import (
     boundary_testing,
@@ -510,56 +510,6 @@ class FuzzEngine:
                     result.verdict_reason = reason
                     if verdict == Verdict.DEVIATION:
                         is_interesting = True
-
-                        # Escalate to command injection oracle if relevant
-                        is_cmdi_case = (
-                            "cmdi" in case.name
-                            or "cmdi" in getattr(case, "description", "").lower()
-                            or "command_injection" in getattr(case, "generator", "")
-                            or (
-                                reason == "payload reflected"
-                                and any(kw in case.name.lower() for kw in ("cmd", "cmdi", "exec", "command", "shell"))
-                            )
-                        )
-                        if is_cmdi_case and target_tool:
-                            from mcpsec.scanners.oracles.command_injection import confirm_command_injection_sync
-
-                            def fuzz_call_fn(t_name: str, call_args: dict[str, Any]) -> tuple[str, float]:
-                                msg = {
-                                    "jsonrpc": "2.0",
-                                    "id": 9999,
-                                    "method": "tools/call",
-                                    "params": {"name": t_name, "arguments": call_args},
-                                }
-                                body = json.dumps(msg).encode("utf-8")
-                                if framing == "jsonl":
-                                    framed = body + b"\n"
-                                else:
-                                    framed = f"Content-Length: {len(body)}\r\n\r\n".encode("utf-8") + body
-                                res = fuzzer.send_raw(framed)
-                                resp_b = getattr(res, "response", b"") or b""
-                                r_text = resp_b.decode("utf-8", errors="replace")
-                                r_elapsed = getattr(res, "elapsed_ms", 0.0) / 1000.0
-                                return r_text, r_elapsed
-
-                            target_param = self._get_target_param_for_case(case) or "input"
-                            base_args = self._get_case_args(case)
-
-                            oracle_res = confirm_command_injection_sync(
-                                fuzz_call_fn,
-                                target_tool,
-                                target_param,
-                                base_args=base_args,
-                                baseline_latency_ms=baseline.baseline_latency_ms,
-                            )
-                            if oracle_res.confirmed:
-                                result.verdict = Verdict.DEVIATION.value
-                                result.verdict_reason = f"confirmed command injection ({oracle_res.method}): {oracle_res.evidence}"
-                                is_interesting = True
-                            else:
-                                result.verdict = Verdict.CLEAN.value
-                                result.verdict_reason = "reflection only (execution not confirmed by oracle)"
-                                is_interesting = False
                 else:
                     # Fallback for schema-less or non-tool cases
                     if self._is_anomalous(result):
@@ -877,36 +827,6 @@ class FuzzEngine:
                 return tool_name
 
         return None
-
-    def _get_target_param_for_case(self, case: FuzzCase) -> str | None:
-        """Extract the parameter name targeted by the fuzz case."""
-        try:
-            raw = case.payload
-            body = raw.split(b"\r\n\r\n", 1)[1] if b"\r\n\r\n" in raw else raw.rstrip(b"\n")
-            data = json.loads(body)
-            args = data.get("params", {}).get("arguments", {})
-            if args:
-                parts = case.name.split("_")
-                for k in args:
-                    if k in parts:
-                        return k
-                return next(iter(args.keys()))
-        except Exception:
-            pass
-        return None
-
-    def _get_case_args(self, case: FuzzCase) -> dict[str, Any]:
-        """Extract arguments dict from the case payload."""
-        try:
-            raw = case.payload
-            body = raw.split(b"\r\n\r\n", 1)[1] if b"\r\n\r\n" in raw else raw.rstrip(b"\n")
-            data = json.loads(body)
-            args = data.get("params", {}).get("arguments", {})
-            if isinstance(args, dict):
-                return args
-        except Exception:
-            pass
-        return {}
 
     def _is_anomalous(self, result: FuzzResult) -> bool:
         """Detect anomalous responses that might indicate bugs (conservative fallback)."""

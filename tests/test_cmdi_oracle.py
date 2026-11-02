@@ -1,7 +1,10 @@
 """Unit and integration tests for the Command Injection Oracle."""
 
 import asyncio
+import inspect
+import json
 import re
+from unittest.mock import AsyncMock
 import pytest
 
 from mcpsec.scanners.oracles.command_injection import (
@@ -12,42 +15,11 @@ from mcpsec.scanners.oracles.command_injection import (
 
 
 @pytest.mark.asyncio
-async def test_canary_execution_confirmed():
-    """Canary path: a call_fn that returns the nonce (simulating execution) yields confirmed=True, method='canary'."""
+async def test_verbatim_reflector_not_confirmed():
+    """Verbatim reflector returns payload unchanged -> confirmed=False."""
 
     def call_fn(tool_name: str, args: dict):
         cmd = args.get("cmd", "")
-        # Simulate shell execution of `echo <token>` -> output contains only the token
-        m = re.search(r"echo\s+([A-Za-z0-9_]+)", cmd)
-        if m:
-            token = m.group(1)
-            return f"Command output:\n{token}\n", 0.05
-        return "Command completed", 0.05
-
-    result: OracleResult = await confirm_command_injection(
-        call_fn=call_fn,
-        tool_name="cmd_tool",
-        param_name="cmd",
-        base_args={"cmd": "default"},
-        baseline_latency_ms=50.0,
-    )
-
-    assert result.confirmed is True
-    assert result.method == "canary"
-    assert "mcpsec_" in result.evidence
-    assert "; echo" in result.payload or "echo" in result.payload
-
-
-@pytest.mark.asyncio
-async def test_reflection_guard_not_confirmed():
-    """Reflection guard: a call_fn that returns the full payload string verbatim
-
-    (including '; echo') yields confirmed=False. This is the critical false-positive test.
-    """
-
-    def call_fn(tool_name: str, args: dict):
-        cmd = args.get("cmd", "")
-        # Simulates a formatter or echo tool returning the verbatim payload
         return f"Echo output: {cmd}", 0.05
 
     result: OracleResult = await confirm_command_injection(
@@ -64,12 +36,86 @@ async def test_reflection_guard_not_confirmed():
 
 
 @pytest.mark.asyncio
-async def test_timing_differential_path_confirmed():
-    """Timing path: a call_fn that sleeps for D seconds yields confirmed=True, method='timing'."""
+async def test_last_token_reflector_not_confirmed():
+    """Last-token reflector returns only the last whitespace-separated token -> confirmed=False."""
 
     def call_fn(tool_name: str, args: dict):
         cmd = args.get("cmd", "")
-        # Simulate shell executing sleep D
+        tokens = cmd.strip().split()
+        last_tok = tokens[-1] if tokens else ""
+        return f"Processed: {last_tok}", 0.05
+
+    result: OracleResult = await confirm_command_injection(
+        call_fn=call_fn,
+        tool_name="token_tool",
+        param_name="cmd",
+        base_args={"cmd": "default"},
+        baseline_latency_ms=50.0,
+    )
+
+    assert result.confirmed is False
+    assert result.method is None
+    assert "No command execution confirmed" in result.evidence
+
+
+@pytest.mark.asyncio
+async def test_strip_echo_reflector_not_confirmed():
+    """Strip-echo reflector removes leading echo / ; echo and returns remainder -> confirmed=False."""
+
+    def call_fn(tool_name: str, args: dict):
+        cmd = args.get("cmd", "")
+        stripped = re.sub(r"^[;\s|&]*(?:echo\s+)?", "", cmd)
+        return f"Echo output: {stripped}", 0.05
+
+    result: OracleResult = await confirm_command_injection(
+        call_fn=call_fn,
+        tool_name="strip_echo_tool",
+        param_name="cmd",
+        base_args={"cmd": "default"},
+        baseline_latency_ms=50.0,
+    )
+
+    assert result.confirmed is False
+    assert result.method is None
+    assert "No command execution confirmed" in result.evidence
+
+
+@pytest.mark.asyncio
+async def test_executing_fake_collapsing_subshell_confirmed():
+    """Executing fake simulates shell by collapsing $(echo X) to X -> confirmed=True, method='canary'."""
+
+    def call_fn(tool_name: str, args: dict):
+        cmd = args.get("cmd", "")
+        executed = re.sub(r"\$\(echo\s+([A-Za-z0-9_]+)\)", r"\1", cmd)
+        executed = re.sub(r"`echo\s+([A-Za-z0-9_]+)`", r"\1", executed)
+        return f"Shell output: {executed}\n", 0.05
+
+    result: OracleResult = await confirm_command_injection(
+        call_fn=call_fn,
+        tool_name="cmd_tool",
+        param_name="cmd",
+        base_args={"cmd": "default"},
+        baseline_latency_ms=50.0,
+    )
+
+    assert result.confirmed is True
+    assert result.method == "canary"
+    assert "Computed canary" in result.evidence
+    m = re.search(r"Computed canary '([0-9a-f]{16})'", result.evidence)
+    assert m is not None, f"Expected 16-char hex joined nonce in evidence: {result.evidence}"
+    joined = m.group(1)
+    a = joined[:8]
+    b = joined[8:]
+    assert a in result.evidence
+    assert b in result.evidence
+
+
+@pytest.mark.asyncio
+async def test_timing_positive_confirmed():
+    """Timing positive: call_fn sleeps for D seconds -> confirmed=True, method='timing'."""
+
+    def call_fn(tool_name: str, args: dict):
+        cmd = args.get("cmd", "")
         m = re.search(r"sleep\s+(\d+)", cmd)
         if m:
             d = float(m.group(1))
@@ -91,14 +137,10 @@ async def test_timing_differential_path_confirmed():
 
 
 @pytest.mark.asyncio
-async def test_uniformly_slow_server_yields_false():
-    """A call_fn that is uniformly slow (e.g. 6.0s on all requests) but does not scale with D
-
-    yields confirmed=False.
-    """
+async def test_timing_negative_uniformly_slow_not_confirmed():
+    """Timing negative: call_fn uniformly slow but not scaling with D -> confirmed=False."""
 
     def call_fn(tool_name: str, args: dict):
-        # Always slow regardless of injected payload
         return "Slow response", 6.0
 
     result: OracleResult = await confirm_command_injection(
@@ -111,18 +153,15 @@ async def test_uniformly_slow_server_yields_false():
 
     assert result.confirmed is False
     assert result.method is None
+    assert "No command execution confirmed" in result.evidence
 
 
 @pytest.mark.asyncio
 async def test_baseline_integration_scales_threshold():
-    """Baseline integration: timing threshold is derived from the passed baseline latency,
+    """Baseline integration: timing threshold scales with baseline latency."""
 
-    not a hardcoded 5.0s threshold.
-    """
-
-    # If baseline is 4.0s (4000ms), a 5.0s response is just normal latency jitter, not command execution!
     def call_fn(tool_name: str, args: dict):
-        return "Normal server delay", 5.0
+        return "Normal delay", 5.0
 
     result: OracleResult = await confirm_command_injection(
         call_fn=call_fn,
@@ -140,10 +179,8 @@ def test_sync_helper():
 
     def call_fn(tool_name: str, args: dict):
         cmd = args.get("cmd", "")
-        m = re.search(r"echo\s+([A-Za-z0-9_]+)", cmd)
-        if m:
-            return m.group(1), 0.01
-        return "", 0.01
+        executed = re.sub(r"\$\(echo\s+([A-Za-z0-9_]+)\)", r"\1", cmd)
+        return executed, 0.01
 
     res = confirm_command_injection_sync(
         call_fn=call_fn,
@@ -156,81 +193,75 @@ def test_sync_helper():
     assert res.method == "canary"
 
 
-def test_fuzzer_differential_escalation_positive():
-    """Fuzzer differential escalates cmdi deviation to confirmed finding via oracle."""
-    import json
+@pytest.mark.asyncio
+async def test_scan_path_oracle_deduped(monkeypatch):
+    """Scan path: oracle is invoked at most once per (tool, param) even when many payloads reflect."""
+    from mcpsec.models import ServerProfile, ToolInfo
+    from mcpsec.scanners.command_injection import CommandInjectionScanner
+    import mcpsec.scanners.command_injection as cmdi_mod
+
+    scanner = CommandInjectionScanner()
+
+    tool = ToolInfo(
+        name="reflect_tool",
+        description="A tool that reflects everything",
+        parameters={"text": {"type": "string"}},
+        raw_schema={"inputSchema": {"properties": {"text": {"type": "string"}}}},
+    )
+    profile = ServerProfile(
+        server_name="test_server",
+        tools=[tool],
+    )
+
+    client = AsyncMock()
+
+    async def mock_call_tool(tool_name, args):
+        val = args.get("text", "")
+
+        class MockContent:
+            type = "text"
+            text = f"Reflected: {val}"
+
+        class MockResult:
+            content = [MockContent()]
+
+        return MockResult()
+
+    client.call_tool = AsyncMock(side_effect=mock_call_tool)
+
+    oracle_call_count = 0
+    real_confirm = cmdi_mod.confirm_command_injection
+
+    async def counting_oracle(*args, **kwargs):
+        nonlocal oracle_call_count
+        oracle_call_count += 1
+        return await real_confirm(*args, **kwargs)
+
+    monkeypatch.setattr(cmdi_mod, "confirm_command_injection", counting_oracle)
+
+    findings = await scanner.scan(profile, client)
+
+    # In PR #31 before dedupe, reflecting tools triggered the oracle ~150 times.
+    # Now it must be invoked at most once per (tool, param).
+    assert oracle_call_count <= 1
+    assert len(findings) == 0
+
+
+def test_fuzzer_decoupled_and_deviation_preserved():
+    """Fuzzer test: fuzz_engine no longer imports/calls oracle, and reflected DEVIATION stays DEVIATION."""
+    import mcpsec.fuzzer.fuzz_engine as fe
     from mcpsec.fuzzer.fuzz_engine import FuzzEngine
     from mcpsec.fuzzer.baseline import ToolBaseline, Verdict
     from mcpsec.fuzzer.generators.base import FuzzCase
     from mcpsec.fuzzer.transport.stdio_fuzzer import FuzzResult
 
-    engine = FuzzEngine(command="dummy", timeout=2.0)
-    bline = ToolBaseline(
-        tool_name="exec_tool",
-        ok=True,
-        error_codes=set(),
-        response_shape="{}",
-        size_range=(10, 50),
-        baseline_latency_ms=20.0,
-        error_signature="",
-        benign_samples=["Benign response"],
-    )
-    engine.baselines["exec_tool"] = bline
+    # 1. Assert fuzz_engine does not import or contain confirm_command_injection
+    source = inspect.getsource(fe)
+    assert "confirm_command_injection" not in source
+    assert not hasattr(fe, "confirm_command_injection")
+    assert not hasattr(fe, "confirm_command_injection_sync")
 
-    case = FuzzCase(
-        name="schema_exec_tool_cmd_cmdi_semicolon",
-        generator="schema_fuzzer",
-        payload=b'{"jsonrpc":"2.0","method":"tools/call","id":1,"params":{"name":"exec_tool","arguments":{"cmd":"; echo pwned"}}}\n',
-        description="Command injection semicolon ; echo pwned",
-        expected_behavior="Handled cleanly",
-    )
-
-    class ShellFuzzer:
-        def __init__(self):
-            self.framing = "jsonl"
-            self.test_count = 1
-            self.crash_count = 0
-            self.timeout_count = 0
-            self.error_log_path = None
-            self.process = None
-
-        def is_alive(self):
-            return True
-
-        def _check_real_crash(self):
-            return False, ""
-
-        def restart_server(self):
-            pass
-
-        def send_raw(self, payload: bytes, headers: dict | None = None):
-            body = payload.rstrip(b"\n")
-            data = json.loads(body)
-            cmd = data.get("params", {}).get("arguments", {}).get("cmd", "")
-            m = re.search(r"echo\s+([A-Za-z0-9_]+)", cmd)
-            if m:
-                resp = f'{{"jsonrpc":"2.0","id":1,"result":{{"content":[{{"type":"text","text":"{m.group(1)}\\n"}}]}}}}\n'.encode()
-            else:
-                resp = f'{{"jsonrpc":"2.0","id":1,"result":{{"content":[{{"type":"text","text":"pwned\\n"}}]}}}}\n'.encode()
-            return FuzzResult(test_id=1, generator=case.generator, payload=payload, response=resp, elapsed_ms=25.0, crashed=False, timeout=False)
-
-    fuzzer = ShellFuzzer()
-    engine._run_generator(fuzzer, case, framing="jsonl")
-
-    assert len(engine.interesting) == 1
-    flagged_case, flagged_res = engine.interesting[0]
-    assert flagged_res.verdict == Verdict.DEVIATION.value
-    assert "confirmed command injection" in flagged_res.verdict_reason
-
-
-def test_fuzzer_differential_escalation_negative_reflection_dropped():
-    """Fuzzer differential drops reflection-only cmdi deviation when oracle does not confirm."""
-    import json
-    from mcpsec.fuzzer.fuzz_engine import FuzzEngine
-    from mcpsec.fuzzer.baseline import ToolBaseline, Verdict
-    from mcpsec.fuzzer.generators.base import FuzzCase
-    from mcpsec.fuzzer.transport.stdio_fuzzer import FuzzResult
-
+    # 2. Assert reflected payload DEVIATION stays a DEVIATION (not cleared to CLEAN)
     engine = FuzzEngine(command="dummy", timeout=2.0)
     bline = ToolBaseline(
         tool_name="echo_tool",
@@ -274,12 +305,28 @@ def test_fuzzer_differential_escalation_negative_reflection_dropped():
             body = payload.rstrip(b"\n")
             data = json.loads(body)
             cmd = data.get("params", {}).get("arguments", {}).get("cmd", "")
-            resp = json.dumps({"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": f"Echo: {cmd}"}]}}).encode() + b"\n"
-            return FuzzResult(test_id=1, generator=case.generator, payload=payload, response=resp, elapsed_ms=25.0, crashed=False, timeout=False)
+            resp = (
+                json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {"content": [{"type": "text", "text": f"Echo: {cmd}"}]},
+                }).encode()
+                + b"\n"
+            )
+            return FuzzResult(
+                test_id=1,
+                generator=case.generator,
+                payload=payload,
+                response=resp,
+                elapsed_ms=25.0,
+                crashed=False,
+                timeout=False,
+            )
 
     fuzzer = EchoFuzzer()
     engine._run_generator(fuzzer, case, framing="jsonl")
 
-    assert len(engine.interesting) == 0
-    assert engine.results[-1].verdict == Verdict.CLEAN.value
-    assert "reflection only" in engine.results[-1].verdict_reason
+    assert len(engine.interesting) == 1
+    flagged_case, flagged_res = engine.interesting[0]
+    assert flagged_res.verdict == Verdict.DEVIATION.value
+    assert flagged_res.verdict_reason == "payload reflected"
