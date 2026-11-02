@@ -19,4 +19,5 @@ class FuzzCase:
     expects_error: bool = False
     crash_indicates_bug: bool = True
     headers: dict | None = None  # Extra HTTP headers (2026-07-28 header routing)
+    layer: str = "handler"  # "handler" (payload reaches the tool handler) or "transport" (tests the JSON/protocol parser)
 

@@ -7,11 +7,41 @@ Fills required non-target parameters with valid baseline values.
 """
 
 import json
+import math
 from typing import Any
 
 from .base import FuzzCase
 
 OMIT_SENTINEL = object()
+
+
+def _is_transport_payload(val: Any) -> bool:
+    """Return True if val contains values that cannot round-trip as strict JSON.
+
+    Specifically:
+    - String containing lone surrogate code points (0xD800 to 0xDFFF)
+    - Float values of NaN or Infinity (require allow_nan=True, invalid in strict JSON)
+    """
+    if isinstance(val, str):
+        return any(0xD800 <= ord(c) <= 0xDFFF for c in val)
+    if isinstance(val, float):
+        return math.isnan(val) or math.isinf(val)
+    if isinstance(val, dict):
+        return any(_is_transport_payload(k) or _is_transport_payload(v) for k, v in val.items())
+    if isinstance(val, (list, tuple)):
+        return any(_is_transport_payload(x) for x in val)
+    return False
+
+
+def _detect_case_layer(args: dict[str, Any], msg: dict[str, Any]) -> str:
+    """Detect whether a case targets the transport layer or the tool handler."""
+    if _is_transport_payload(args):
+        return "transport"
+    try:
+        json.dumps(msg, allow_nan=False)
+    except (ValueError, TypeError):
+        return "transport"
+    return "handler"
 
 
 def _frame(body: bytes, framing: str = "clrf") -> bytes:
@@ -542,6 +572,7 @@ def generate_for_tools(
                 except (TypeError, ValueError, OverflowError):
                     continue
 
+                layer = _detect_case_layer(args, msg)
                 case_name = f"schema_{tool_name}_{param_name}_{subname}"
                 cases.append(
                     FuzzCase(
@@ -556,6 +587,7 @@ def generate_for_tools(
                         ),
                         expects_error=expects_error,
                         crash_indicates_bug=True,
+                        layer=layer,
                     )
                 )
 

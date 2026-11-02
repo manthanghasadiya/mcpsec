@@ -366,6 +366,7 @@ class FuzzEngine:
                                                 payload=framed,
                                                 description=f"{case.description} (tool: {tool_name}, param: {target_param})",
                                                 expected_behavior=case.expected_behavior,
+                                                layer=getattr(case, "layer", "handler"),
                                             )
                                         )
                                 else:
@@ -385,6 +386,7 @@ class FuzzEngine:
                                             payload=framed,
                                             description=f"{case.description} (tool: {tool_name})",
                                             expected_behavior=case.expected_behavior,
+                                            layer=getattr(case, "layer", "handler"),
                                         )
                                     )
                         except Exception as e:
@@ -462,43 +464,74 @@ class FuzzEngine:
             target_tool = self._get_target_tool_for_case(case)
             baseline = self.baselines.get(target_tool) if target_tool else None
 
+            case_layer = getattr(case, "layer", "handler")
             is_interesting = False
-            if result.crashed:
-                result.verdict = Verdict.DEVIATION.value
-                result.verdict_reason = result.error_message or "server crashed"
-                is_interesting = True
-            elif result.timeout:
-                result.verdict = Verdict.DEVIATION.value
-                result.verdict_reason = "request timeout"
-                is_interesting = True
-            elif baseline is not None:
-                verdict, reason = classify(result, baseline, case.payload)
-                result.verdict = verdict.value
-                result.verdict_reason = reason
-                if verdict == Verdict.DEVIATION:
-                    is_interesting = True
-            else:
-                # Fallback for schema-less or non-tool cases
-                if self._is_anomalous(result):
+
+            if case_layer == "transport":
+                resp_bytes = result.response or b""
+                resp_text = (
+                    resp_bytes.decode("utf-8", errors="replace")
+                    if isinstance(resp_bytes, bytes)
+                    else str(resp_bytes)
+                )
+                stacktrace_signatures = [
+                    "traceback (most recent call last)",
+                    "panic:",
+                    "stack trace",
+                    "uncaughtexception",
+                    "unhandledrejection",
+                ]
+                has_stacktrace = any(sig in resp_text.lower() for sig in stacktrace_signatures)
+
+                if result.crashed:
                     result.verdict = Verdict.DEVIATION.value
-                    result.verdict_reason = "anomalous response"
+                    result.verdict_reason = result.error_message or "server crashed"
+                    is_interesting = True
+                elif has_stacktrace:
+                    result.verdict = Verdict.DEVIATION.value
+                    result.verdict_reason = "stacktrace in response"
                     is_interesting = True
                 else:
-                    resp_bytes = result.response or b""
-                    resp_text = (
-                        resp_bytes.decode("utf-8", errors="replace")
-                        if isinstance(resp_bytes, bytes)
-                        else str(resp_bytes)
-                    )
-                    clean_text = resp_text
-                    if "\r\n\r\n" in clean_text:
-                        clean_text = clean_text.split("\r\n\r\n", 1)[1]
-                    if _is_jsonrpc_safe(clean_text.strip(), None) or _is_jsonrpc_safe(resp_text, None):
-                        result.verdict = Verdict.TRANSPORT_REJECT.value
-                        result.verdict_reason = "JSON-RPC safe error"
+                    result.verdict = Verdict.TRANSPORT_REJECT.value
+                    result.verdict_reason = "expected transport-layer rejection"
+                    is_interesting = False
+            else:
+                if result.crashed:
+                    result.verdict = Verdict.DEVIATION.value
+                    result.verdict_reason = result.error_message or "server crashed"
+                    is_interesting = True
+                elif result.timeout:
+                    result.verdict = Verdict.DEVIATION.value
+                    result.verdict_reason = "request timeout"
+                    is_interesting = True
+                elif baseline is not None:
+                    verdict, reason = classify(result, baseline, case.payload)
+                    result.verdict = verdict.value
+                    result.verdict_reason = reason
+                    if verdict == Verdict.DEVIATION:
+                        is_interesting = True
+                else:
+                    # Fallback for schema-less or non-tool cases
+                    if self._is_anomalous(result):
+                        result.verdict = Verdict.DEVIATION.value
+                        result.verdict_reason = "anomalous response"
+                        is_interesting = True
                     else:
-                        result.verdict = Verdict.CLEAN.value
-                        result.verdict_reason = "matches baseline"
+                        resp_bytes = result.response or b""
+                        resp_text = (
+                            resp_bytes.decode("utf-8", errors="replace")
+                            if isinstance(resp_bytes, bytes)
+                            else str(resp_bytes)
+                        )
+                        clean_text = resp_text
+                        if "\r\n\r\n" in clean_text:
+                            clean_text = clean_text.split("\r\n\r\n", 1)[1]
+                        if _is_jsonrpc_safe(clean_text.strip(), None) or _is_jsonrpc_safe(resp_text, None):
+                            result.verdict = Verdict.TRANSPORT_REJECT.value
+                            result.verdict_reason = "JSON-RPC safe error"
+                        else:
+                            result.verdict = Verdict.CLEAN.value
+                            result.verdict_reason = "matches baseline"
 
             if is_interesting:
                 self.interesting.append((case, result))
