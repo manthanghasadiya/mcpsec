@@ -81,13 +81,23 @@ async def test_strip_echo_reflector_not_confirmed():
 
 
 @pytest.mark.asyncio
-async def test_executing_fake_collapsing_subshell_confirmed():
-    """Executing fake simulates shell by collapsing $(echo X) to X -> confirmed=True, method='canary'."""
+async def test_executing_fake_arithmetic_expansion_confirmed():
+    """Executing fake evaluates $(( ... )) and `expr ...` -> confirmed=True, method='canary'."""
 
     def call_fn(tool_name: str, args: dict):
         cmd = args.get("cmd", "")
-        executed = re.sub(r"\$\(echo\s+([A-Za-z0-9_]+)\)", r"\1", cmd)
-        executed = re.sub(r"`echo\s+([A-Za-z0-9_]+)`", r"\1", executed)
+
+        def eval_posix(match):
+            expr = match.group(1).replace(" ", "")
+            a, b = expr.split("+")
+            return str(int(a) + int(b))
+
+        def eval_expr(match):
+            a, b = match.group(1), match.group(2)
+            return str(int(a) + int(b))
+
+        executed = re.sub(r"\$\(\(\s*([^)]+?)\s*\)\)", eval_posix, cmd)
+        executed = re.sub(r"`expr\s+(\d+)\s*\+\s*(\d+)`", eval_expr, executed)
         return f"Shell output: {executed}\n", 0.05
 
     result: OracleResult = await confirm_command_injection(
@@ -100,14 +110,37 @@ async def test_executing_fake_collapsing_subshell_confirmed():
 
     assert result.confirmed is True
     assert result.method == "canary"
-    assert "Computed canary" in result.evidence
-    m = re.search(r"Computed canary '([0-9a-f]{16})'", result.evidence)
-    assert m is not None, f"Expected 16-char hex joined nonce in evidence: {result.evidence}"
-    joined = m.group(1)
-    a = joined[:8]
-    b = joined[8:]
-    assert a in result.evidence
-    assert b in result.evidence
+    assert "arithmetic canary:" in result.evidence
+    m = re.search(
+        r"arithmetic canary:\s*(\d+)\s*\+\s*(\d+)\s*evaluated to\s*(\d+)",
+        result.evidence,
+    )
+    assert m is not None, f"Expected arithmetic details in evidence: {result.evidence}"
+    a, b, s = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    assert a + b == s
+
+
+@pytest.mark.asyncio
+async def test_metachar_sanitizer_reflector_not_confirmed():
+    """Metachar-sanitizer reflector strips $ ( ) ` and echoes remainder -> confirmed=False."""
+
+    def call_fn(tool_name: str, args: dict):
+        cmd = args.get("cmd", "")
+        # Sanitizes input by stripping shell metacharacters: $, (, ), `
+        sanitized = re.sub(r"[\$\(\)`]", "", cmd)
+        return f"Echo output: {sanitized}", 0.05
+
+    result: OracleResult = await confirm_command_injection(
+        call_fn=call_fn,
+        tool_name="sanitizing_tool",
+        param_name="cmd",
+        base_args={"cmd": "default"},
+        baseline_latency_ms=50.0,
+    )
+
+    assert result.confirmed is False
+    assert result.method is None
+    assert "No command execution confirmed" in result.evidence
 
 
 @pytest.mark.asyncio
@@ -179,7 +212,13 @@ def test_sync_helper():
 
     def call_fn(tool_name: str, args: dict):
         cmd = args.get("cmd", "")
-        executed = re.sub(r"\$\(echo\s+([A-Za-z0-9_]+)\)", r"\1", cmd)
+
+        def eval_posix(match):
+            expr = match.group(1).replace(" ", "")
+            a, b = expr.split("+")
+            return str(int(a) + int(b))
+
+        executed = re.sub(r"\$\(\(\s*([^)]+?)\s*\)\)", eval_posix, cmd)
         return executed, 0.01
 
     res = confirm_command_injection_sync(

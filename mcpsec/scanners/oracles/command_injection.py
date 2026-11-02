@@ -1,7 +1,7 @@
 """Command Injection Oracle — confirms command injection vulnerabilities by effect.
 
 Distinguishes actual command execution from argument reflection using:
-1. Computed canary nonces joined via shell subshell concatenation.
+1. Arithmetic computed canary evaluated via shell expansion.
 2. Baseline-aware differential time-based confirmation.
 """
 
@@ -39,17 +39,19 @@ async def _invoke_call_fn(
     return str(res), 0.0
 
 
-def build_computed_canary_payloads(a: str, b: str) -> list[str]:
-    """Build computed canary payloads using subshell concatenation across common separators.
+def build_computed_canary_payloads(a: int | str, b: int | str) -> list[str]:
+    """Build computed arithmetic canary payloads across common separators.
 
-    The proof string {a}{b} is NEVER present contiguously in any payload sent.
-    Only execution by a subshell can collapse $(echo {a}) to {a} and append {b}.
+    The proof string str(a + b) is NEVER present as a substring in any payload sent.
+    Only shell evaluation of arithmetic expansions yields the sum.
     """
     substitutions = [
-        f"$(echo {a}){b}",
-        f"`echo {a}`{b}",
-        f"echo $(echo {a}){b}",
-        f"echo `echo {a}`{b}",
+        f"$(( {a} + {b} ))",
+        f"$(({a}+{b}))",
+        f"`expr {a} + {b}`",
+        f"echo $(( {a} + {b} ))",
+        f"echo $(({a}+{b}))",
+        f"echo `expr {a} + {b}`",
     ]
     prefixes = ["", "; ", "| ", "& ", "\n", "&& ", "|| "]
     payloads = []
@@ -83,15 +85,17 @@ async def confirm_command_injection(
     base_args = dict(base_args or {})
 
     # ═══════════════════════════════════════════════════════════════
-    # METHOD 1: Computed-canary subshell concatenation
+    # METHOD 1: Arithmetic computed canary expansion
     # ═══════════════════════════════════════════════════════════════
-    # Two independent nonces placed non-adjacently in sent bytes.
-    # The proof string {a}{b} appears ONLY if the shell executes the subshell.
-    a = secrets.token_hex(4)
-    b = secrets.token_hex(4)
-    proof = f"{a}{b}"
+    while True:
+        a = secrets.randbelow(90000) + 10000
+        b = secrets.randbelow(90000) + 10000
+        proof = str(a + b)
+        canary_payloads = build_computed_canary_payloads(a, b)
+        if not any(proof in p for p in canary_payloads):
+            break
 
-    canary_payloads = build_computed_canary_payloads(a, b)
+    assert not any(proof in p for p in canary_payloads)
 
     for payload in canary_payloads:
         test_args = dict(base_args)
@@ -106,7 +110,7 @@ async def confirm_command_injection(
             return OracleResult(
                 confirmed=True,
                 method="canary",
-                evidence=f"Computed canary '{proof}' (joined from nonces '{a}' and '{b}') executed via subshell concatenation",
+                evidence=f"arithmetic canary: {a} + {b} evaluated to {proof}",
                 payload=payload,
             )
 
