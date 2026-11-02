@@ -1,10 +1,12 @@
 """
 Code Execution Scanner — detects arbitrary code execution vulnerabilities in MCP tools.
-Specifically targets eval(), exec(), and compile() sinks.
+Specifically targets eval(), exec(), and compile() sinks using computed arithmetic canaries.
 """
 
+import json
 import logging
 import re
+import secrets
 from typing import Any
 
 from mcpsec.client.mcp_client import MCPSecClient
@@ -28,11 +30,10 @@ RELEVANT_KEYWORDS = [
     "data",
 ]
 
+# Non-arithmetic code execution payloads
 PAYLOADS = [
-    "7*7",
     "__import__('os').system('id')",
     "__import__('os').popen('id').read()",
-    "int('49')",
     "[ ().__class__.__base__.__subclasses__()[i] for i in range(len(().__class__.__base__.__subclasses__())) ]",
     "getattr(__import__('os'), 'system')('id')",
     'eval(\'__import__("os").system("id")\')',
@@ -40,7 +41,6 @@ PAYLOADS = [
 ]
 
 SUCCESS_INDICATORS = {
-    "math": [r"\b49\b"],
     "system": [
         r"uid=\d+",
         r"gid=\d+",
@@ -88,49 +88,99 @@ class CodeExecutionScanner(BaseScanner):
 
             for param in params:
                 found_vuln = False
-                for payload in PAYLOADS:
+
+                # 1. Computed arithmetic canary pass
+                math_templates = [
+                    lambda a, b: f"{a}*{b}",
+                    lambda a, b: f"int('{a}')*int('{b}')",
+                ]
+
+                for tmpl in math_templates:
                     if found_vuln:
                         break
                     try:
-                        call_args = self._get_dummy_args(tool, param, payload)
+                        while True:
+                            a = secrets.randbelow(90000) + 10000
+                            b = secrets.randbelow(90000) + 10000
+                            proof = str(a * b)
+                            payload = tmpl(a, b)
+                            call_args = self._get_dummy_args(tool, param, payload)
+                            serialized_args = json.dumps(call_args)
+                            if proof not in serialized_args:
+                                break
+
+                        assert proof not in serialized_args
+
                         result = await client.call_tool(tool.name, call_args)
                         text = self._extract_text(result)
 
-                        # Check for success indicators
-                        evidence = ""
-                        confidence = ""
-
-                        # Math check (7*7 = 49)
-                        if "49" in text and "7*7" not in text:
-                            evidence = "Mathematical expression '7*7' evaluated to '49'"
-                            confidence = "CONFIRMED"
-
-                        # System command output
-                        for pattern in SUCCESS_INDICATORS["system"]:
-                            if re.search(pattern, text, re.IGNORECASE):
-                                evidence = f"Code execution output detected: {re.search(pattern, text).group()}"
-                                confidence = "CONFIRMED"
-                                break
-
-                        if evidence:
+                        if proof in text and proof not in serialized_args:
                             findings.append(
                                 Finding(
                                     severity=Severity.CRITICAL,
                                     scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param,
-                                    title=f"Code Execution in '{param}' [{confidence}]",
+                                    title=f"Code Execution in '{param}' [CONFIRMED]",
                                     description=f"Tool '{tool.name}' appears to evaluate the '{param}' parameter as code.",
                                     detail=f"Payload: {payload}\nResponse: {text[:300]}",
-                                    evidence=evidence,
-                                    confidence=confidence.lower(),
+                                    evidence=f"arithmetic payload {a}*{b} evaluated to {proof}",
+                                    confidence="confirmed",
                                     remediation="Never use eval(), exec(), or compile() on user input. Use safe alternatives or strict allowlists.",
                                     cwe="CWE-94",
                                 )
                             )
                             found_vuln = True
+                            break
                     except Exception as e:
                         logger.debug(f"Error testing {tool.name}/{param}: {e}")
+
+                # 2. System command & object leak payloads (with reflection guard)
+                if not found_vuln:
+                    for payload in PAYLOADS:
+                        if found_vuln:
+                            break
+                        try:
+                            call_args = self._get_dummy_args(tool, param, payload)
+                            serialized_args = json.dumps(call_args)
+
+                            result = await client.call_tool(tool.name, call_args)
+                            text = self._extract_text(result)
+
+                            evidence = ""
+                            confidence = ""
+
+                            for pattern in SUCCESS_INDICATORS["system"]:
+                                m = re.search(pattern, text, re.IGNORECASE)
+                                if m:
+                                    matched_str = m.group()
+                                    if matched_str in serialized_args:
+                                        # Reflection guard: matched text is merely echoing the sent arguments
+                                        continue
+                                    evidence = f"Code execution output detected: {matched_str}"
+                                    confidence = "CONFIRMED"
+                                    break
+
+                            if evidence:
+                                findings.append(
+                                    Finding(
+                                        severity=Severity.CRITICAL,
+                                        scanner=self.name,
+                                        tool_name=tool.name,
+                                        parameter=param,
+                                        title=f"Code Execution in '{param}' [{confidence}]",
+                                        description=f"Tool '{tool.name}' appears to evaluate the '{param}' parameter as code.",
+                                        detail=f"Payload: {payload}\nResponse: {text[:300]}",
+                                        evidence=evidence,
+                                        confidence=confidence.lower(),
+                                        remediation="Never use eval(), exec(), or compile() on user input. Use safe alternatives or strict allowlists.",
+                                        cwe="CWE-94",
+                                    )
+                                )
+                                found_vuln = True
+                        except Exception as e:
+                            logger.debug(f"Error testing {tool.name}/{param}: {e}")
+
         return findings
 
     def _extract_text(self, result: Any) -> str:
@@ -140,4 +190,3 @@ class CodeExecutionScanner(BaseScanner):
                 if hasattr(block, "text"):
                     text += block.text
         return text
-
