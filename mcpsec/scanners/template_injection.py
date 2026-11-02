@@ -1,9 +1,11 @@
 """
 Template Injection Scanner — detects Server-Side Template Injection (SSTI) and format string vulnerabilities.
-Targets Python format strings, Jinja2, Mako, etc.
+Targets Python format strings, Jinja2, Mako, etc. using computed arithmetic canaries.
 """
 
+import json
 import logging
+import secrets
 from typing import Any
 
 from mcpsec.client.mcp_client import MCPSecClient
@@ -27,13 +29,8 @@ RELEVANT_KEYWORDS = [
     "metadata",
 ]
 
-# Combination of format string and template engine payloads
+# Non-arithmetic template payloads (object inspection & environment leaks)
 PAYLOADS = [
-    "{7*7}",
-    "{{7*7}}",
-    "#{7*7}",
-    "${7*7}",
-    "<%= 7*7 %>",
     "{self}",
     "{__class__}",
     "{{self.__class__}}",
@@ -73,7 +70,6 @@ class TemplateInjectionScanner(BaseScanner):
                 if p_def.get("type") == "string":
                     params.append(p_name)
                 elif p_def.get("type") == "object":
-                    # For format strings, often nested in an object
                     params.append(p_name)
 
             if not params:
@@ -81,66 +77,123 @@ class TemplateInjectionScanner(BaseScanner):
 
             for param in params:
                 found_vuln = False
-                for payload in PAYLOADS:
+
+                # 1. Computed arithmetic canary pass across template wrappers
+                canary_templates = [
+                    lambda a, b: "{" + f"{a}*{b}" + "}",
+                    lambda a, b: "{{" + f"{a}*{b}" + "}}",
+                    lambda a, b: "#{" + f"{a}*{b}" + "}",
+                    lambda a, b: "${" + f"{a}*{b}" + "}",
+                    lambda a, b: "<%= " + f"{a}*{b}" + " %>",
+                ]
+
+                for tmpl in canary_templates:
                     if found_vuln:
                         break
                     try:
-                        # Use _get_dummy_args to satisfy other required params
-                        call_args = self._get_dummy_args(tool, param, payload)
+                        while True:
+                            a = secrets.randbelow(90000) + 10000
+                            b = secrets.randbelow(90000) + 10000
+                            proof = str(a * b)
+                            payload = tmpl(a, b)
+                            call_args = self._get_dummy_args(tool, param, payload)
+                            if tool.parameters.get(param) == "object":
+                                call_args[param] = {
+                                    "value": payload,
+                                    "name": payload,
+                                    "text": payload,
+                                    "date": payload,
+                                }
+                            serialized_args = json.dumps(call_args)
+                            if proof not in serialized_args:
+                                break
 
-                        # maintain specific logic for object-type params if still needed
-                        if tool.parameters.get(param) == "object":
-                            # If it's the target param and it was already set by dummy_args,
-                            # we override it with the more specific SSTI payload structure
-                            call_args[param] = {
-                                "value": payload,
-                                "name": payload,
-                                "text": payload,
-                                "date": payload,
-                            }
+                        assert proof not in serialized_args
 
                         result = await client.call_tool(tool.name, call_args)
                         text = self._extract_text(result)
 
-                        evidence = ""
-                        confidence = ""
-
-                        # 1. Math evaluation (49)
-                        if "49" in text and "7*7" not in text:
-                            evidence = f"Template payload '{payload}' evaluated to '49'"
-                            confidence = "CONFIRMED"
-
-                        # 2. Python class references
-                        elif "<class '" in text or "__main__" in text:
-                            evidence = (
-                                f"Template payload '{payload}' leaked internal class information"
-                            )
-                            confidence = "CONFIRMED"
-
-                        # 3. Object-based leaks
-                        elif "{'accessKeyId'" in text or "'DATABASE_URL'" in text:
-                            evidence = f"Template payload '{payload}' leaked configuration data"
-                            confidence = "CONFIRMED"
-
-                        if evidence:
+                        if proof in text and proof not in serialized_args:
                             findings.append(
                                 Finding(
                                     severity=Severity.HIGH,
                                     scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param,
-                                    title=f"Template Injection in '{param}' [{confidence}]",
+                                    title=f"Template Injection in '{param}' [CONFIRMED]",
                                     description=f"Tool '{tool.name}' is vulnerable to template injection via '{param}'.",
                                     detail=f"Payload: {payload}\nResponse: {text[:300]}",
-                                    evidence=evidence,
-                                    confidence=confidence.lower(),
+                                    evidence=f"Template payload '{payload}' evaluated to '{proof}'",
+                                    confidence="confirmed",
                                     remediation="Avoid passing untrusted input directly into template engines or format strings. Use parameterized templates.",
                                     cwe="CWE-1336",
                                 )
                             )
                             found_vuln = True
+                            break
                     except Exception as e:
                         logger.debug(f"Error testing {tool.name}/{param}: {e}")
+
+                # 2. Object & internal leak payloads (with reflection guard)
+                if not found_vuln:
+                    for payload in PAYLOADS:
+                        if found_vuln:
+                            break
+                        try:
+                            call_args = self._get_dummy_args(tool, param, payload)
+                            if tool.parameters.get(param) == "object":
+                                call_args[param] = {
+                                    "value": payload,
+                                    "name": payload,
+                                    "text": payload,
+                                    "date": payload,
+                                }
+                            serialized_args = json.dumps(call_args)
+
+                            result = await client.call_tool(tool.name, call_args)
+                            text = self._extract_text(result)
+
+                            evidence = ""
+                            confidence = ""
+
+                            # Python class references (with reflection guard)
+                            if "<class '" in text or "__main__" in text:
+                                if (
+                                    "<class '" not in serialized_args
+                                    and "__main__" not in serialized_args
+                                ):
+                                    evidence = f"Template payload '{payload}' leaked internal class information"
+                                    confidence = "CONFIRMED"
+
+                            # Object-based leaks (with reflection guard)
+                            elif "{'accessKeyId'" in text or "'DATABASE_URL'" in text:
+                                if (
+                                    "{'accessKeyId'" not in serialized_args
+                                    and "'DATABASE_URL'" not in serialized_args
+                                ):
+                                    evidence = f"Template payload '{payload}' leaked configuration data"
+                                    confidence = "CONFIRMED"
+
+                            if evidence:
+                                findings.append(
+                                    Finding(
+                                        severity=Severity.HIGH,
+                                        scanner=self.name,
+                                        tool_name=tool.name,
+                                        parameter=param,
+                                        title=f"Template Injection in '{param}' [{confidence}]",
+                                        description=f"Tool '{tool.name}' is vulnerable to template injection via '{param}'.",
+                                        detail=f"Payload: {payload}\nResponse: {text[:300]}",
+                                        evidence=evidence,
+                                        confidence=confidence.lower(),
+                                        remediation="Avoid passing untrusted input directly into template engines or format strings. Use parameterized templates.",
+                                        cwe="CWE-1336",
+                                    )
+                                )
+                                found_vuln = True
+                        except Exception as e:
+                            logger.debug(f"Error testing {tool.name}/{param}: {e}")
+
         return findings
 
     def _extract_text(self, result: Any) -> str:
@@ -150,4 +203,3 @@ class TemplateInjectionScanner(BaseScanner):
                 if hasattr(block, "text"):
                     text += block.text
         return text
-
