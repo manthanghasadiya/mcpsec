@@ -1362,15 +1362,31 @@ class SQLInjectionRCEScanner(BaseScanner):
             payloads.extend(self.POSTGRES_RCE_PAYLOADS[:3])
             payloads.extend(self.MYSQL_RCE_PAYLOADS[:3])
 
+        REAL_CMD_OUTPUT_PATTERNS = [
+            r"uid=\d+",
+            r"gid=\d+",
+            r"root:x?:0:0",
+            r"NT AUTHORITY",
+            r"AUTHORITY\\",
+            r"\[boot loader\]",
+            r"\[extensions\]",
+        ]
+
         for name, payload, desc, attack_type in payloads:
             result = await self._test_payload(client, tool_name, param_name, payload)
             severity, evidence = self._classify_rce_result(result, attack_type, payload)
 
             if severity:
+                has_real_cmd = any(re.search(p, result, re.I) for p in REAL_CMD_OUTPUT_PATTERNS)
+                if severity == Severity.CRITICAL and has_real_cmd:
+                    confidence = "confirmed"
+                else:
+                    confidence = "suspected"
+                    severity = Severity.HIGH if severity == Severity.CRITICAL else severity
+
                 findings.append(
-                    Finding(
+                    self.create_finding(
                         severity=severity,
-                        scanner=self.name,
                         tool_name=tool_name,
                         title=f"SQL Injection to {attack_type.upper()} via {db_type.upper()}",
                         description=(
@@ -1380,6 +1396,7 @@ class SQLInjectionRCEScanner(BaseScanner):
                         ),
                         detail=f"Payload: {payload}\n\nResponse: {result[:1000]}",
                         evidence=evidence,
+                        confidence=confidence,
                         remediation=self._get_remediation(db_type, attack_type),
                         cwe="CWE-89",
                     )
@@ -1493,19 +1510,24 @@ class SQLInjectionRCEScanner(BaseScanner):
     def _create_sqli_finding(
         self, tool_name: str, param_name: str, sqli_result: SQLiResult
     ) -> Finding:
-        """Create a finding for basic SQLi detection"""
-        return Finding(
+        """Create a finding for basic SQLi detection adhering to the evidence model."""
+        if sqli_result.technique in ("boolean", "time") or sqli_result.error_differential_confirmed:
+            confidence = "confirmed"
+        else:
+            confidence = "suspected"
+
+        return self.create_finding(
             severity=Severity.HIGH,
-            scanner=self.name,
             tool_name=tool_name,
             parameter=param_name,
-            title=f"SQL Injection in '{tool_name}' ({sqli_result.technique}-based) [CONFIRMED]",
+            title=f"SQL Injection in '{tool_name}' ({sqli_result.technique}-based)",
             description=(
                 f"The '{tool_name}' tool is vulnerable to SQL injection via the '{param_name}' parameter. "
                 f"Injection was confirmed using {sqli_result.technique}-based detection technique."
             ),
             detail=f"Payload: {sqli_result.payload}\n\nResponse: {sqli_result.response[:1000]}",
             evidence=sqli_result.evidence,
+            confidence=confidence,
             remediation=(
                 "1. Use parameterized queries / prepared statements\n"
                 "2. Implement input validation and sanitization\n"

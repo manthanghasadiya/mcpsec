@@ -103,12 +103,11 @@ class CodeExecutionScanner(BaseScanner):
 
                         if proof in text and proof not in serialized_args:
                             findings.append(
-                                Finding(
+                                self.create_finding(
                                     severity=Severity.CRITICAL,
-                                    scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param,
-                                    title=f"Code Execution in '{param}' [CONFIRMED]",
+                                    title=f"Code Execution in '{param}'",
                                     description=f"Tool '{tool.name}' appears to evaluate the '{param}' parameter as code.",
                                     detail=f"Payload: {payload}\nResponse: {text[:300]}",
                                     evidence=f"arithmetic payload {a}*{b} evaluated to {proof}",
@@ -136,6 +135,7 @@ class CodeExecutionScanner(BaseScanner):
 
                             evidence = ""
                             confidence = ""
+                            severity = Severity.HIGH
 
                             for pattern in SUCCESS_INDICATORS["system"]:
                                 m = re.search(pattern, text, re.IGNORECASE)
@@ -145,21 +145,25 @@ class CodeExecutionScanner(BaseScanner):
                                         # Reflection guard: matched text is merely echoing the sent arguments
                                         continue
                                     evidence = f"Code execution output detected: {matched_str}"
-                                    confidence = "CONFIRMED"
+                                    if re.search(r"uid=\d+", matched_str, re.IGNORECASE):
+                                        confidence = "confirmed"
+                                        severity = Severity.CRITICAL
+                                    else:
+                                        confidence = "suspected"
+                                        severity = Severity.HIGH
                                     break
 
                             if evidence:
                                 findings.append(
-                                    Finding(
-                                        severity=Severity.CRITICAL,
-                                        scanner=self.name,
+                                    self.create_finding(
+                                        severity=severity,
                                         tool_name=tool.name,
                                         parameter=param,
-                                        title=f"Code Execution in '{param}' [{confidence}]",
+                                        title=f"Code Execution in '{param}'",
                                         description=f"Tool '{tool.name}' appears to evaluate the '{param}' parameter as code.",
                                         detail=f"Payload: {payload}\nResponse: {text[:300]}",
                                         evidence=evidence,
-                                        confidence=confidence.lower(),
+                                        confidence=confidence,
                                         remediation="Never use eval(), exec(), or compile() on user input. Use safe alternatives or strict allowlists.",
                                         cwe="CWE-94",
                                     )

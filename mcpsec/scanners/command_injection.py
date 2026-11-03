@@ -469,12 +469,11 @@ class CommandInjectionScanner(BaseScanner):
                         )
                         if oracle_res.confirmed:
                             findings.append(
-                                Finding(
+                                self.create_finding(
                                     severity=Severity.CRITICAL,
-                                    scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param_name,
-                                    title=f"Command Injection in '{param_name}' [CONFIRMED]",
+                                    title=f"Command Injection in '{param_name}'",
                                     description=(
                                         f"Tool '{tool.name}' is vulnerable to command injection "
                                         f"via the '{param_name}' parameter."

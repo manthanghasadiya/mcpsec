@@ -152,11 +152,10 @@ class ResourceSSRFScanner(BaseScanner):
                                 f"({method} {path} at {ts})"
                             )
                             findings.append(
-                                Finding(
+                                self.create_finding(
                                     severity=Severity.CRITICAL,
-                                    scanner=self.name,
                                     tool_name=name,
-                                    title=f"Resource SSRF in '{name}' [CONFIRMED]",
+                                    title=f"Resource SSRF in '{name}'",
                                     description=f"Resource '{name}' fetched an out-of-band URL via resource read.",
                                     detail=f"Oracle: oob-http\nPayload: {probe_url}\nEvidence: {evidence}",
                                     evidence=evidence,
@@ -241,15 +240,14 @@ class ResourceSSRFScanner(BaseScanner):
                         break
 
                 if evidence:
-                    return Finding(
-                        severity=Severity.CRITICAL,
-                        scanner=self.name,
+                    return self.create_finding(
+                        severity=Severity.HIGH,
                         tool_name=resource_name,
-                        title="SSRF Vulnerability Confirmed",
+                        title=f"Resource SSRF in '{resource_name}'",
                         description=f"Resource '{resource_name}' fetched internal/sensitive data via {description}",
                         detail=f"Payload: {target_uri}\nEvidence: {evidence}",
                         evidence=clean_text[:500],
-                        confidence="confirmed",
+                        confidence="suspected",
                         remediation="Implement strict URI validation, whitelist allowed schemes (https only), block internal IPs",
                         cwe="CWE-918",
                     )

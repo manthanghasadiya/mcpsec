@@ -1,8 +1,6 @@
 """Unit and integration tests for the SSRF Oracle and OOB Collector."""
 
-import asyncio
 import json
-import time
 import urllib.parse
 import urllib.request
 from unittest.mock import AsyncMock
@@ -278,7 +276,15 @@ def test_check_indicators_structural_signatures():
     assert evidence == ""
     assert conf == ""
 
-    # 2. Real GCP token: matches access_token + token_type + expires_in
+    # 1b. Non-JSON prose containing both access_token and resource: NO match
+    evidence, conf = _check_indicators(
+        "In this OAuth service, the access_token authenticates calls to the target resource.",
+        payload="http://169.254.169.254/latest/meta-data/",
+    )
+    assert evidence == ""
+    assert conf == ""
+
+    # 2. Real GCP token: matches access_token + token_type + expires_in -> SUSPECTED
     gcp_resp = json.dumps({
         "access_token": "ya29.c.b0...",
         "expires_in": 3599,
@@ -288,10 +294,10 @@ def test_check_indicators_structural_signatures():
         gcp_resp,
         payload="http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
     )
-    assert conf == "CONFIRMED"
+    assert conf == "SUSPECTED"
     assert "gcp access token" in evidence.lower()
 
-    # 3. Real AWS IAM creds: matches AccessKeyId + SecretAccessKey
+    # 3. Real AWS IAM creds: matches AccessKeyId + SecretAccessKey -> SUSPECTED
     aws_resp = json.dumps({
         "AccessKeyId": "AKIAIOSFODNN7EXAMPLE",
         "SecretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
@@ -300,7 +306,7 @@ def test_check_indicators_structural_signatures():
         aws_resp,
         payload="http://169.254.169.254/latest/meta-data/iam/security-credentials/",
     )
-    assert conf == "CONFIRMED"
+    assert conf == "SUSPECTED"
     assert "aws iam credentials" in evidence.lower()
 
     # 4. Standalone instance-id without other identity fields: NO match
@@ -311,7 +317,7 @@ def test_check_indicators_structural_signatures():
     assert evidence == ""
     assert conf == ""
 
-    # 5. AWS instance identity document with instanceId + region: matches
+    # 5. AWS instance identity document with instanceId + region: matches -> SUSPECTED
     ident_resp = json.dumps({
         "instanceId": "i-1234567890abcdef0",
         "region": "us-east-1",
@@ -320,7 +326,7 @@ def test_check_indicators_structural_signatures():
         ident_resp,
         payload="http://169.254.169.254/latest/dynamic/instance-identity/document",
     )
-    assert conf == "CONFIRMED"
+    assert conf == "SUSPECTED"
     assert "aws instance identity" in evidence.lower()
 
 
@@ -368,7 +374,7 @@ async def test_prose_false_positive_guard_access_token_doc():
 
 @pytest.mark.asyncio
 async def test_structural_true_positive_aws_creds():
-    """Structural cloud metadata match (AccessKeyId + SecretAccessKey + Token) confirms CRITICAL SSRF."""
+    """Structural cloud metadata match (AccessKeyId + SecretAccessKey) emits [SUSPECTED] HIGH SSRF."""
     mock_client = AsyncMock()
 
     class MockResult:
@@ -416,7 +422,8 @@ async def test_structural_true_positive_aws_creds():
     finding = findings[0]
     assert finding.tool_name == "proxy_fetch"
     assert finding.parameter == "target"
-    assert finding.severity == Severity.CRITICAL
-    assert finding.confidence == "confirmed"
+    assert finding.severity == Severity.HIGH
+    assert finding.confidence == "suspected"
+    assert "[SUSPECTED]" in finding.title
     assert "aws iam credentials" in finding.evidence.lower()
 

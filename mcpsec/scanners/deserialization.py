@@ -151,18 +151,18 @@ class DeserializationScanner(BaseScanner):
 
                 if oracle_res.confirmed:
                     findings.append(
-                        Finding(
+                        self.create_finding(
                             severity=Severity.CRITICAL,
-                            scanner=self.name,
                             tool_name=tool.name,
                             parameter=param_name,
-                            title=f"Insecure Deserialization in '{param_name}' [CONFIRMED]",
+                            title=f"Insecure Deserialization in '{param_name}'",
                             description=(
                                 f"Tool '{tool.name}' is vulnerable to insecure deserialization "
                                 f"via the '{param_name}' parameter."
                             ),
                             detail=f"Payload: {oracle_res.payload}\nEvidence: {oracle_res.evidence}",
                             evidence=oracle_res.evidence,
+                            confidence="confirmed",
                             remediation=(
                                 "Avoid deserializing untrusted data. "
                                 "If using Python pickle, switch to JSON. "
@@ -208,18 +208,18 @@ class DeserializationScanner(BaseScanner):
 
                             if evidence:
                                 findings.append(
-                                    Finding(
-                                        severity=Severity.CRITICAL,
-                                        scanner=self.name,
+                                    self.create_finding(
+                                        severity=Severity.HIGH,
                                         tool_name=tool.name,
                                         parameter=param_name,
-                                        title=f"Insecure {vuln_type.upper()} Deserialization [CONFIRMED]",
+                                        title=f"Insecure {vuln_type.upper()} Deserialization",
                                         description=(
                                             f"Tool '{tool.name}' appears vulnerable to insecure deserialization "
                                             f"of {vuln_type.upper()} data in the '{param_name}' parameter."
                                         ),
                                         detail=f"Payload: {payload}\nResponse: {clean_response[:300]}",
                                         evidence=evidence,
+                                        confidence="suspected",
                                         remediation=(
                                             "Avoid deserializing untrusted data. "
                                             "If using Python pickle, switch to JSON. "

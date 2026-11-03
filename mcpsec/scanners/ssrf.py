@@ -12,6 +12,7 @@ Tests 100+ payloads across 6 categories:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -249,6 +250,105 @@ for category_payloads in PAYLOADS.values():
     _ALL_PAYLOADS.extend(category_payloads)
 
 
+def _extract_json_objects(text: str) -> list[dict[str, Any]]:
+    """Extract parsed JSON dictionary objects from text.
+
+    Tries direct json.loads first. If not a top-level JSON dict/list, scans for
+    candidate JSON objects enclosed in '{' and '}'. Returns parsed dicts only.
+    A response that is not JSON (markdown, prose) returns an empty list.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return []
+
+    # 1. Direct parse attempt
+    try:
+        parsed = json.loads(stripped)
+        if isinstance(parsed, dict):
+            return [parsed]
+        elif isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, dict)]
+    except Exception:
+        pass
+
+    # 2. Search for embedded JSON objects {...}
+    results: list[dict[str, Any]] = []
+    idx = 0
+    text_len = len(text)
+    while idx < text_len:
+        start = text.find("{", idx)
+        if start == -1:
+            break
+        depth = 0
+        in_string = False
+        escape = False
+        end = -1
+        for i in range(start, text_len):
+            c = text[i]
+            if escape:
+                escape = False
+                continue
+            if c == "\\":
+                escape = True
+                continue
+            if c == '"':
+                in_string = not in_string
+                continue
+            if not in_string:
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+        if end != -1:
+            chunk = text[start:end]
+            try:
+                obj = json.loads(chunk)
+                if isinstance(obj, dict):
+                    results.append(obj)
+            except Exception:
+                pass
+            idx = end
+        else:
+            idx = start + 1
+
+    return results
+
+
+def _collect_json_keys_and_values(obj: Any) -> set[str]:
+    """Recursively collect all keys and string scalar values in a JSON object."""
+    tokens: set[str] = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            tokens.add(str(k).lower())
+            if isinstance(v, str):
+                tokens.add(v.lower())
+            elif isinstance(v, (dict, list)):
+                tokens.update(_collect_json_keys_and_values(v))
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, str):
+                tokens.add(item.lower())
+            elif isinstance(item, (dict, list)):
+                tokens.update(_collect_json_keys_and_values(item))
+    return tokens
+
+
+def _collect_json_keys(obj: Any) -> set[str]:
+    """Recursively collect all dictionary keys present in a JSON object."""
+    keys: set[str] = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            keys.add(str(k).lower())
+            keys.update(_collect_json_keys(v))
+    elif isinstance(obj, list):
+        for item in obj:
+            keys.update(_collect_json_keys(item))
+    return keys
+
+
 def _extract_response(result: Any) -> str:
     """Extract text from an MCP tool call result."""
     text = ""
@@ -295,17 +395,23 @@ def _check_indicators(
                 return True
         return False
 
-    clean_response_lower = clean_response.lower()
+    # 1. Cloud metadata: requires an actual parsed JSON object containing required keys.
+    # A response that is not JSON (markdown, prose) can never match.
+    json_objects = _extract_json_objects(clean_response)
+    if json_objects:
+        for obj in json_objects:
+            obj_tokens = _collect_json_keys_and_values(obj)
+            obj_keys = _collect_json_keys(obj)
+            for cat, desc, required_keys in CLOUD_METADATA_SIGNATURES:
+                req_lower = {k.lower().strip('"') for k in required_keys}
+                # Check if all required keys/tokens are present in the parsed JSON object
+                if req_lower.issubset(obj_tokens) or req_lower.issubset(obj_keys):
+                    if is_signature_reflected(required_keys):
+                        continue
+                    matched_keys = ", ".join(sorted(required_keys))
+                    return f"Cloud metadata indicator ({cat}): {desc} [{matched_keys}]", "SUSPECTED"
 
-    # Strong evidence: cloud metadata (structural signatures requiring co-occurring keys)
-    for cat, desc, required_substrings in CLOUD_METADATA_SIGNATURES:
-        if all(sub.lower() in clean_response_lower for sub in required_substrings):
-            if is_signature_reflected(required_substrings):
-                continue
-            matched_keys = ", ".join(sorted(required_substrings))
-            return f"Cloud metadata indicator ({cat}): {desc} [{matched_keys}]", "CONFIRMED"
-
-    # Strong evidence: internal service banners
+    # 2. Secondary evidence: internal service banners
     for pattern in SUCCESS_INDICATORS.get("internal_services", []):
         match = re.search(pattern, clean_response, re.IGNORECASE)
         if match:
@@ -313,9 +419,9 @@ def _check_indicators(
             low = matched_text.lower()
             if (payload and low in payload.lower()) or any(low in str(v).lower() for v in call_arg_values):
                 continue
-            return f"Internal service detected: {pattern}", "CONFIRMED"
+            return f"Internal service detected: {pattern}", "SUSPECTED"
 
-    # Strong evidence: file contents
+    # 3. Secondary evidence: file contents
     for pattern in SUCCESS_INDICATORS.get("file_read", []):
         match = re.search(pattern, clean_response, re.IGNORECASE)
         if match:
@@ -323,7 +429,7 @@ def _check_indicators(
             low = matched_text.lower()
             if (payload and low in payload.lower()) or any(low in str(v).lower() for v in call_arg_values):
                 continue
-            return f"File contents via SSRF: {pattern}", "CONFIRMED"
+            return f"File contents via SSRF: {pattern}", "SUSPECTED"
 
     return "", ""
 
@@ -383,12 +489,11 @@ class SSRFScanner(BaseScanner):
                         )
                         if oracle_res.confirmed:
                             findings.append(
-                                Finding(
+                                self.create_finding(
                                     severity=Severity.CRITICAL,
-                                    scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param_name,
-                                    title=f"SSRF in '{param_name}' [CONFIRMED]",
+                                    title=f"SSRF in '{param_name}'",
                                     description=(
                                         f"Tool '{tool.name}' is vulnerable to Server-Side Request Forgery "
                                         f"via the '{param_name}' parameter."
@@ -426,23 +531,19 @@ class SSRFScanner(BaseScanner):
                             evidence, confidence = _check_indicators(response_text, payload, call_args)
 
                             if evidence:
-                                severity = (
-                                    Severity.CRITICAL if confidence == "CONFIRMED" else Severity.HIGH
-                                )
                                 findings.append(
-                                    Finding(
-                                        severity=severity,
-                                        scanner=self.name,
+                                    self.create_finding(
+                                        severity=Severity.HIGH,
                                         tool_name=tool.name,
                                         parameter=param_name,
-                                        title=f"SSRF in '{param_name}' [{confidence}]",
+                                        title=f"SSRF in '{param_name}'",
                                         description=(
                                             f"Tool '{tool.name}' is vulnerable to Server-Side Request Forgery "
                                             f"via the '{param_name}' parameter."
                                         ),
                                         detail=f"Payload: {payload}\nResponse: {response_text[:300]}",
                                         evidence=evidence,
-                                        confidence=confidence.lower(),
+                                        confidence=confidence.lower() if confidence else "suspected",
                                         remediation=(
                                             "Implement an allowlist of permitted domains/IPs. "
                                             "Disable non-HTTP protocols (file://, gopher://, dict://). "
