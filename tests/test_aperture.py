@@ -118,6 +118,21 @@ async def test_end_to_end_vulnerable_noname_server():
     ]
     assert len(sqli_findings) >= 1, "Expected confirmed SQLi finding on handle(input)"
     assert sqli_findings[0].severity in (Severity.CRITICAL, Severity.HIGH)
+    assert "boolean" in sqli_findings[0].title.lower()
+
+    # Regression: do_thing must NOT have any SQLi or SQL-to-RCE findings
+    sql_on_do_thing = [
+        f for f in findings
+        if f.scanner == "sql-rce" and f.tool_name == "do_thing"
+    ]
+    assert sql_on_do_thing == [], f"Expected no SQL findings on do_thing, got: {sql_on_do_thing}"
+
+    # Regression: NO "SQL Injection to ... via POSTGRES" findings anywhere
+    postgres_findings = [
+        f for f in findings
+        if "postgres" in f.title.lower() or "via postgres" in f.title.lower()
+    ]
+    assert postgres_findings == [], f"Expected no Postgres findings, got: {postgres_findings}"
 
 
 @pytest.mark.asyncio

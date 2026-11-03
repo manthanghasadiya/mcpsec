@@ -163,3 +163,77 @@ def test_confirm_sqli_sync_works():
 
     assert result.confirmed is True
     assert result.method == "boolean-differential"
+
+
+class _MockMCPClient:
+    def __init__(self, handler):
+        self.handler = handler
+
+    async def call_tool(self, tool_name: str, arguments: dict):
+        text = self.handler(tool_name, arguments)
+
+        class MockContent:
+            def __init__(self, t):
+                self.text = t
+
+        class MockResult:
+            def __init__(self, t):
+                self.content = [MockContent(t)]
+
+        return MockResult(text)
+
+
+@pytest.mark.asyncio
+async def test_shell_error_negative_not_sqli():
+    """Shell-style errors (e.g. unterminated quoted string) must not be flagged as SQL errors or vulnerabilities."""
+    scanner = SQLInjectionRCEScanner()
+
+    # 1. Direct signature test: shell error on quote returns False
+    shell_err = "sh: 1: Syntax error: Unterminated quoted string"
+    assert scanner._is_sqli_error(shell_err, payload="'") is False
+    assert scanner._is_sqli_error(
+        "/bin/sh: -c: line 1: unexpected EOF while looking for matching `''", payload="'"
+    ) is False
+
+    # 2. End-to-end _detect_sqli test: tool returns shell error on single quote
+    def shell_echo_handler(tool_name: str, args: dict) -> str:
+        payload = args.get("payload", "")
+        if "'" in payload:
+            return "sh: 1: Syntax error: Unterminated quoted string"
+        return f"echoed: {payload}"
+
+    client = _MockMCPClient(shell_echo_handler)
+    res = await scanner._detect_sqli(client, "do_thing", "payload")
+    assert res.vulnerable is False
+
+
+@pytest.mark.asyncio
+async def test_real_error_based_confirmed_with_differential():
+    """Genuine DB errors with differential (error on broken quote, no error on balanced quote) confirm SQLi."""
+    scanner = SQLInjectionRCEScanner()
+
+    def postgres_handler(tool_name: str, args: dict) -> str:
+        val = args.get("q", "")
+        if val == "'":
+            return 'psycopg2.errors.SyntaxError: syntax error at or near "\'"'
+        return "Query executed successfully"
+
+    client = _MockMCPClient(postgres_handler)
+    res = await scanner._detect_sqli(client, "search_pg", "q")
+    assert res.vulnerable is True
+    assert res.technique == "error"
+    assert res.error_differential_confirmed is True
+    assert "syntax error at or near" in res.response
+
+
+@pytest.mark.asyncio
+async def test_error_based_negative_without_differential():
+    """Tools returning DB errors on all inputs (including balanced/benign) must NOT confirm error-based SQLi."""
+    scanner = SQLInjectionRCEScanner()
+
+    def broken_db_handler(tool_name: str, args: dict) -> str:
+        return "sqlite3.OperationalError: no such table: missing_tbl"
+
+    client = _MockMCPClient(broken_db_handler)
+    res = await scanner._detect_sqli(client, "broken_tool", "q")
+    assert res.vulnerable is False
