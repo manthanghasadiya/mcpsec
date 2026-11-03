@@ -1,6 +1,7 @@
 """Unit and integration tests for the SSRF Oracle and OOB Collector."""
 
 import asyncio
+import json
 import time
 import urllib.parse
 import urllib.request
@@ -263,3 +264,159 @@ async def test_resource_ssrf_scanner_no_bare_response():
 
     # Since neither OOB hit nor cloud metadata matched, no finding should be raised
     assert len(findings) == 0
+
+
+def test_check_indicators_structural_signatures():
+    """Direct tests for _check_indicators structural metadata signatures."""
+    from mcpsec.scanners.ssrf import _check_indicators
+
+    # 1. Bare access_token in prose: NO match
+    evidence, conf = _check_indicators(
+        "Please provide your access_token to connect to the API",
+        payload="http://169.254.169.254/latest/meta-data/",
+    )
+    assert evidence == ""
+    assert conf == ""
+
+    # 2. Real GCP token: matches access_token + token_type + expires_in
+    gcp_resp = json.dumps({
+        "access_token": "ya29.c.b0...",
+        "expires_in": 3599,
+        "token_type": "Bearer",
+    })
+    evidence, conf = _check_indicators(
+        gcp_resp,
+        payload="http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+    )
+    assert conf == "CONFIRMED"
+    assert "gcp access token" in evidence.lower()
+
+    # 3. Real AWS IAM creds: matches AccessKeyId + SecretAccessKey
+    aws_resp = json.dumps({
+        "AccessKeyId": "AKIAIOSFODNN7EXAMPLE",
+        "SecretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    })
+    evidence, conf = _check_indicators(
+        aws_resp,
+        payload="http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    )
+    assert conf == "CONFIRMED"
+    assert "aws iam credentials" in evidence.lower()
+
+    # 4. Standalone instance-id without other identity fields: NO match
+    evidence, conf = _check_indicators(
+        "The instance-id is not configured",
+        payload="http://169.254.169.254/latest/meta-data/",
+    )
+    assert evidence == ""
+    assert conf == ""
+
+    # 5. AWS instance identity document with instanceId + region: matches
+    ident_resp = json.dumps({
+        "instanceId": "i-1234567890abcdef0",
+        "region": "us-east-1",
+    })
+    evidence, conf = _check_indicators(
+        ident_resp,
+        payload="http://169.254.169.254/latest/dynamic/instance-identity/document",
+    )
+    assert conf == "CONFIRMED"
+    assert "aws instance identity" in evidence.lower()
+
+
+@pytest.mark.asyncio
+async def test_prose_false_positive_guard_access_token_doc():
+    """Prose mentioning 'access_token' without full token structure must NOT confirm SSRF."""
+    mock_client = AsyncMock()
+
+    class MockResult:
+        def __init__(self, text: str):
+            class Block:
+                def __init__(self, t: str):
+                    self.text = t
+            self.content = [Block(text)]
+            self.isError = False
+
+    async def mock_call_tool(tool_name: str, args: dict):
+        # Simulates n8n-mcp returning tool documentation mentioning access_token
+        doc = (
+            "Documentation for GitHub tool:\n"
+            "Parameters:\n"
+            "  depth (string): Traversal depth for crawling\n"
+            "  access_token (string): OAuth personal access_token used to authenticate requests"
+        )
+        return MockResult(doc)
+
+    mock_client.call_tool = mock_call_tool
+
+    profile = ServerProfile(
+        server_name="n8n_test_server",
+        tools=[
+            ToolInfo(
+                name="github_docs",
+                description="GitHub API tool",
+                parameters={"depth": {"type": "string"}},
+                raw_schema={"inputSchema": {"properties": {"depth": {"type": "string"}}}},
+            ),
+        ],
+    )
+
+    scanner = SSRFScanner()
+    findings = await scanner.scan(profile, mock_client)
+    assert findings == [], f"Expected 0 SSRF findings on doc prose, got: {findings}"
+
+
+@pytest.mark.asyncio
+async def test_structural_true_positive_aws_creds():
+    """Structural cloud metadata match (AccessKeyId + SecretAccessKey + Token) confirms CRITICAL SSRF."""
+    mock_client = AsyncMock()
+
+    class MockResult:
+        def __init__(self, text: str):
+            class Block:
+                def __init__(self, t: str):
+                    self.text = t
+            self.content = [Block(text)]
+            self.isError = False
+
+    async def mock_call_tool(tool_name: str, args: dict):
+        url = args.get("target", "")
+        if "169.254.169.254" in url and "security-credentials" in url:
+            # Genuine AWS IMDS response
+            creds = json.dumps({
+                "Code": "Success",
+                "LastUpdated": "2026-11-02T12:00:00Z",
+                "Type": "AWS-HMAC",
+                "AccessKeyId": "ASIAIOSFODNN7EXAMPLE",
+                "SecretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+                "Token": "AQoDYXdzEJr1...",
+                "Expiration": "2026-11-02T18:00:00Z",
+            })
+            return MockResult(creds)
+        return MockResult("Nothing here")
+
+    mock_client.call_tool = mock_call_tool
+
+    profile = ServerProfile(
+        server_name="aws_meta_server",
+        tools=[
+            ToolInfo(
+                name="proxy_fetch",
+                description="Fetch remote URL",
+                parameters={"target": {"type": "string"}},
+                raw_schema={"inputSchema": {"properties": {"target": {"type": "string"}}}},
+            ),
+        ],
+    )
+
+    scanner = SSRFScanner()
+    findings = await scanner.scan(profile, mock_client)
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.tool_name == "proxy_fetch"
+    assert finding.parameter == "target"
+    assert finding.severity == Severity.CRITICAL
+    assert finding.confidence == "confirmed"
+    assert "aws iam credentials" in finding.evidence.lower()
+

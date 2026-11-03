@@ -190,29 +190,39 @@ PAYLOADS: dict[str, list[str]] = {
 
 # ─── Success indicators ──────────────────────────────────────────────────────
 
+# Cloud metadata structural signatures: (provider, description, required_substrings)
+# All required substrings must co-occur simultaneously in the reflection-cleaned response.
+CLOUD_METADATA_SIGNATURES: list[tuple[str, str, set[str]]] = [
+    # AWS IAM credentials (/latest/meta-data/iam/security-credentials/...)
+    ("aws", "AWS IAM credentials", {"AccessKeyId", "SecretAccessKey"}),
+    # AWS instance-identity document (/latest/dynamic/instance-identity/document)
+    # Require at least two of instanceId, accountId, region, imageId together
+    ("aws", "AWS instance identity document", {"instanceId", "accountId"}),
+    ("aws", "AWS instance identity document", {"instanceId", "region"}),
+    ("aws", "AWS instance identity document", {"instanceId", "imageId"}),
+    ("aws", "AWS instance identity document", {"accountId", "region"}),
+    ("aws", "AWS instance identity document", {"accountId", "imageId"}),
+    ("aws", "AWS instance identity document", {"region", "imageId"}),
+    # GCP token (/computeMetadata/v1/instance/service-accounts/default/token)
+    ("gcp", "GCP access token", {"access_token", "token_type", "expires_in"}),
+    # GCP computeMetadata (/computeMetadata/v1/...)
+    ("gcp", "GCP numeric project ID metadata", {"numeric_project_id"}),
+    ("gcp", "GCP service-accounts metadata", {"service-accounts", "aliases"}),
+    ("gcp", "GCP service-accounts metadata", {"service-accounts", "email"}),
+    ("gcp", "GCP service-accounts metadata", {"service-accounts", "identity"}),
+    ("gcp", "GCP service-accounts metadata", {"service-accounts", "scopes"}),
+    # Azure IMDS (/metadata/identity/oauth2/token)
+    ("azure", "Azure IMDS token", {"access_token", "client_id"}),
+    ("azure", "Azure IMDS token", {"access_token", "resource"}),
+    # Azure IMDS instance (/metadata/instance)
+    ("azure", "Azure instance metadata", {'"compute"', '"network"'}),
+    # Kubernetes: service-account token structure ("kind"/"apiVersion" with serviceaccount/secret context)
+    ("kubernetes", "Kubernetes ServiceAccount structure", {"apiVersion", "kind", "ServiceAccount"}),
+    ("kubernetes", "Kubernetes Secret structure", {"apiVersion", "kind", "Secret"}),
+    ("kubernetes", "Kubernetes ServiceAccount token structure", {"apiVersion", "kind", "service-account-token"}),
+]
+
 SUCCESS_INDICATORS: dict[str, list[str]] = {
-    "aws": [
-        r"ami-id",
-        r"instance-id",
-        r"iam/security-credentials",
-        r"AccessKeyId",
-        r"SecretAccessKey",
-        r"InstanceProfileArn",
-    ],
-    "gcp": [
-        r"Metadata-Flavor:\s*Google",
-        r"project/project-id",
-        r"access_token",
-    ],
-    "azure": [
-        r'"vmId"',
-        r'"subscriptionId"',
-        r"Metadata:\s*true",
-    ],
-    "kubernetes": [
-        r'"apiVersion"',
-        r'"kind":\s*"(Namespace|Secret|Pod|Service)"',
-    ],
     "internal_services": [
         r"SSH-2\.0-",
         r"redis_version",
@@ -265,28 +275,43 @@ def _check_indicators(
 
     call_arg_values = [str(v) for v in (call_args or {}).values()]
 
-    def is_reflected(text: str) -> bool:
+    def is_arg_reflected(text: str) -> bool:
+        """Check if text appears in any tool argument other than the payload URL."""
         low = text.lower()
-        if payload and low in payload.lower():
-            return True
-        return any(low in arg_val.lower() for arg_val in call_arg_values)
+        for arg_val in call_arg_values:
+            arg_str = str(arg_val).lower()
+            if payload and arg_str == payload.lower():
+                continue
+            if low in arg_str:
+                return True
+        return False
 
-    # Strong evidence: cloud metadata
-    for cat in ("aws", "gcp", "azure", "kubernetes"):
-        for pattern in SUCCESS_INDICATORS.get(cat, []):
-            match = re.search(pattern, clean_response, re.IGNORECASE)
-            if match:
-                matched_text = match.group(0)
-                if is_reflected(matched_text):
-                    continue
-                return f"Cloud metadata indicator ({cat}): {pattern}", "CONFIRMED"
+    def is_signature_reflected(required_substrings: set[str]) -> bool:
+        """A signature is reflected if all keys were in the payload URL, or any key was in other args."""
+        if payload and all(sub.lower() in payload.lower() for sub in required_substrings):
+            return True
+        for sub in required_substrings:
+            if is_arg_reflected(sub):
+                return True
+        return False
+
+    clean_response_lower = clean_response.lower()
+
+    # Strong evidence: cloud metadata (structural signatures requiring co-occurring keys)
+    for cat, desc, required_substrings in CLOUD_METADATA_SIGNATURES:
+        if all(sub.lower() in clean_response_lower for sub in required_substrings):
+            if is_signature_reflected(required_substrings):
+                continue
+            matched_keys = ", ".join(sorted(required_substrings))
+            return f"Cloud metadata indicator ({cat}): {desc} [{matched_keys}]", "CONFIRMED"
 
     # Strong evidence: internal service banners
     for pattern in SUCCESS_INDICATORS.get("internal_services", []):
         match = re.search(pattern, clean_response, re.IGNORECASE)
         if match:
             matched_text = match.group(0)
-            if is_reflected(matched_text):
+            low = matched_text.lower()
+            if (payload and low in payload.lower()) or any(low in str(v).lower() for v in call_arg_values):
                 continue
             return f"Internal service detected: {pattern}", "CONFIRMED"
 
@@ -295,7 +320,8 @@ def _check_indicators(
         match = re.search(pattern, clean_response, re.IGNORECASE)
         if match:
             matched_text = match.group(0)
-            if is_reflected(matched_text):
+            low = matched_text.lower()
+            if (payload and low in payload.lower()) or any(low in str(v).lower() for v in call_arg_values):
                 continue
             return f"File contents via SSRF: {pattern}", "CONFIRMED"
 
