@@ -24,6 +24,7 @@ from mcpsec.static.analysis.sink_scanner import SinkScanner
 from mcpsec.static.analysis.reachability import ReachabilityAnalyzer
 from mcpsec.static.semgrep_engine import run_semgrep, run_semgrep_with_categories
 from mcpsec.ui import console
+from mcpsec.ai.llm_client import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,8 @@ async def run_audit(
                 else:
                     console.print("    [warning]AI skipped: No API key configured[/warning]")
                     findings = _apply_design_heuristics(findings, root)
+            except LLMError:
+                raise
             except Exception as e:
                 console.print(f"    [warning]AI classification failed: {e}[/warning]")
                 findings = _apply_design_heuristics(findings, root)
@@ -156,6 +159,8 @@ async def run_audit(
             # Traditional hardcoded heuristics
             findings = _apply_design_heuristics(findings, root)
 
+    except LLMError:
+        raise
     except Exception as e:
         console.print(f"  [danger]Error during audit: {e}[/danger]")
         import traceback
