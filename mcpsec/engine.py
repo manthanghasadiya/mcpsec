@@ -35,10 +35,14 @@ async def run_scan(
     scanner_names: list[str] | None = None,
     target: str = "",
     transport: TransportType = TransportType.STDIO,
+    oob_host: str | None = None,
 ) -> ScanResult:
     """Run all selected scanners against a server profile."""
 
     scanners = get_scanners(scanner_names)
+    for scanner in scanners:
+        if hasattr(scanner, "oob_host"):
+            scanner.oob_host = oob_host
 
     result = ScanResult(
         scan_id=str(uuid.uuid4())[:8],

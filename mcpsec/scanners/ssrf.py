@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Any
+import urllib.parse
 
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import Finding, ServerProfile, Severity
@@ -24,31 +26,34 @@ logger = logging.getLogger(__name__)
 
 # ─── Parameter keywords ─────────────────────────────────────────────────────
 
-URL_PARAM_KEYWORDS = [
+URL_ISH_KEYWORDS = [
     "url",
     "uri",
     "endpoint",
-    "target",
     "webhook",
     "callback",
-    "link",
     "src",
-    "source",
+    "href",
+    "target",
+    "link",
     "host",
+    "fetch",
+    "request",
+]
+
+URL_PARAM_KEYWORDS = URL_ISH_KEYWORDS + [
+    "source",
     "hostname",
     "address",
     "server",
     "proxy",
     "redirect",
     "forward",
-    "fetch",
     "load",
-    "request",
     "api",
     "service",
     "remote",
     "download",
-    "href",
     "location",
     "origin",
 ]
@@ -218,18 +223,6 @@ SUCCESS_INDICATORS: dict[str, list[str]] = {
         r"etcd",
     ],
     "file_read": [r"root:x:0:0", r"\[extensions\]", r"\[fonts\]", r"mcpsec_xxe_test"],
-    "http": [
-        r"google",
-        r"example\.com",
-        r"Success",
-        r"OK",
-        r"200",
-        r"Downloaded \d+ bytes",
-        r"Fetched \d+ bytes",
-        r"Request successful",
-        r"Config fetched",
-        r"Note saved",
-    ],
     "error_leaks": [
         r"Connection refused",
         r"ECONNREFUSED",
@@ -256,45 +249,70 @@ def _extract_response(result: Any) -> str:
     return text
 
 
-def _check_indicators(response_text: str) -> tuple[str, str]:
-    """Check response against SSRF success indicators."""
+def _check_indicators(
+    response_text: str, payload: str = "", call_args: dict[str, Any] | None = None
+) -> tuple[str, str]:
+    """Check response against SSRF success indicators with reflection guard."""
+    clean_response = response_text
+    if payload:
+        clean_response = clean_response.replace(payload, "")
+        try:
+            decoded = urllib.parse.unquote(payload)
+            if decoded != payload:
+                clean_response = clean_response.replace(decoded, "")
+        except Exception:
+            pass
+
+    call_arg_values = [str(v) for v in (call_args or {}).values()]
+
+    def is_reflected(text: str) -> bool:
+        low = text.lower()
+        if payload and low in payload.lower():
+            return True
+        return any(low in arg_val.lower() for arg_val in call_arg_values)
+
     # Strong evidence: cloud metadata
     for cat in ("aws", "gcp", "azure", "kubernetes"):
-        for pattern in SUCCESS_INDICATORS[cat]:
-            if re.search(pattern, response_text, re.IGNORECASE):
+        for pattern in SUCCESS_INDICATORS.get(cat, []):
+            match = re.search(pattern, clean_response, re.IGNORECASE)
+            if match:
+                matched_text = match.group(0)
+                if is_reflected(matched_text):
+                    continue
                 return f"Cloud metadata indicator ({cat}): {pattern}", "CONFIRMED"
 
     # Strong evidence: internal service banners
-    for pattern in SUCCESS_INDICATORS["internal_services"]:
-        if re.search(pattern, response_text, re.IGNORECASE):
+    for pattern in SUCCESS_INDICATORS.get("internal_services", []):
+        match = re.search(pattern, clean_response, re.IGNORECASE)
+        if match:
+            matched_text = match.group(0)
+            if is_reflected(matched_text):
+                continue
             return f"Internal service detected: {pattern}", "CONFIRMED"
 
     # Strong evidence: file contents
-    for pattern in SUCCESS_INDICATORS["file_read"]:
-        if re.search(pattern, response_text, re.IGNORECASE):
+    for pattern in SUCCESS_INDICATORS.get("file_read", []):
+        match = re.search(pattern, clean_response, re.IGNORECASE)
+        if match:
+            matched_text = match.group(0)
+            if is_reflected(matched_text):
+                continue
             return f"File contents via SSRF: {pattern}", "CONFIRMED"
-
-    # Strong evidence: http fetch success
-    for pattern in SUCCESS_INDICATORS["http"]:
-        if re.search(pattern, response_text, re.IGNORECASE):
-            return f"Successful fetch detected: {pattern}", "CONFIRMED"
-
-    # Weak evidence: connection errors revealing network topology
-    for pattern in SUCCESS_INDICATORS["error_leaks"]:
-        if re.search(pattern, response_text, re.IGNORECASE):
-            return f"Network topology leaked: {pattern}", "LIKELY"
 
     return "", ""
 
 
 class SSRFScanner(BaseScanner):
     """
-    Scans for SSRF vulnerabilities using 100+ payloads across 6 categories
-    with confirmation-based detection and cloud metadata targeting.
+    Scans for SSRF vulnerabilities using out-of-band HTTP oracle confirmation
+    as the authoritative path, with reflection-guarded cloud metadata as secondary.
     """
 
     name = "ssrf"
-    description = "Detect SSRF with 100+ payloads targeting cloud metadata, internal services, and protocol smuggling"
+    description = "Detect SSRF with out-of-band HTTP oracle confirmation and cloud metadata payloads"
+
+    def __init__(self, oob_host: str | None = None) -> None:
+        self.oob_host = oob_host
 
     async def scan(
         self, profile: ServerProfile, client: MCPSecClient | None = None
@@ -303,73 +321,76 @@ class SSRFScanner(BaseScanner):
         if not client:
             return findings
 
+        from mcpsec.scanners.oracles import OOBCollector, confirm_ssrf
         from mcpsec.scanners.response_classifier import is_tool_relevant
 
-        for tool in profile.tools:
-            # More aggressive scoping: if tool is relevant to SSRF or has URL params
-            relevant = is_tool_relevant(tool.name, tool.description, "ssrf")
+        collector = OOBCollector(advertise_host=self.oob_host)
+        collector.start()
+        try:
+            async def call_fn(tool_name: str, args: dict[str, Any]) -> tuple[str, float]:
+                start = time.monotonic()
+                res = await client.call_tool(tool_name, args)
+                elapsed = time.monotonic() - start
+                return _extract_response(res), elapsed
 
-            url_params = set()
+            for tool in profile.tools:
+                relevant = is_tool_relevant(tool.name, tool.description, "ssrf")
 
-            # Check parameter names for keywords
-            for param_name in tool.parameters:
-                if any(kw in param_name.lower() for kw in URL_PARAM_KEYWORDS):
-                    url_params.add(param_name)
+                url_params = set()
+                schema = tool.raw_schema
+                if "inputSchema" in schema:
+                    schema = schema["inputSchema"]
+                props = schema.get("properties", {})
 
-            # Extract string parameters from raw schema more robustly
-            schema = tool.raw_schema
-            if "inputSchema" in schema:
-                schema = schema["inputSchema"]
-
-            props = schema.get("properties", {})
-            for param_name, param_def in props.items():
-                if param_def.get("type") == "string":
-                    # If tool is relevant, test ALL string params.
-                    # Otherwise, only test those matching keywords.
-                    if relevant or any(kw in param_name.lower() for kw in URL_PARAM_KEYWORDS):
+                for param_name in tool.parameters:
+                    p_def = props.get(param_name, {})
+                    if any(kw in param_name.lower() for kw in URL_ISH_KEYWORDS):
+                        url_params.add(param_name)
+                    elif p_def.get("format") == "uri":
                         url_params.add(param_name)
 
-            if not url_params and not relevant:
-                continue
-
-            # If no specific url_params found but tool is relevant, fallback to all string params
-            if not url_params and relevant:
-                for param_name, param_def in props.items():
-                    if param_def.get("type") == "string":
+                for param_name, p_def in props.items():
+                    if any(kw in param_name.lower() for kw in URL_ISH_KEYWORDS):
+                        url_params.add(param_name)
+                    elif p_def.get("format") == "uri":
                         url_params.add(param_name)
 
-            for param_name in url_params:
-                found_vuln = False
-                for payload in _ALL_PAYLOADS:
-                    if found_vuln:
-                        break
+                if not url_params and relevant:
+                    for param_name, param_def in props.items():
+                        if param_def.get("type") == "string":
+                            url_params.add(param_name)
+
+                if not url_params:
+                    continue
+
+                for param_name in url_params:
+                    base_args = self._get_dummy_args(tool, param_name, "")
+
+                    # 1. Authoritative path: Out-of-band HTTP oracle
                     try:
-                        call_args = self._get_dummy_args(tool, param_name, payload)
-                        result = await client.call_tool(tool.name, call_args)
-                        response_text = _extract_response(result)
-                        is_error = getattr(result, "isError", False)
-
-                        clean_response = response_text.replace(payload, "")
-                        evidence, confidence = _check_indicators(clean_response)
-
-                        if evidence:
-                            severity = (
-                                Severity.CRITICAL if confidence == "CONFIRMED" else Severity.HIGH
-                            )
+                        oracle_res = await confirm_ssrf(
+                            call_fn,
+                            tool.name,
+                            param_name,
+                            base_args=base_args,
+                            collector=collector,
+                            settle_seconds=2.0,
+                        )
+                        if oracle_res.confirmed:
                             findings.append(
                                 Finding(
-                                    severity=severity,
+                                    severity=Severity.CRITICAL,
                                     scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param_name,
-                                    title=f"SSRF in '{param_name}' [{confidence}]",
+                                    title=f"SSRF in '{param_name}' [CONFIRMED]",
                                     description=(
                                         f"Tool '{tool.name}' is vulnerable to Server-Side Request Forgery "
                                         f"via the '{param_name}' parameter."
                                     ),
-                                    detail=f"Payload: {payload}\nResponse: {response_text[:300]}",
-                                    evidence=evidence,
-                                    confidence=confidence.lower(),
+                                    detail=f"Oracle: oob-http\nPayload: {oracle_res.payload}\nEvidence: {oracle_res.evidence}",
+                                    evidence=oracle_res.evidence,
+                                    confidence="confirmed",
                                     remediation=(
                                         "Implement an allowlist of permitted domains/IPs. "
                                         "Disable non-HTTP protocols (file://, gopher://, dict://). "
@@ -379,10 +400,59 @@ class SSRFScanner(BaseScanner):
                                     cwe="CWE-918",
                                 )
                             )
-                            found_vuln = True
-
+                            continue  # Confirmed via authoritative OOB oracle; skip secondary payloads
                     except Exception as e:
-                        logger.debug(f"Error testing {tool.name}/{param_name}: {e}")
+                        logger.debug(f"Error during OOB probe for {tool.name}/{param_name}: {e}")
+
+                    # 2. Secondary path: Cloud-metadata signatures with reflection guard
+                    found_secondary = False
+                    secondary_payloads = []
+                    for cat in ("aws_metadata", "gcp_metadata", "azure_metadata", "kubernetes", "other_cloud"):
+                        secondary_payloads.extend(PAYLOADS.get(cat, []))
+
+                    for payload in secondary_payloads:
+                        if found_secondary:
+                            break
+                        try:
+                            call_args = self._get_dummy_args(tool, param_name, payload)
+                            result = await client.call_tool(tool.name, call_args)
+                            response_text = _extract_response(result)
+
+                            evidence, confidence = _check_indicators(response_text, payload, call_args)
+
+                            if evidence:
+                                severity = (
+                                    Severity.CRITICAL if confidence == "CONFIRMED" else Severity.HIGH
+                                )
+                                findings.append(
+                                    Finding(
+                                        severity=severity,
+                                        scanner=self.name,
+                                        tool_name=tool.name,
+                                        parameter=param_name,
+                                        title=f"SSRF in '{param_name}' [{confidence}]",
+                                        description=(
+                                            f"Tool '{tool.name}' is vulnerable to Server-Side Request Forgery "
+                                            f"via the '{param_name}' parameter."
+                                        ),
+                                        detail=f"Payload: {payload}\nResponse: {response_text[:300]}",
+                                        evidence=evidence,
+                                        confidence=confidence.lower(),
+                                        remediation=(
+                                            "Implement an allowlist of permitted domains/IPs. "
+                                            "Disable non-HTTP protocols (file://, gopher://, dict://). "
+                                            "Use a dedicated egress proxy. Block access to 169.254.169.254 "
+                                            "and internal networks (10.x, 172.16-31.x, 192.168.x)."
+                                        ),
+                                        cwe="CWE-918",
+                                    )
+                                )
+                                found_secondary = True
+
+                        except Exception as e:
+                            logger.debug(f"Error testing secondary SSRF for {tool.name}/{param_name}: {e}")
+        finally:
+            collector.stop()
 
         return findings
 
