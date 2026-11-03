@@ -12,7 +12,7 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import Finding, ServerProfile, Severity, ToolInfo
@@ -937,15 +937,39 @@ class SQLInjectionRCEScanner(BaseScanner):
 
         return injectable if injectable else list(properties.keys())
 
+
+    def _build_base_args(
+        self, tool_name: str, param_name: str, default_val: Any = "test"
+    ) -> dict[str, Any]:
+        """Build argument dictionary for tool with default parameter values."""
+        call_args = {param_name: default_val}
+        if hasattr(self, "current_profile") and self.current_profile:
+            tool = next((t for t in self.current_profile.tools if t.name == tool_name), None)
+            if tool:
+                for p_name, p_schema in tool.parameters.items():
+                    if p_name != param_name:
+                        p_type = (
+                            p_schema.get("type", "string")
+                            if isinstance(p_schema, dict)
+                            else "string"
+                        )
+                        if p_type in ("integer", "number"):
+                            call_args[p_name] = 1
+                        elif p_type == "boolean":
+                            call_args[p_name] = True
+                        else:
+                            call_args[p_name] = "test"
+        return call_args
+
     async def _detect_sqli(
         self, client: MCPSecClient, tool_name: str, param_name: str
     ) -> SQLiResult:
         """Attempt to detect SQL injection using multiple techniques"""
 
-        # Try error-based detection first (fastest)
+        # Try error-based detection first (fastest) - reflection guarded
         for name, payload, desc in self.ERROR_BASED_PAYLOADS:
             result = await self._test_payload(client, tool_name, param_name, payload)
-            if self._is_sqli_error(result):
+            if self._is_sqli_error(result, payload=payload):
                 return SQLiResult(
                     vulnerable=True,
                     technique="error",
@@ -954,55 +978,46 @@ class SQLInjectionRCEScanner(BaseScanner):
                     evidence=f"Error-based SQLi detected via {desc}",
                 )
 
-        # Try boolean-based detection
-        for i, (name, payload, desc) in enumerate(self.BOOLEAN_BASED_PAYLOADS):
-            if "true" in name:
-                true_payload = payload
-                # Find corresponding false payload
-                false_payload = ""
-                if i + 1 < len(self.BOOLEAN_BASED_PAYLOADS):
-                    next_name, next_payload, next_desc = self.BOOLEAN_BASED_PAYLOADS[i + 1]
-                    if "false" in next_name:
-                        false_payload = next_payload
+        # Oracle confirmation: directional boolean-differential and scaled timing
+        async def call_fn(t_name: str, args: dict[str, Any]) -> tuple[str, float]:
+            start = time.monotonic()
+            try:
+                res = await client.call_tool(t_name, args)
+                elapsed = time.monotonic() - start
+                text = self._extract_response_text(res)
+                return text, elapsed
+            except Exception as e:
+                elapsed = time.monotonic() - start
+                return f"[ERROR: {str(e)}]", elapsed
 
-                if not false_payload:
-                    false_payload = payload.replace("'1'='1", "'1'='2")
+        base_args = self._build_base_args(tool_name, param_name, "test")
+        baseline_ms = getattr(self, "_baseline_latency", 0.0) * 1000.0
 
-                true_result = await self._test_payload(client, tool_name, param_name, true_payload)
-                false_result = await self._test_payload(
-                    client, tool_name, param_name, false_payload
-                )
+        from mcpsec.scanners.oracles import confirm_sqli
 
-                if true_result != false_result and len(true_result) > len(false_result) * 0.5:
-                    return SQLiResult(
-                        vulnerable=True,
-                        technique="boolean",
-                        payload=true_payload,
-                        response=true_result,
-                        evidence="Boolean-based SQLi: different responses for true/false conditions",
-                    )
+        oracle_res = await confirm_sqli(
+            call_fn=call_fn,
+            tool_name=tool_name,
+            param_name=param_name,
+            base_args=base_args,
+            baseline_latency_ms=baseline_ms,
+        )
 
-        # Try time-based detection (slowest, most reliable)
-        for db_type, payloads in self.TIME_BASED_PAYLOADS.items():
-            for name, payload, expected_delay in payloads:
-                is_delayed, actual_delay = await self._test_time_based(
-                    client, tool_name, param_name, payload, expected_delay
-                )
-                if is_delayed:
-                    return SQLiResult(
-                        vulnerable=True,
-                        technique="time",
-                        payload=payload,
-                        response=f"Delayed response: {actual_delay:.2f}s",
-                        delay=actual_delay,
-                        db_type=db_type if db_type != "generic" else None,
-                        evidence=f"Time-based SQLi: {actual_delay:.2f}s delay (expected {expected_delay}s)",
-                    )
+        if oracle_res.confirmed:
+            technique = "boolean" if oracle_res.method == "boolean-differential" else "time"
+            return SQLiResult(
+                vulnerable=True,
+                technique=technique,
+                payload=oracle_res.payload,
+                response=oracle_res.evidence,
+                delay=0.0,
+                evidence=oracle_res.evidence,
+            )
 
-        # Try UNION-based detection
+        # Try UNION-based detection (reflection guarded)
         for name, payload, desc in self.UNION_BASED_PAYLOADS:
             result = await self._test_payload(client, tool_name, param_name, payload)
-            if self._is_union_success(result):
+            if self._is_union_success(result, payload=payload):
                 return SQLiResult(
                     vulnerable=True,
                     technique="union",
@@ -1011,13 +1026,13 @@ class SQLInjectionRCEScanner(BaseScanner):
                     evidence="UNION-based SQLi detected",
                 )
 
-        # Try stacked queries
+        # Try stacked queries (reflection guarded)
         baseline_response = await self._test_payload(
             client, tool_name, param_name, "test_baseline_value"
         )
         for name, payload, desc in self.STACKED_QUERY_PAYLOADS:
             result = await self._test_payload(client, tool_name, param_name, payload)
-            if self._is_sqli_error(result) or self._is_blocked(result) or not result:
+            if self._is_sqli_error(result, payload=payload) or self._is_blocked(result) or not result:
                 continue
             # CRITICAL FP FIX: Only confirm if response DIFFERS from baseline
             # A tool that returns the same static response for any input is NOT injectable
@@ -1025,6 +1040,9 @@ class SQLInjectionRCEScanner(BaseScanner):
                 result.strip() == baseline_response.strip()
                 or result.strip() == baseline_response.replace("test_baseline_value", "").strip()
             ):
+                continue
+            # Reflection guard: if response is just echoing payload, ignore
+            if payload.strip() in result or result.strip() == payload.strip():
                 continue
             # Must also have some SQL-relevant content in response
             sql_indicators = [
@@ -1048,10 +1066,10 @@ class SQLInjectionRCEScanner(BaseScanner):
                     evidence="Stacked query SQLi detected: response differs from baseline and contains SQL markers",
                 )
 
-        # Try bypass techniques
+        # Try bypass techniques (reflection guarded)
         for name, payload, desc in self.BYPASS_PAYLOADS:
             result = await self._test_payload(client, tool_name, param_name, payload)
-            if self._is_sqli_error(result) or self._is_union_success(result):
+            if self._is_sqli_error(result, payload=payload) or self._is_union_success(result, payload=payload):
                 return SQLiResult(
                     vulnerable=True,
                     technique="bypass",
@@ -1066,25 +1084,7 @@ class SQLInjectionRCEScanner(BaseScanner):
         self, client: MCPSecClient, tool_name: str, param_name: str, payload: str
     ) -> str:
         """Send a payload and return the response with the payload stripped"""
-        call_args = {param_name: payload}
-
-        # Populate other required parameters to bypass schema validation
-        if hasattr(self, "current_profile"):
-            tool = next((t for t in self.current_profile.tools if t.name == tool_name), None)
-            if tool:
-                for p_name, p_schema in tool.parameters.items():
-                    if p_name != param_name:
-                        p_type = (
-                            p_schema.get("type", "string")
-                            if isinstance(p_schema, dict)
-                            else "string"
-                        )
-                        if p_type in ("integer", "number"):
-                            call_args[p_name] = 1
-                        elif p_type == "boolean":
-                            call_args[p_name] = True
-                        else:
-                            call_args[p_name] = "test"
+        call_args = self._build_base_args(tool_name, param_name, payload)
 
         try:
             result = await asyncio.wait_for(client.call_tool(tool_name, call_args), timeout=10.0)
@@ -1111,42 +1111,44 @@ class SQLInjectionRCEScanner(BaseScanner):
         payload: str,
         expected_delay: float,
     ) -> tuple[bool, float]:
-        """Test for time-based SQLi with baseline comparison."""
-        baseline = getattr(self, "_baseline_latency", 1.0)
-        required_delay = max(expected_delay, baseline + 5.0)  # Must exceed baseline + 5s
+        """Test for time-based SQLi with scaled baseline comparison."""
+        base_sec = getattr(self, "_baseline_latency", 0.0)
+        d1 = max(expected_delay, 5.0)
+        d2 = d1 + 2.0
 
-        call_args = {param_name: payload}
-        if hasattr(self, "current_profile"):
-            tool = next((t for t in self.current_profile.tools if t.name == tool_name), None)
-            if tool:
-                for p_name, p_schema in tool.parameters.items():
-                    if p_name != param_name:
-                        p_type = (
-                            p_schema.get("type", "string")
-                            if isinstance(p_schema, dict)
-                            else "string"
-                        )
-                        if p_type in ("integer", "number"):
-                            call_args[p_name] = 1
-                        elif p_type == "boolean":
-                            call_args[p_name] = True
-                        else:
-                            call_args[p_name] = "test"
+        p1 = re.sub(r"\b\d+\b", str(int(d1)), payload) if re.search(r"\b\d+\b", payload) else payload
+        call_args1 = self._build_base_args(tool_name, param_name, p1)
 
-        start = time.time()
+        start1 = time.time()
         try:
-            await asyncio.wait_for(
-                client.call_tool(tool_name, call_args), timeout=required_delay + 5
-            )
-            elapsed = time.time() - start
-            # Require delay to exceed baseline + 5s to avoid network jitter FPs
-            if elapsed >= required_delay:
-                return True, elapsed
+            await asyncio.wait_for(client.call_tool(tool_name, call_args1), timeout=d1 + 5)
+            elapsed1 = time.time() - start1
         except asyncio.TimeoutError:
-            return True, expected_delay + 5
+            elapsed1 = d1 + 5
         except Exception as e:
-            logger.debug(f"Exception caught: {e}")
-        return False, time.time() - start
+            logger.debug(f"Exception caught in time test: {e}")
+            return False, 0.0
+
+        if elapsed1 < (base_sec + d1 * 0.8):
+            return False, elapsed1
+
+        p2 = re.sub(r"\b\d+\b", str(int(d2)), payload) if re.search(r"\b\d+\b", payload) else payload
+        call_args2 = self._build_base_args(tool_name, param_name, p2)
+
+        start2 = time.time()
+        try:
+            await asyncio.wait_for(client.call_tool(tool_name, call_args2), timeout=d2 + 5)
+            elapsed2 = time.time() - start2
+        except asyncio.TimeoutError:
+            elapsed2 = d2 + 5
+        except Exception as e:
+            logger.debug(f"Exception caught in time test: {e}")
+            return False, elapsed1
+
+        if elapsed2 >= (base_sec + d2 * 0.8) and (elapsed2 - elapsed1) >= ((d2 - d1) * 0.7):
+            return True, elapsed1
+
+        return False, elapsed1
 
     def _is_blocked(self, response: str) -> bool:
         """Check if response indicates common security blocks"""
@@ -1163,8 +1165,17 @@ class SQLInjectionRCEScanner(BaseScanner):
             return True
         return False
 
-    def _is_sqli_error(self, response: str) -> bool:
+    def _is_sqli_error(self, response: str, payload: str = "") -> bool:
         """Check if response contains SQL error indicators"""
+        if not response:
+            return False
+
+        # Reflection guard: if response is just the reflected payload, ignore
+        if payload and (
+            response.strip() == payload.strip()
+            or (payload in response and len(response.replace(payload, "").strip()) == 0)
+        ):
+            return False
 
         # Check for SAFE responses first (JSON-RPC errors, schema validation)
         from mcpsec.scanners.response_classifier import Verdict, classify_response
@@ -1193,10 +1204,24 @@ class SQLInjectionRCEScanner(BaseScanner):
             r"database.*error",
             r"SQL.*syntax error",
         ]
-        return any(re.search(p, response, re.I) for p in error_patterns)
+        cleaned = response.replace(payload, "") if payload else response
+        for p in error_patterns:
+            if re.search(p, cleaned, re.I):
+                if not payload or not re.search(p, payload, re.I):
+                    return True
+        return False
 
-    def _is_union_success(self, response: str) -> bool:
+    def _is_union_success(self, response: str, payload: str = "") -> bool:
         """Check if UNION injection succeeded"""
+        if not response:
+            return False
+
+        if payload and (
+            response.strip() == payload.strip()
+            or (payload in response and len(response.replace(payload, "").strip()) == 0)
+        ):
+            return False
+
         # Check for SAFE responses first (schema validation, blocked attempts)
         from mcpsec.scanners.response_classifier import Verdict, classify_response
 
@@ -1213,7 +1238,12 @@ class SQLInjectionRCEScanner(BaseScanner):
             r"Microsoft SQL Server",
             r"Oracle",
         ]
-        return any(re.search(p, response, re.I) for p in patterns)
+        cleaned = response.replace(payload, "") if payload else response
+        for p in patterns:
+            if re.search(p, cleaned, re.I):
+                if not payload or not re.search(p, payload, re.I):
+                    return True
+        return False
 
     def _extract_response_text(self, result) -> str:
         """Extract text from MCP tool result"""
@@ -1310,61 +1340,52 @@ class SQLInjectionRCEScanner(BaseScanner):
         return findings
 
     def _classify_rce_result(
-        self, response: str, attack_type: str, payload: str
+        self, response: str, attack_type: str, payload: str = ""
     ) -> tuple[Severity | None, str]:
         """Classify the severity of an RCE attempt result"""
+        if not response:
+            return None, ""
+
+        # Reflection guard: ignore if response merely reflects payload
+        if payload and (
+            response.strip() == payload.strip()
+            or (payload in response and len(response.replace(payload, "").strip()) == 0)
+        ):
+            return None, ""
+
+        cleaned = response.replace(payload, "") if payload else response
 
         # 1. Check for explicit error indicators first
-        is_error = self._is_sqli_error(response)
+        is_error = self._is_sqli_error(response, payload=payload)
 
-        # 2. Check for actual RCE success (CRITICAL)
-        # These are strong proofs like 'uid=0' or file contents
+        # 2. Check for actual RCE success (CRITICAL) - real command output
         for pattern in self.RCE_SUCCESS_INDICATORS:
-            if re.search(pattern, response, re.I):
-                return Severity.CRITICAL, f"RCE confirmed: {pattern}"
+            if re.search(pattern, cleaned, re.I):
+                if not payload or not re.search(pattern, payload, re.I):
+                    return Severity.CRITICAL, f"RCE confirmed: {pattern}"
 
         # 3. Check for partial success or feature confirmed (HIGH)
-        # Includes permission denied or 'rows affected' which proves the SQL ran
         for pattern in self.RCE_PARTIAL_INDICATORS:
-            if re.search(pattern, response, re.I):
-                return (
-                    Severity.HIGH,
-                    f"RCE feature exists but restricted or confirmed run: {pattern}",
-                )
+            if re.search(pattern, cleaned, re.I):
+                if not payload or not re.search(pattern, payload, re.I):
+                    return (
+                        Severity.HIGH,
+                        f"RCE feature exists but restricted or confirmed run: {pattern}",
+                    )
 
         # 4. Check for explicit blocks (LOW)
-        # These indicate the server effectively blocked the attack
         for pattern in self.RCE_BLOCKED_INDICATORS:
-            if re.search(pattern, response, re.I):
+            if re.search(pattern, cleaned, re.I):
                 return Severity.LOW, f"RCE attempt blocked: {pattern}"
 
-        # 5. If it was an error and didn't match any above, it's likely a scan-time failure
+        # 5. If it was an error and didn't match any above, check block keywords
         if is_error:
-            # Check if it was one of the user-reported block messages that might be caught in is_error
             block_keywords = ["queries are allowed", "statements are allowed", "not supported"]
             if any(k in response.lower() for k in block_keywords):
                 return Severity.LOW, f"Search/Query type restricted: {response[:50]}"
             return None, ""
 
-        # 6. If no error and reasonable response, might be successful
-        if len(response) > 5:
-            # Final sanity check: make sure it doesn't look like an error message
-            error_keywords = [
-                "error",
-                "fail",
-                "denied",
-                "invalid",
-                "exception",
-                "not allowed",
-                "unrecognized",
-                "restricted",
-            ]
-            if any(k in response.lower() for k in error_keywords):
-                return None, ""
-
-            if attack_type in ["file_write", "webshell", "rce"]:
-                return Severity.HIGH, "Payload executed without error (verify manually)"
-
+        # Absence of an error is never an RCE finding.
         return None, ""
 
     def _get_attack_description(self, attack_type: str) -> str:
@@ -1429,7 +1450,8 @@ class SQLInjectionRCEScanner(BaseScanner):
             severity=Severity.HIGH,
             scanner=self.name,
             tool_name=tool_name,
-            title=f"SQL Injection in '{tool_name}' ({sqli_result.technique}-based)",
+            parameter=param_name,
+            title=f"SQL Injection in '{tool_name}' ({sqli_result.technique}-based) [CONFIRMED]",
             description=(
                 f"The '{tool_name}' tool is vulnerable to SQL injection via the '{param_name}' parameter. "
                 f"Injection was confirmed using {sqli_result.technique}-based detection technique."
