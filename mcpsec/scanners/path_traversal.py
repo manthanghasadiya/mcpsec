@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Any
+import urllib.parse
 
 from mcpsec.client.mcp_client import MCPSecClient
 from mcpsec.models import Finding, ServerProfile, Severity
@@ -289,53 +291,92 @@ def _extract_response(result: Any) -> str:
     return text
 
 
-def _check_indicators(response_text: str, raw_result: Any = None) -> tuple[str, str]:
-    """
-    Check response against success indicators.
-    Uses response_classifier for SAFE detection first.
+def _check_indicators(
+    response_text: str,
+    raw_result: Any = None,
+    payload: str = "",
+    call_args: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Check response against success indicators with reflection guard.
+
     Returns (evidence, confidence) — CONFIRMED, LIKELY, or empty.
     """
-    from mcpsec.scanners.response_classifier import Verdict, classify_path_traversal
+    from mcpsec.scanners.response_classifier import (
+        PATH_TRAVERSAL_CONFIRMED,
+        PATH_TRAVERSAL_LIKELY,
+        Verdict,
+        classify_response,
+    )
 
-    verdict, evidence = classify_path_traversal(response_text, raw_result)
+    clean_response = response_text
+    if payload:
+        clean_response = clean_response.replace(payload, "")
+        try:
+            decoded = urllib.parse.unquote(payload)
+            if decoded != payload:
+                clean_response = clean_response.replace(decoded, "")
+        except Exception:
+            pass
 
-    if verdict == Verdict.SAFE:
-        return "", ""  # Suppressed — security controls blocked the attack
+    base_verdict = classify_response(clean_response, raw_result)
+    if base_verdict == Verdict.SAFE:
+        return "", ""
 
-    if verdict == Verdict.CONFIRMED:
-        return evidence, "CONFIRMED"
+    call_arg_values = [str(v) for v in (call_args or {}).values()]
 
-    if verdict == Verdict.LIKELY:
-        return evidence, "LIKELY"
+    def is_reflected(text: str) -> bool:
+        low = text.lower()
+        if payload and low in payload.lower():
+            return True
+        return any(low in arg_val.lower() for arg_val in call_arg_values)
 
-    # Fall back to legacy checks for extra coverage
-    for pattern in SUCCESS_INDICATORS["cloud_creds"]:
-        if re.search(pattern, response_text, re.IGNORECASE):
-            return f"Cloud credentials detected: {pattern}", "CONFIRMED"
+    # 1. Check confirmed file content patterns
+    for pattern in PATH_TRAVERSAL_CONFIRMED:
+        m = re.search(pattern, clean_response, re.IGNORECASE)
+        if m:
+            matched_text = m.group()
+            if is_reflected(matched_text):
+                continue
+            return f"Sensitive file content detected: {matched_text}", "CONFIRMED"
 
-    for pattern in SUCCESS_INDICATORS["env_file"]:
-        if re.search(pattern, response_text, re.IGNORECASE):
-            return f"Environment file contents detected: {pattern}", "CONFIRMED"
+    # 2. Legacy checks for extra coverage
+    for cat in ("cloud_creds", "env_file", "proc_self"):
+        for pattern in SUCCESS_INDICATORS.get(cat, []):
+            m = re.search(pattern, clean_response, re.IGNORECASE)
+            if m:
+                matched_text = m.group()
+                if is_reflected(matched_text):
+                    continue
+                return f"{cat} detected: {matched_text}", "CONFIRMED"
 
-    for pattern in SUCCESS_INDICATORS["proc_self"]:
-        if re.search(pattern, response_text):
-            return f"/proc/self contents detected: {pattern}", "CONFIRMED"
+    # 3. Check likely indicators (errors revealing path existence)
+    for pattern in PATH_TRAVERSAL_LIKELY:
+        m = re.search(pattern, clean_response, re.IGNORECASE)
+        if m:
+            matched_text = m.group()
+            if is_reflected(matched_text):
+                continue
+            return f"Path access error reveals filesystem state: {matched_text}", "LIKELY"
 
-    for pattern in SUCCESS_INDICATORS["write_success"]:
-        if re.search(pattern, response_text, re.IGNORECASE):
-            return f"Successful write to sensitive/traversed path: {pattern}", "LIKELY"
+    for pattern in SUCCESS_INDICATORS.get("write_success", []):
+        m = re.search(pattern, clean_response, re.IGNORECASE)
+        if m:
+            matched_text = m.group()
+            if is_reflected(matched_text):
+                continue
+            return f"Successful write to sensitive/traversed path: {matched_text}", "LIKELY"
 
     return "", ""
 
 
 class PathTraversalScanner(BaseScanner):
     """
-    Scans for path traversal vulnerabilities using 100+ payloads
-    across 7 attack categories with confirmation-based detection.
+    Scans for path traversal vulnerabilities using sentinel-file oracle
+    confirmation as the authoritative path, with reflection-guarded signatures as secondary.
     """
 
     name = "path-traversal"
-    description = "Detect path traversal vulnerabilities with 100+ categorized payloads"
+    description = "Detect path traversal vulnerabilities with 100+ categorized payloads and sentinel oracle"
 
     async def scan(
         self, profile: ServerProfile, client: MCPSecClient | None = None
@@ -344,7 +385,14 @@ class PathTraversalScanner(BaseScanner):
         if not client:
             return findings
 
+        from mcpsec.scanners.oracles import confirm_path_traversal
         from mcpsec.scanners.response_classifier import is_tool_relevant
+
+        async def call_fn(tool_name: str, args: dict[str, Any]) -> tuple[str, float]:
+            start = time.monotonic()
+            res = await client.call_tool(tool_name, args)
+            elapsed = time.monotonic() - start
+            return _extract_response(res), elapsed
 
         for tool in profile.tools:
             # Scanner scoping: skip tools unlikely to do file operations
@@ -359,28 +407,73 @@ class PathTraversalScanner(BaseScanner):
                     path_params.add(param_name)
 
             raw_props = tool.raw_schema.get("inputSchema", {}).get("properties", {})
-            for param_name, param_def in raw_props.items():
-                if param_def.get("type") == "string":
+            for param_name in raw_props:
+                if any(kw in param_name.lower() for kw in PATH_PARAM_KEYWORDS):
                     path_params.add(param_name)
+
+            if not path_params:
+                for param_name, param_def in raw_props.items():
+                    if param_def.get("type") == "string":
+                        path_params.add(param_name)
 
             if not path_params:
                 path_params = set(tool.parameters.keys())
 
             for param_name in path_params:
-                found_vuln = False
+                base_args = self._get_dummy_args(tool, param_name, "")
+
+                # 1. Authoritative path: Sentinel file oracle
+                try:
+                    oracle_res = await confirm_path_traversal(
+                        call_fn,
+                        tool.name,
+                        param_name,
+                        base_args=base_args,
+                    )
+                    if oracle_res.confirmed:
+                        findings.append(
+                            Finding(
+                                severity=Severity.CRITICAL,
+                                scanner=self.name,
+                                tool_name=tool.name,
+                                parameter=param_name,
+                                title=f"Path Traversal in '{param_name}' [CONFIRMED]",
+                                description=(
+                                    f"Tool '{tool.name}' is vulnerable to path traversal "
+                                    f"via the '{param_name}' parameter."
+                                ),
+                                detail=f"Oracle: sentinel-file\nPayload: {oracle_res.payload}\nEvidence: {oracle_res.evidence}",
+                                evidence=oracle_res.evidence,
+                                confidence="confirmed",
+                                remediation=(
+                                    "Validate paths against an allowlist of permitted directories. "
+                                    "Use os.path.realpath() and verify the resolved path starts "
+                                    "with the intended base directory. Never pass raw user input "
+                                    "to file system operations."
+                                ),
+                                cwe="CWE-22",
+                            )
+                        )
+                        continue  # Confirmed via authoritative sentinel file; skip secondary payloads
+                except Exception as e:
+                    logger.debug(f"Error during sentinel probe for {tool.name}/{param_name}: {e}")
+
+                # 2. Secondary path: Signature payloads with reflection guard
+                found_secondary = False
                 for payload in _ALL_PAYLOADS:
-                    if found_vuln:
+                    if found_secondary:
                         break
                     try:
                         call_args = self._get_dummy_args(tool, param_name, payload)
                         result = await client.call_tool(tool.name, call_args)
                         response_text = _extract_response(result)
-                        is_error = getattr(result, "isError", False)
 
-                        clean_response = response_text.replace(payload, "")
-                        evidence, confidence = _check_indicators(clean_response, result)
+                        evidence, confidence = _check_indicators(
+                            response_text, result, payload, call_args
+                        )
 
                         if evidence:
+                            # CRITICAL requires confirmed file content; LIKELY/heuristic is downgraded
                             severity = (
                                 Severity.CRITICAL if confidence == "CONFIRMED" else Severity.HIGH
                             )
@@ -407,7 +500,7 @@ class PathTraversalScanner(BaseScanner):
                                     cwe="CWE-22",
                                 )
                             )
-                            found_vuln = True
+                            found_secondary = True
 
                     except Exception as e:
                         logger.debug(f"Error testing {tool.name}/{param_name}: {e}")
