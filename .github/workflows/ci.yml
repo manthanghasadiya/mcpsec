@@ -37,7 +37,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio
-          pip install mcp rich typer httpx pydantic anyio
+          pip install mcp rich typer httpx pydantic anyio pyyaml
           pip install semgrep || echo "semgrep not available on this platform"
       - name: Run tests
         run: pytest tests/ -v --tb=short --ignore=tests/test_exploit.py --ignore=tests/test_semgrep_rules.py -k "not semgrep"

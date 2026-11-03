@@ -3,6 +3,8 @@
 import re
 import pytest
 
+pytest.importorskip("yaml")  # test fixture needs PyYAML; skip cleanly if unavailable
+
 from mcpsec.scanners.oracles.command_injection import OracleResult
 from mcpsec.scanners.oracles.deserialization import (
     confirm_deserialization,
