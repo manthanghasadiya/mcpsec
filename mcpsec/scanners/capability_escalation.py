@@ -73,117 +73,148 @@ class CapabilityEscalationScanner(BaseScanner):
             ]
 
         # Get declared capabilities from profile
-        server_capabilities = profile.capabilities
+        server_capabilities = profile.capabilities or {}
         declared = set()
-        if server_capabilities.get("tools"):
-            declared.add("tools")
-        if server_capabilities.get("resources"):
-            declared.add("resources")
-        if server_capabilities.get("prompts"):
-            declared.add("prompts")
-        if server_capabilities.get("logging"):
-            declared.add("logging")
-        if server_capabilities.get("experimental", {}).get("sampling"):
+        for cap in ("tools", "resources", "prompts", "logging"):
+            if cap in server_capabilities:
+                declared.add(cap)
+
+        experimental = server_capabilities.get("experimental") or {}
+        if isinstance(experimental, dict) and "sampling" in experimental:
+            declared.add("sampling")
+        if "sampling" in server_capabilities:
             declared.add("sampling")
 
         # Test undeclared capabilities
         for capability, methods in self.CAPABILITY_METHODS.items():
             if capability not in declared:
                 # Server didn't declare this capability - test if it works anyway
-                for method, params, description in methods:
-                    finding = await self._test_undeclared_capability(
-                        client, server_capabilities, capability, method, params, description
-                    )
-                    if finding:
-                        findings.append(finding)
+                cap_findings = await self._test_undeclared_capability(
+                    client, server_capabilities, capability, methods
+                )
+                findings.extend(cap_findings)
 
         # Also check if declared capabilities can be abused
         for capability in declared:
+            cap_config = server_capabilities.get(capability)
+            if cap_config is None and capability == "sampling" and isinstance(experimental, dict):
+                cap_config = experimental.get("sampling")
             abuse_finding = self._check_capability_abuse(
-                capability, server_capabilities.get(capability, {})
+                capability, cap_config if isinstance(cap_config, dict) else {}
             )
             if abuse_finding:
                 findings.append(abuse_finding)
 
         return findings
 
+    async def _invoke_method(
+        self, client: MCPSecClient, method: str, params: dict
+    ) -> Any:
+        """Invoke client session method for a given MCP method string."""
+        if not client.session:
+            return None
+
+        if method == "tools/list":
+            return await client.session.list_tools()
+        elif method == "tools/call":
+            return await client.session.call_tool(
+                params.get("name", "__test__"), params.get("arguments", {})
+            )
+        elif method == "resources/list":
+            return await client.session.list_resources()
+        elif method == "resources/read":
+            return await client.session.read_resource(params.get("uri", "test://resource"))
+        elif method == "resources/subscribe":
+            return await client.session.subscribe_resource(
+                params.get("uri", "test://resource")
+            )
+        elif method == "prompts/list":
+            return await client.session.list_prompts()
+        elif method == "prompts/get":
+            return await client.session.get_prompt(
+                params.get("name", "__test__"), params.get("arguments")
+            )
+        elif method == "logging/setLevel":
+            if hasattr(client.session, "set_logging_level"):
+                return await client.session.set_logging_level(params.get("level", "debug"))
+            return None
+        return None
+
     async def _test_undeclared_capability(
         self,
         client: MCPSecClient,
         server_capabilities: dict,
         capability: str,
-        method: str,
-        params: dict,
-        description: str,
-    ) -> Finding | None:
-        """Test if an undeclared capability actually works."""
+        methods: list[tuple[str, dict, str]],
+    ) -> list[Finding]:
+        """Test if an undeclared capability actually works across its methods."""
         if not client.session:
-            return None
+            return []
 
-        try:
-            if method == "tools/list":
-                result = await client.session.list_tools()
-            elif method == "tools/call":
-                result = await client.session.call_tool(
-                    params.get("name", "__test__"), params.get("arguments", {})
-                )
-            elif method == "resources/list":
-                result = await client.session.list_resources()
-            elif method == "resources/read":
-                # For high level read API it might accept string uri
-                result = await client.session.read_resource(params.get("uri", "test://resource"))
-            elif method == "resources/subscribe":
-                # Same here
-                result = await client.session.subscribe_resource(
-                    params.get("uri", "test://resource")
-                )
-            elif method == "prompts/list":
-                result = await client.session.list_prompts()
-            elif method == "prompts/get":
-                result = await client.session.get_prompt(
-                    params.get("name", "__test__"), params.get("arguments")
-                )
-            else:
-                return None
+        working_methods: list[tuple[str, Any]] = []
+        ambiguous_methods: list[tuple[str, str]] = []
 
-            # If we got a successful response (not None and not an exception), that's a problem
-            if result is not None and not isinstance(result, Exception):
-                return Finding(
+        for method, params, description in methods:
+            try:
+                result = await self._invoke_method(client, method, params)
+                if result is not None and not isinstance(result, Exception):
+                    working_methods.append((method, result))
+            except Exception as e:
+                error_str = str(e).lower()
+
+                # Check if error indicates method exists but is "disabled"
+                # vs method truly doesn't exist
+                soft_errors = ["not enabled", "capability not", "disabled", "not supported"]
+                hard_errors = ["method not found", "unknown method", "invalid method"]
+
+                if any(soft in error_str for soft in soft_errors):
+                    # Server knows about the method but claims it's disabled. This is okay.
+                    continue
+
+                if not any(hard in error_str for hard in hard_errors):
+                    # Ambiguous error - might be partially working or revealing something
+                    ambiguous_methods.append((method, str(e)))
+
+        if working_methods:
+            working_names = [m for m, _ in working_methods]
+            methods_str = ", ".join(working_names)
+            evidence_lines = [f"{m}: {str(res)[:100]}" for m, res in working_methods]
+            return [
+                Finding(
                     severity=Severity.HIGH,
                     scanner=self.name,
-                    tool_name=method,
+                    tool_name=capability,
                     title=f"Undeclared Capability Works: {capability}",
-                    description=f"Server responds to {method} but didn't declare '{capability}' capability",
-                    detail=f"Capability: {capability}\nDeclared: {list(server_capabilities.keys())}",
-                    evidence=str(result)[:200],
-                    remediation=f"Either declare the '{capability}' capability or disable the {method} handler",
+                    description=f"Server responds to {methods_str} but didn't declare '{capability}' capability",
+                    detail=(
+                        f"Capability: {capability}\n"
+                        f"Working methods: {methods_str}\n"
+                        f"Declared: {list(server_capabilities.keys())}"
+                    ),
+                    evidence="\n".join(evidence_lines)[:200],
+                    remediation=f"Either declare the '{capability}' capability or disable the {methods_str} handler(s)",
                 )
-        except Exception as e:
-            error_str = str(e).lower()
+            ]
 
-            # Check if error indicates method exists but is "disabled"
-            # vs method truly doesn't exist
-            soft_errors = ["not enabled", "capability not", "disabled", "not supported"]
-            hard_errors = ["method not found", "unknown method", "invalid method"]
-
-            if any(soft in error_str for soft in soft_errors):
-                # Server knows about the method but claims it's disabled. This is okay.
-                return None
-
-            if not any(hard in error_str for hard in hard_errors):
-                # Ambiguous error - might be partially working or revealing something
-                return Finding(
+        if ambiguous_methods:
+            ambig_names = [m for m, _ in ambiguous_methods]
+            methods_str = ", ".join(ambig_names)
+            detail_lines = [f"Method: {m}\nError: {err[:300]}" for m, err in ambiguous_methods]
+            evidence_lines = [f"{m}: {err[:100]}" for m, err in ambiguous_methods]
+            return [
+                Finding(
                     severity=Severity.LOW,
                     scanner=self.name,
-                    tool_name=method,
+                    tool_name=capability,
                     title=f"Ambiguous Capability Response: {capability}",
-                    description=f"Server gave unclear error for undeclared {method}",
-                    detail=f"Method: {method}\nError: {error_str[:300]}",
-                    evidence=error_str[:200],
+                    description=f"Server gave unclear error for undeclared {methods_str}",
+                    detail=f"Capability: {capability}\n" + "\n".join(detail_lines),
+                    evidence="\n".join(evidence_lines)[:200],
                     remediation="Ensure undeclared capabilities return clear 'method not found' errors",
                 )
+            ]
 
-        return None
+        return []
 
     def _check_capability_abuse(self, capability: str, cap_config: Any) -> Finding | None:
         """Check if a declared capability has dangerous configurations."""
