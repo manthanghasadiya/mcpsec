@@ -217,6 +217,20 @@ class MCPSecClient:
         except Exception:
             pass  # Prompts are optional
 
+        # ── Capture Server Capabilities ──────────────────────────────────
+        try:
+            if hasattr(self.session, "get_server_capabilities"):
+                server_caps = self.session.get_server_capabilities()
+                if server_caps:
+                    if hasattr(server_caps, "model_dump"):
+                        profile.capabilities = server_caps.model_dump(by_alias=True, exclude_none=True)
+                    elif hasattr(server_caps, "dict"):
+                        profile.capabilities = server_caps.dict(by_alias=True, exclude_none=True)
+                    elif isinstance(server_caps, dict):
+                        profile.capabilities = server_caps
+        except Exception:
+            pass
+
         self._profile = profile
         return profile
 
