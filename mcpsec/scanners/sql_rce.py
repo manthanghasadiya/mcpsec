@@ -847,16 +847,19 @@ class SQLInjectionRCEScanner(BaseScanner):
 
         self.current_profile = profile
 
-        # Phase 1: Discover database tools
-        db_tools = self._discover_db_tools(profile)
-        if not db_tools:
-            return findings
+        # Order tools so likely DB tools come first, but none are excluded
+        from mcpsec.scanners.param_selection import candidate_injectable_params
 
-        for tool in db_tools:
+        db_hints = set(t.name for t in self._discover_db_tools(profile))
+        ordered_tools = sorted(profile.tools, key=lambda t: 0 if t.name in db_hints else 1)
+
+        for tool in ordered_tools:
             tool_name = tool.name
 
             # Find injectable parameters
-            params = self._get_injectable_params(tool)
+            params = candidate_injectable_params(
+                tool, max_params=getattr(self, "max_params_per_tool", 25)
+            )
 
             if not params:
                 continue
@@ -922,20 +925,11 @@ class SQLInjectionRCEScanner(BaseScanner):
 
     def _get_injectable_params(self, tool: ToolInfo) -> list[str]:
         """Get parameter names likely to be injectable"""
-        injectable = []
-        properties = tool.parameters
+        from mcpsec.scanners.param_selection import candidate_injectable_params
 
-        for param_name, param_schema in properties.items():
-            # Check if param name matches SQL patterns
-            if any(re.search(pattern, param_name, re.I) for pattern in self.SQL_PARAM_PATTERNS):
-                injectable.append(param_name)
-            # Check if param accepts string type
-            elif isinstance(param_schema, dict) and param_schema.get("type") == "string":
-                injectable.append(param_name)
-            elif hasattr(param_schema, "type") and getattr(param_schema, "type") == "string":
-                injectable.append(param_name)
-
-        return injectable if injectable else list(properties.keys())
+        return candidate_injectable_params(
+            tool, max_params=getattr(self, "max_params_per_tool", 25)
+        )
 
 
     def _build_base_args(

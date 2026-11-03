@@ -86,36 +86,25 @@ class DeserializationScanner(BaseScanner):
             return findings
 
         for tool in profile.tools:
-            # Check if tool is relevant based on name/description
-            tool_combined = f"{tool.name} {tool.description}".lower()
-            is_relevant = any(kw in tool_combined for kw in PARAM_KEYWORDS)
+            from mcpsec.scanners.param_selection import candidate_injectable_params
 
-            # Find parameters that might accept serialized data
-            target_params = set()
+            target_params = candidate_injectable_params(
+                tool, max_params=getattr(self, "max_params_per_tool", 25)
+            )
+            if not target_params:
+                continue
 
-            # Extract properties from raw schema
+            # Extract properties from raw schema to detect format param if present
             schema = tool.raw_schema
             if "inputSchema" in schema:
                 schema = schema["inputSchema"]
-            props = schema.get("properties", {})
+            props = schema.get("properties", {}) if isinstance(schema, dict) else {}
 
             format_param = None
             for p_name in props:
                 if p_name.lower() == "format":
                     format_param = p_name
                     break
-
-            for p_name, p_def in props.items():
-                if p_def.get("type") == "string":
-                    name_lower = p_name.lower()
-                    if is_relevant or any(kw in name_lower for kw in PARAM_KEYWORDS):
-                        target_params.add(p_name)
-
-            if not target_params and is_relevant:
-                # Default to all string parameters if tool is relevant
-                for p_name, p_def in props.items():
-                    if p_def.get("type") == "string":
-                        target_params.add(p_name)
 
             for param_name in target_params:
                 # Measure baseline latency for time-based oracle confirmation

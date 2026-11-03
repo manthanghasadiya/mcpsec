@@ -15,6 +15,7 @@ class BaseScanner(ABC):
 
     name: str = "base"
     description: str = "Base scanner"
+    max_params_per_tool: int = 25
 
     @abstractmethod
     async def scan(

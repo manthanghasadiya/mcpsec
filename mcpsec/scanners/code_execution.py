@@ -65,26 +65,13 @@ class CodeExecutionScanner(BaseScanner):
             return findings
 
         for tool in profile.tools:
-            # Check if tool is relevant for code execution
-            combined = f"{tool.name} {tool.description}".lower()
-            is_relevant = any(kw in combined for kw in RELEVANT_KEYWORDS)
+            from mcpsec.scanners.param_selection import candidate_injectable_params
 
-            if not is_relevant:
-                continue
-
-            # Identify candidate parameters
-            params = []
-            schema = tool.raw_schema
-            if "inputSchema" in schema:
-                schema = schema["inputSchema"]
-
-            props = schema.get("properties", {})
-            for p_name, p_def in props.items():
-                if p_def.get("type") == "string":
-                    params.append(p_name)
-
+            params = candidate_injectable_params(
+                tool, max_params=getattr(self, "max_params_per_tool", 25)
+            )
             if not params:
-                params = list(tool.parameters.keys())
+                continue
 
             for param in params:
                 found_vuln = False

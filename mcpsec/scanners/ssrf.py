@@ -334,32 +334,11 @@ class SSRFScanner(BaseScanner):
                 return _extract_response(res), elapsed
 
             for tool in profile.tools:
-                relevant = is_tool_relevant(tool.name, tool.description, "ssrf")
+                from mcpsec.scanners.param_selection import candidate_injectable_params
 
-                url_params = set()
-                schema = tool.raw_schema
-                if "inputSchema" in schema:
-                    schema = schema["inputSchema"]
-                props = schema.get("properties", {})
-
-                for param_name in tool.parameters:
-                    p_def = props.get(param_name, {})
-                    if any(kw in param_name.lower() for kw in URL_ISH_KEYWORDS):
-                        url_params.add(param_name)
-                    elif p_def.get("format") == "uri":
-                        url_params.add(param_name)
-
-                for param_name, p_def in props.items():
-                    if any(kw in param_name.lower() for kw in URL_ISH_KEYWORDS):
-                        url_params.add(param_name)
-                    elif p_def.get("format") == "uri":
-                        url_params.add(param_name)
-
-                if not url_params and relevant:
-                    for param_name, param_def in props.items():
-                        if param_def.get("type") == "string":
-                            url_params.add(param_name)
-
+                url_params = candidate_injectable_params(
+                    tool, max_params=getattr(self, "max_params_per_tool", 25)
+                )
                 if not url_params:
                     continue
 

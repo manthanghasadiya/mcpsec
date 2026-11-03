@@ -395,29 +395,13 @@ class PathTraversalScanner(BaseScanner):
             return _extract_response(res), elapsed
 
         for tool in profile.tools:
-            # Scanner scoping: skip tools unlikely to do file operations
-            if not is_tool_relevant(tool.name, tool.description, "path-traversal"):
+            from mcpsec.scanners.param_selection import candidate_injectable_params
+
+            path_params = candidate_injectable_params(
+                tool, max_params=getattr(self, "max_params_per_tool", 25)
+            )
+            if not path_params:
                 continue
-
-            # Find injectable parameters
-            path_params = set()
-
-            for param_name in tool.parameters:
-                if any(kw in param_name.lower() for kw in PATH_PARAM_KEYWORDS):
-                    path_params.add(param_name)
-
-            raw_props = tool.raw_schema.get("inputSchema", {}).get("properties", {})
-            for param_name in raw_props:
-                if any(kw in param_name.lower() for kw in PATH_PARAM_KEYWORDS):
-                    path_params.add(param_name)
-
-            if not path_params:
-                for param_name, param_def in raw_props.items():
-                    if param_def.get("type") == "string":
-                        path_params.add(param_name)
-
-            if not path_params:
-                path_params = set(tool.parameters.keys())
 
             for param_name in path_params:
                 base_args = self._get_dummy_args(tool, param_name, "")

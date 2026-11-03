@@ -168,6 +168,11 @@ def scan(
         "--oob-host",
         help="Host/IP advertised in out-of-band (OOB) payload URLs for SSRF detection (default: 127.0.0.1)",
     ),
+    max_params_per_tool: int = typer.Option(
+        25,
+        "--max-params-per-tool",
+        help="Maximum candidate parameters to probe per tool (default: 25)",
+    ),
 ):
     """
     Scan an MCP server for security vulnerabilities.
@@ -192,6 +197,7 @@ def scan(
                 server_filter=server_filter,
                 exploit=exploit,
                 oob_host=oob_host,
+                max_params_per_tool=max_params_per_tool,
             )
         )
     elif not stdio and not http:
@@ -214,6 +220,7 @@ def scan(
                 headers=_parse_headers(header),
                 exploit=exploit,
                 oob_host=oob_host,
+                max_params_per_tool=max_params_per_tool,
             )
         )
 
@@ -229,6 +236,7 @@ async def _scan_async(
     headers: dict[str, str] | None = None,
     exploit: bool = False,
     oob_host: str | None = None,
+    max_params_per_tool: int = 25,
 ):
     from mcpsec.client.mcp_client import MCPSecClient
     from mcpsec.engine import run_scan
@@ -458,6 +466,7 @@ async def _scan_async(
             target=target,
             transport=transport,
             oob_host=oob_host,
+            max_params_per_tool=max_params_per_tool,
         )
 
         # Merge AI findings into result
@@ -512,6 +521,7 @@ async def _auto_scan_async(
     server_filter: str | None = None,
     exploit: bool = False,
     oob_host: str | None = None,
+    max_params_per_tool: int = 25,
 ):
     """Auto-discover and scan multiple MCP servers."""
     import fnmatch
@@ -642,6 +652,7 @@ async def _auto_scan_async(
                     profile=profile,
                     scanner_names=scanner_names,
                     oob_host=oob_host,
+                    max_params_per_tool=max_params_per_tool,
                 )).findings
                 
                 # Convert findings to dict early so we can safely inject metadata
