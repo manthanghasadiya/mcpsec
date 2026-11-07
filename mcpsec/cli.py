@@ -17,9 +17,11 @@ from typing import Optional
 
 import typer
 from rich import box
+from rich.markup import escape
 from rich.table import Table
 
 from mcpsec import __version__
+from mcpsec.ai.llm_client import LLMClient, LLMError
 from mcpsec.models import TransportType
 from mcpsec.sql_scanner import SQLScanner
 from mcpsec.discovery import discover_mcp_servers, DiscoveredServer, get_server_display_name
@@ -43,7 +45,17 @@ app = typer.Typer(
 
 def _run_async(coro):
     """Run an async function from sync context."""
-    return asyncio.run(coro)
+    try:
+        return asyncio.run(coro)
+    except LLMError as exc:
+        console.print(f"[danger]AI provider error: {escape(str(exc))}[/danger]")
+        raise typer.Exit(1) from None
+
+
+async def _check_ai_provider() -> None:
+    client = LLMClient()
+    if client.available:
+        await client.chat("Reply briefly.", "Connection check.")
 
 
 def _parse_headers(header_list: list[str]) -> dict[str, str]:
@@ -181,6 +193,13 @@ def scan(
     and run security scanners against them.
     """
     scanner_names = [s.strip() for s in scanners.split(",")] if scanners else None
+
+    if ai and (auto or config) and not list_servers:
+        console.print("[danger]AI analysis is not available with automatic discovery.[/danger]")
+        raise typer.Exit(1)
+
+    if ai and not list_servers:
+        _run_async(_check_ai_provider())
 
     # Determine scan mode
     if auto or config or list_servers:
@@ -323,6 +342,8 @@ async def _scan_async(
                         }
                         try:
                             ai_payloads = await generator.generate_payloads(tool_info)
+                        except LLMError:
+                            raise
                         except Exception as e:
                             console.print(
                                 f"  [danger]    ✗ AI failed to generate payloads for {tool.name}: {e}[/danger]"
@@ -425,6 +446,8 @@ async def _scan_async(
                                 except Exception as e:
                                     console.print(f"    [dim]→ Error: {e}[/dim]")
                                     pass
+                    except LLMError:
+                        raise
                     except Exception as e:
                         console.print(
                             f"  [danger]    ⚠ Skipped tool {getattr(tool, 'name', 'unknown')} due to error: {e}[/danger]"
@@ -1241,6 +1264,9 @@ def audit(
     if sum([bool(npm), bool(github), bool(path)]) > 1:
         console.print("[danger]Error: Specify only one source (npm, github, or path)[/danger]")
         raise typer.Exit(1)
+
+    if ai:
+        _run_async(_check_ai_provider())
 
     _run_async(_audit_async(npm, github, path, ai, include_tests, output, format.lower()))
 

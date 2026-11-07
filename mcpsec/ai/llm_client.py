@@ -7,6 +7,10 @@ import httpx
 from mcpsec.config import get_api_key
 
 
+class LLMError(Exception):
+    """A configured LLM provider could not complete a request."""
+
+
 class LLMClient:
     """Calls LLM APIs. Supports DeepSeek, Groq, OpenAI, Anthropic, Google, Ollama."""
 
@@ -37,13 +41,30 @@ class LLMClient:
         if not self.available:
             return None
 
-        if self.provider == "anthropic":
-            return await self._call_anthropic(system, user, temperature)
-        elif self.provider == "google":
-            return await self._call_google(system, user, temperature)
-        else:
-            # DeepSeek, Groq, OpenAI, Ollama — all OpenAI-compatible
-            return await self._call_openai_compat(system, user, temperature)
+        try:
+            if self.provider == "anthropic":
+                result = await self._call_anthropic(system, user, temperature)
+            elif self.provider == "google":
+                result = await self._call_google(system, user, temperature)
+            else:
+                result = await self._call_openai_compat(system, user, temperature)
+            if not isinstance(result, str) or not result.strip():
+                raise LLMError(f"{self.provider} model {self.model}: empty response")
+            return result
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text
+            if self.api_key:
+                body = body.replace(self.api_key, "[redacted]")
+            raise LLMError(
+                f"{self.provider} model {self.model}: HTTP {exc.response.status_code}: {body}"
+            ) from None
+        except httpx.RequestError as exc:
+            # Do not include the URL: some providers put credentials in the query string.
+            raise LLMError(f"{self.provider} model {self.model}: {type(exc).__name__}") from None
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise LLMError(
+                f"{self.provider} model {self.model}: invalid response ({exc})"
+            ) from None
 
     async def _call_openai_compat(self, system: str, user: str, temp: float) -> Optional[str]:
         headers = {"Content-Type": "application/json"}
@@ -61,16 +82,11 @@ class LLMClient:
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            try:
-                resp = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=headers,
-                    json=payload,
-                )
-                resp.raise_for_status()
-                return resp.json()["choices"][0]["message"]["content"]
-            except Exception:
-                return None
+            resp = await client.post(
+                f"{self.base_url}/chat/completions", headers=headers, json=payload
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
 
     async def _call_anthropic(self, system: str, user: str, temp: float) -> Optional[str]:
         headers = {
@@ -87,16 +103,9 @@ class LLMClient:
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            try:
-                resp = await client.post(
-                    f"{self.base_url}/messages",
-                    headers=headers,
-                    json=payload,
-                )
-                resp.raise_for_status()
-                return resp.json()["content"][0]["text"]
-            except Exception:
-                return None
+            resp = await client.post(f"{self.base_url}/messages", headers=headers, json=payload)
+            resp.raise_for_status()
+            return resp.json()["content"][0]["text"]
 
     async def _call_google(self, system: str, user: str, temp: float) -> Optional[str]:
         """Call Google Gemini API (native format)."""
@@ -111,10 +120,7 @@ class LLMClient:
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            try:
-                resp = await client.post(url, json=payload)
-                resp.raise_for_status()
-                return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-            except Exception:
-                return None
+            resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+            return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
 

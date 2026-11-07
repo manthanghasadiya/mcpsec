@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from mcpsec.models import Finding, Severity
-from mcpsec.ai.llm_client import LLMClient
+from mcpsec.ai.llm_client import LLMClient, LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +224,8 @@ Classify ALL {len(findings)} findings. Do not skip any."""
         
         return server_profile, tagged_findings
         
+    except LLMError:
+        raise
     except Exception as e:
         logger.error(f"AI classification failed: {e}")
         return _create_default_profile(source_path), findings

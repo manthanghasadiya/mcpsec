@@ -104,14 +104,16 @@ def get_api_key() -> Tuple[Optional[str], Optional[str], Optional[str], Optional
     """
     import os
 
+    config = load_config()
+
     # 1. Check environment variables
     for provider_id, info in PROVIDERS.items():
         env_var = info.get("env_var")
         if env_var and os.environ.get(env_var):
-            return (provider_id, os.environ[env_var], info["base_url"], info["model"])
+            model = config.get("model") if config.get("ai_provider") == provider_id else None
+            return (provider_id, os.environ[env_var], info["base_url"], model or info["model"])
 
     # 2. Check config file
-    config = load_config()
     if config.get("ai_provider") and config.get("api_key"):
         provider_id = config["ai_provider"]
         info = PROVIDERS.get(provider_id, {})
