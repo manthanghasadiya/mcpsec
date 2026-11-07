@@ -55,6 +55,7 @@ findings.json
 *.log
 test_*.py
 !tests/test_*.py
+!tests/**/test_*.py
 report.json
 install_log.txt
 temp_*.py
@@ -71,3 +72,5 @@ out.txt
 mypy_output.txt
 
 verify_patterns.py
+tests/corpus/targets_local/
+
