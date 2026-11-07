@@ -33,6 +33,7 @@ class SQLiResult:
     delay: float = 0.0
     db_type: Optional[str] = None
     evidence: str = ""
+    error_differential_confirmed: bool = False
 
 
 class SQLInjectionRCEScanner(BaseScanner):
@@ -347,12 +348,10 @@ class SQLInjectionRCEScanner(BaseScanner):
                 r"PostgreSQL.*ERROR",
                 r"syntax error at or near",
                 r"invalid input syntax",
-                r"unterminated quoted string",
             ],
             "mssql": [
                 r"Microsoft.*ODBC",
                 r"Microsoft.*SQL.*Server",
-                r"Unclosed quotation mark",
                 r"mssql_query",
                 r"\[SQL Server\]",
                 r"SQLServer JDBC",
@@ -847,16 +846,19 @@ class SQLInjectionRCEScanner(BaseScanner):
 
         self.current_profile = profile
 
-        # Phase 1: Discover database tools
-        db_tools = self._discover_db_tools(profile)
-        if not db_tools:
-            return findings
+        # Order tools so likely DB tools come first, but none are excluded
+        from mcpsec.scanners.param_selection import candidate_injectable_params
 
-        for tool in db_tools:
+        db_hints = set(t.name for t in self._discover_db_tools(profile))
+        ordered_tools = sorted(profile.tools, key=lambda t: 0 if t.name in db_hints else 1)
+
+        for tool in ordered_tools:
             tool_name = tool.name
 
             # Find injectable parameters
-            params = self._get_injectable_params(tool)
+            params = candidate_injectable_params(
+                tool, max_params=getattr(self, "max_params_per_tool", 25)
+            )
 
             if not params:
                 continue
@@ -887,9 +889,18 @@ class SQLInjectionRCEScanner(BaseScanner):
                     # Phase 3: Fingerprint database
                     db_type = await self._fingerprint_db(client, tool_name, param_name, sqli_result)
 
-                    # Phase 4: Attempt RCE escalation
-                    rce_findings = await self._test_rce(client, tool_name, param_name, db_type)
-                    findings.extend(rce_findings)
+                    # Phase 4: Attempt RCE escalation (defense in depth)
+                    # Gate RCE escalation to non-error base confirmations or error-based that passed differential
+                    can_escalate = (
+                        sqli_result.technique in ("boolean", "time", "union", "stacked")
+                        or (
+                            sqli_result.technique == "error"
+                            and getattr(sqli_result, "error_differential_confirmed", False)
+                        )
+                    )
+                    if can_escalate:
+                        rce_findings = await self._test_rce(client, tool_name, param_name, db_type)
+                        findings.extend(rce_findings)
 
         return findings
 
@@ -922,20 +933,11 @@ class SQLInjectionRCEScanner(BaseScanner):
 
     def _get_injectable_params(self, tool: ToolInfo) -> list[str]:
         """Get parameter names likely to be injectable"""
-        injectable = []
-        properties = tool.parameters
+        from mcpsec.scanners.param_selection import candidate_injectable_params
 
-        for param_name, param_schema in properties.items():
-            # Check if param name matches SQL patterns
-            if any(re.search(pattern, param_name, re.I) for pattern in self.SQL_PARAM_PATTERNS):
-                injectable.append(param_name)
-            # Check if param accepts string type
-            elif isinstance(param_schema, dict) and param_schema.get("type") == "string":
-                injectable.append(param_name)
-            elif hasattr(param_schema, "type") and getattr(param_schema, "type") == "string":
-                injectable.append(param_name)
-
-        return injectable if injectable else list(properties.keys())
+        return candidate_injectable_params(
+            tool, max_params=getattr(self, "max_params_per_tool", 25)
+        )
 
 
     def _build_base_args(
@@ -966,17 +968,33 @@ class SQLInjectionRCEScanner(BaseScanner):
     ) -> SQLiResult:
         """Attempt to detect SQL injection using multiple techniques"""
 
-        # Try error-based detection first (fastest) - reflection guarded
+        # Try error-based detection first (fastest) - reflection guarded + differential verified
         for name, payload, desc in self.ERROR_BASED_PAYLOADS:
             result = await self._test_payload(client, tool_name, param_name, payload)
             if self._is_sqli_error(result, payload=payload):
-                return SQLiResult(
-                    vulnerable=True,
-                    technique="error",
-                    payload=payload,
-                    response=result,
-                    evidence=f"Error-based SQLi detected via {desc}",
+                # Require error differential: injected quote errors, balanced control does not
+                control_payload = self._get_balanced_control(payload)
+                control_result = await self._test_payload(
+                    client, tool_name, param_name, control_payload
                 )
+                is_differential = not self._is_sqli_error(control_result, payload=control_payload)
+                if not is_differential and control_payload != "test":
+                    benign_result = await self._test_payload(
+                        client, tool_name, param_name, "test"
+                    )
+                    if not self._is_sqli_error(benign_result, payload="test"):
+                        is_differential = True
+                        control_payload = "test"
+
+                if is_differential:
+                    return SQLiResult(
+                        vulnerable=True,
+                        technique="error",
+                        payload=payload,
+                        response=result,
+                        evidence=f"Error-based SQLi detected via {desc} (differential confirmed vs '{control_payload}')",
+                        error_differential_confirmed=True,
+                    )
 
         # Oracle confirmation: directional boolean-differential and scaled timing
         async def call_fn(t_name: str, args: dict[str, Any]) -> tuple[str, float]:
@@ -1069,7 +1087,7 @@ class SQLInjectionRCEScanner(BaseScanner):
         # Try bypass techniques (reflection guarded)
         for name, payload, desc in self.BYPASS_PAYLOADS:
             result = await self._test_payload(client, tool_name, param_name, payload)
-            if self._is_sqli_error(result, payload=payload) or self._is_union_success(result, payload=payload):
+            if self._is_union_success(result, payload=payload):
                 return SQLiResult(
                     vulnerable=True,
                     technique="bypass",
@@ -1077,6 +1095,18 @@ class SQLInjectionRCEScanner(BaseScanner):
                     response=result,
                     evidence=f"SQLi detected with WAF bypass: {desc}",
                 )
+            if self._is_sqli_error(result, payload=payload):
+                # Require differential: bypass payload errors, but benign does not
+                benign_result = await self._test_payload(client, tool_name, param_name, "test")
+                if not self._is_sqli_error(benign_result, payload="test"):
+                    return SQLiResult(
+                        vulnerable=True,
+                        technique="bypass",
+                        payload=payload,
+                        response=result,
+                        evidence=f"SQLi detected with WAF bypass: {desc}",
+                        error_differential_confirmed=True,
+                    )
 
         return SQLiResult(vulnerable=False, technique="", payload="", response="")
 
@@ -1165,6 +1195,24 @@ class SQLInjectionRCEScanner(BaseScanner):
             return True
         return False
 
+    def _get_balanced_control(self, payload: str) -> str:
+        """Return a balanced/benign control variant for error differential verification."""
+        if payload == "'":
+            return "''"
+        elif payload == '"':
+            return '""'
+        elif payload == "`":
+            return "``"
+        elif payload == "\\":
+            return "\\\\"
+        elif payload in ("(", ")", "((((", "((((("):
+            return "()"
+        elif payload.startswith("CONCAT("):
+            return "CONCAT('a','b')"
+        elif payload in ("\u0027", "\uff07", "\u02bc"):
+            return payload + payload
+        return "test"
+
     def _is_sqli_error(self, response: str, payload: str = "") -> bool:
         """Check if response contains SQL error indicators"""
         if not response:
@@ -1189,20 +1237,16 @@ class SQLInjectionRCEScanner(BaseScanner):
 
         error_patterns = [
             r"sqlite3\.OperationalError",
-            r"psycopg2\.(DatabaseError|ProgrammingError)",
+            r"psycopg2\.(DatabaseError|ProgrammingError|errors)",
             r"mysql\.connector\.errors",
-            r"syntax error at or near",
-            r"You have an error in your SQL syntax",
-            r"unrecognized token",
-            r"no such column",
-            r"no such table",
-            r"unterminated quoted string",
-            r"unclosed quotation",
-            r"ORA-\d{5}",
-            r"SQL.*error",
-            r"query.*failed",
-            r"database.*error",
-            r"SQL.*syntax error",
+            r"syntax error at or near",                 # Postgres
+            r"You have an error in your SQL syntax",     # MySQL
+            r"unrecognized token",                       # SQLite
+            r"no such column",                           # SQLite
+            r"no such table",                            # SQLite
+            r"ORA-\d{5}",                                # Oracle
+            r"PG::\w+Error",                             # Postgres (Rails)
+            r"SQLSTATE\[",                               # PDO
         ]
         cleaned = response.replace(payload, "") if payload else response
         for p in error_patterns:
@@ -1226,6 +1270,10 @@ class SQLInjectionRCEScanner(BaseScanner):
         from mcpsec.scanners.response_classifier import Verdict, classify_response
 
         if classify_response(response) == Verdict.SAFE:
+            return False
+
+        # If it's a SQL error, it is not a successful UNION execution
+        if self._is_sqli_error(response, payload=payload):
             return False
 
         # If we get back NULL or version info, UNION worked
@@ -1314,15 +1362,31 @@ class SQLInjectionRCEScanner(BaseScanner):
             payloads.extend(self.POSTGRES_RCE_PAYLOADS[:3])
             payloads.extend(self.MYSQL_RCE_PAYLOADS[:3])
 
+        REAL_CMD_OUTPUT_PATTERNS = [
+            r"uid=\d+",
+            r"gid=\d+",
+            r"root:x?:0:0",
+            r"NT AUTHORITY",
+            r"AUTHORITY\\",
+            r"\[boot loader\]",
+            r"\[extensions\]",
+        ]
+
         for name, payload, desc, attack_type in payloads:
             result = await self._test_payload(client, tool_name, param_name, payload)
             severity, evidence = self._classify_rce_result(result, attack_type, payload)
 
             if severity:
+                has_real_cmd = any(re.search(p, result, re.I) for p in REAL_CMD_OUTPUT_PATTERNS)
+                if severity == Severity.CRITICAL and has_real_cmd:
+                    confidence = "confirmed"
+                else:
+                    confidence = "suspected"
+                    severity = Severity.HIGH if severity == Severity.CRITICAL else severity
+
                 findings.append(
-                    Finding(
+                    self.create_finding(
                         severity=severity,
-                        scanner=self.name,
                         tool_name=tool_name,
                         title=f"SQL Injection to {attack_type.upper()} via {db_type.upper()}",
                         description=(
@@ -1332,6 +1396,7 @@ class SQLInjectionRCEScanner(BaseScanner):
                         ),
                         detail=f"Payload: {payload}\n\nResponse: {result[:1000]}",
                         evidence=evidence,
+                        confidence=confidence,
                         remediation=self._get_remediation(db_type, attack_type),
                         cwe="CWE-89",
                     )
@@ -1445,19 +1510,24 @@ class SQLInjectionRCEScanner(BaseScanner):
     def _create_sqli_finding(
         self, tool_name: str, param_name: str, sqli_result: SQLiResult
     ) -> Finding:
-        """Create a finding for basic SQLi detection"""
-        return Finding(
+        """Create a finding for basic SQLi detection adhering to the evidence model."""
+        if sqli_result.technique in ("boolean", "time") or sqli_result.error_differential_confirmed:
+            confidence = "confirmed"
+        else:
+            confidence = "suspected"
+
+        return self.create_finding(
             severity=Severity.HIGH,
-            scanner=self.name,
             tool_name=tool_name,
             parameter=param_name,
-            title=f"SQL Injection in '{tool_name}' ({sqli_result.technique}-based) [CONFIRMED]",
+            title=f"SQL Injection in '{tool_name}' ({sqli_result.technique}-based)",
             description=(
                 f"The '{tool_name}' tool is vulnerable to SQL injection via the '{param_name}' parameter. "
                 f"Injection was confirmed using {sqli_result.technique}-based detection technique."
             ),
             detail=f"Payload: {sqli_result.payload}\n\nResponse: {sqli_result.response[:1000]}",
             evidence=sqli_result.evidence,
+            confidence=confidence,
             remediation=(
                 "1. Use parameterized queries / prepared statements\n"
                 "2. Implement input validation and sanitization\n"

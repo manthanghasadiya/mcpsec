@@ -36,6 +36,7 @@ async def run_scan(
     target: str = "",
     transport: TransportType = TransportType.STDIO,
     oob_host: str | None = None,
+    max_params_per_tool: int = 25,
 ) -> ScanResult:
     """Run all selected scanners against a server profile."""
 
@@ -43,6 +44,8 @@ async def run_scan(
     for scanner in scanners:
         if hasattr(scanner, "oob_host"):
             scanner.oob_host = oob_host
+        if hasattr(scanner, "max_params_per_tool"):
+            scanner.max_params_per_tool = max_params_per_tool
 
     result = ScanResult(
         scan_id=str(uuid.uuid4())[:8],

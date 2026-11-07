@@ -393,30 +393,17 @@ class CommandInjectionScanner(BaseScanner):
             return findings
 
         for tool in profile.tools:
-            # Scanner scoping: skip tools unlikely to shell out
-            if not is_tool_relevant(tool.name, tool.description, "command-injection"):
+            # Select candidate parameters without excluding by name
+            from mcpsec.scanners.param_selection import candidate_injectable_params
+
+            injectable_params = candidate_injectable_params(
+                tool, max_params=getattr(self, "max_params_per_tool", 25)
+            )
+            if not injectable_params:
                 continue
 
-            # Test ALL string-type parameters, plus keyword matches
-            injectable_params = set()
-
-            # Keyword matching (high priority)
-            for param_name in tool.parameters:
-                if any(kw in param_name.lower() for kw in COMMAND_PARAM_KEYWORDS):
-                    injectable_params.add(param_name)
-
-            # Also test any string-type parameters from schema
-            raw_props = tool.raw_schema.get("inputSchema", {}).get("properties", {})
-            for param_name, param_def in raw_props.items():
-                if param_def.get("type") == "string":
-                    injectable_params.add(param_name)
-
-            # Fall back to all params if none matched
-            if not injectable_params:
-                injectable_params = set(tool.parameters.keys())
-
             # Measure baseline latency once per tool by timing a benign call
-            sample_param = next(iter(injectable_params)) if injectable_params else "input"
+            sample_param = injectable_params[0]
             benign_args = self._get_dummy_args(tool, sample_param, "test")
             try:
                 b_start = time.monotonic()
@@ -482,12 +469,11 @@ class CommandInjectionScanner(BaseScanner):
                         )
                         if oracle_res.confirmed:
                             findings.append(
-                                Finding(
+                                self.create_finding(
                                     severity=Severity.CRITICAL,
-                                    scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param_name,
-                                    title=f"Command Injection in '{param_name}' [CONFIRMED]",
+                                    title=f"Command Injection in '{param_name}'",
                                     description=(
                                         f"Tool '{tool.name}' is vulnerable to command injection "
                                         f"via the '{param_name}' parameter."

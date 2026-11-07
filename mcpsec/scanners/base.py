@@ -7,7 +7,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from mcpsec.client.mcp_client import MCPSecClient
-from mcpsec.models import Finding, ServerProfile
+from mcpsec.models import Finding, ServerProfile, create_finding
 
 
 class BaseScanner(ABC):
@@ -15,6 +15,13 @@ class BaseScanner(ABC):
 
     name: str = "base"
     description: str = "Base scanner"
+    max_params_per_tool: int = 25
+
+    def create_finding(self, **kwargs) -> Finding:
+        """Create a finding defaulted to this scanner's name adhering to the evidence model."""
+        if "scanner" not in kwargs:
+            kwargs["scanner"] = self.name
+        return create_finding(**kwargs)
 
     @abstractmethod
     async def scan(

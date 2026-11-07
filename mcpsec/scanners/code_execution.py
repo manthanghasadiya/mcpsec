@@ -65,26 +65,13 @@ class CodeExecutionScanner(BaseScanner):
             return findings
 
         for tool in profile.tools:
-            # Check if tool is relevant for code execution
-            combined = f"{tool.name} {tool.description}".lower()
-            is_relevant = any(kw in combined for kw in RELEVANT_KEYWORDS)
+            from mcpsec.scanners.param_selection import candidate_injectable_params
 
-            if not is_relevant:
-                continue
-
-            # Identify candidate parameters
-            params = []
-            schema = tool.raw_schema
-            if "inputSchema" in schema:
-                schema = schema["inputSchema"]
-
-            props = schema.get("properties", {})
-            for p_name, p_def in props.items():
-                if p_def.get("type") == "string":
-                    params.append(p_name)
-
+            params = candidate_injectable_params(
+                tool, max_params=getattr(self, "max_params_per_tool", 25)
+            )
             if not params:
-                params = list(tool.parameters.keys())
+                continue
 
             for param in params:
                 found_vuln = False
@@ -116,12 +103,11 @@ class CodeExecutionScanner(BaseScanner):
 
                         if proof in text and proof not in serialized_args:
                             findings.append(
-                                Finding(
+                                self.create_finding(
                                     severity=Severity.CRITICAL,
-                                    scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param,
-                                    title=f"Code Execution in '{param}' [CONFIRMED]",
+                                    title=f"Code Execution in '{param}'",
                                     description=f"Tool '{tool.name}' appears to evaluate the '{param}' parameter as code.",
                                     detail=f"Payload: {payload}\nResponse: {text[:300]}",
                                     evidence=f"arithmetic payload {a}*{b} evaluated to {proof}",
@@ -149,6 +135,7 @@ class CodeExecutionScanner(BaseScanner):
 
                             evidence = ""
                             confidence = ""
+                            severity = Severity.HIGH
 
                             for pattern in SUCCESS_INDICATORS["system"]:
                                 m = re.search(pattern, text, re.IGNORECASE)
@@ -158,21 +145,25 @@ class CodeExecutionScanner(BaseScanner):
                                         # Reflection guard: matched text is merely echoing the sent arguments
                                         continue
                                     evidence = f"Code execution output detected: {matched_str}"
-                                    confidence = "CONFIRMED"
+                                    if re.search(r"uid=\d+", matched_str, re.IGNORECASE):
+                                        confidence = "confirmed"
+                                        severity = Severity.CRITICAL
+                                    else:
+                                        confidence = "suspected"
+                                        severity = Severity.HIGH
                                     break
 
                             if evidence:
                                 findings.append(
-                                    Finding(
-                                        severity=Severity.CRITICAL,
-                                        scanner=self.name,
+                                    self.create_finding(
+                                        severity=severity,
                                         tool_name=tool.name,
                                         parameter=param,
-                                        title=f"Code Execution in '{param}' [{confidence}]",
+                                        title=f"Code Execution in '{param}'",
                                         description=f"Tool '{tool.name}' appears to evaluate the '{param}' parameter as code.",
                                         detail=f"Payload: {payload}\nResponse: {text[:300]}",
                                         evidence=evidence,
-                                        confidence=confidence.lower(),
+                                        confidence=confidence,
                                         remediation="Never use eval(), exec(), or compile() on user input. Use safe alternatives or strict allowlists.",
                                         cwe="CWE-94",
                                     )

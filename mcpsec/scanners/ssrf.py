@@ -12,6 +12,7 @@ Tests 100+ payloads across 6 categories:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -190,29 +191,39 @@ PAYLOADS: dict[str, list[str]] = {
 
 # ─── Success indicators ──────────────────────────────────────────────────────
 
+# Cloud metadata structural signatures: (provider, description, required_substrings)
+# All required substrings must co-occur simultaneously in the reflection-cleaned response.
+CLOUD_METADATA_SIGNATURES: list[tuple[str, str, set[str]]] = [
+    # AWS IAM credentials (/latest/meta-data/iam/security-credentials/...)
+    ("aws", "AWS IAM credentials", {"AccessKeyId", "SecretAccessKey"}),
+    # AWS instance-identity document (/latest/dynamic/instance-identity/document)
+    # Require at least two of instanceId, accountId, region, imageId together
+    ("aws", "AWS instance identity document", {"instanceId", "accountId"}),
+    ("aws", "AWS instance identity document", {"instanceId", "region"}),
+    ("aws", "AWS instance identity document", {"instanceId", "imageId"}),
+    ("aws", "AWS instance identity document", {"accountId", "region"}),
+    ("aws", "AWS instance identity document", {"accountId", "imageId"}),
+    ("aws", "AWS instance identity document", {"region", "imageId"}),
+    # GCP token (/computeMetadata/v1/instance/service-accounts/default/token)
+    ("gcp", "GCP access token", {"access_token", "token_type", "expires_in"}),
+    # GCP computeMetadata (/computeMetadata/v1/...)
+    ("gcp", "GCP numeric project ID metadata", {"numeric_project_id"}),
+    ("gcp", "GCP service-accounts metadata", {"service-accounts", "aliases"}),
+    ("gcp", "GCP service-accounts metadata", {"service-accounts", "email"}),
+    ("gcp", "GCP service-accounts metadata", {"service-accounts", "identity"}),
+    ("gcp", "GCP service-accounts metadata", {"service-accounts", "scopes"}),
+    # Azure IMDS (/metadata/identity/oauth2/token)
+    ("azure", "Azure IMDS token", {"access_token", "client_id"}),
+    ("azure", "Azure IMDS token", {"access_token", "resource"}),
+    # Azure IMDS instance (/metadata/instance)
+    ("azure", "Azure instance metadata", {'"compute"', '"network"'}),
+    # Kubernetes: service-account token structure ("kind"/"apiVersion" with serviceaccount/secret context)
+    ("kubernetes", "Kubernetes ServiceAccount structure", {"apiVersion", "kind", "ServiceAccount"}),
+    ("kubernetes", "Kubernetes Secret structure", {"apiVersion", "kind", "Secret"}),
+    ("kubernetes", "Kubernetes ServiceAccount token structure", {"apiVersion", "kind", "service-account-token"}),
+]
+
 SUCCESS_INDICATORS: dict[str, list[str]] = {
-    "aws": [
-        r"ami-id",
-        r"instance-id",
-        r"iam/security-credentials",
-        r"AccessKeyId",
-        r"SecretAccessKey",
-        r"InstanceProfileArn",
-    ],
-    "gcp": [
-        r"Metadata-Flavor:\s*Google",
-        r"project/project-id",
-        r"access_token",
-    ],
-    "azure": [
-        r'"vmId"',
-        r'"subscriptionId"',
-        r"Metadata:\s*true",
-    ],
-    "kubernetes": [
-        r'"apiVersion"',
-        r'"kind":\s*"(Namespace|Secret|Pod|Service)"',
-    ],
     "internal_services": [
         r"SSH-2\.0-",
         r"redis_version",
@@ -237,6 +248,105 @@ SUCCESS_INDICATORS: dict[str, list[str]] = {
 _ALL_PAYLOADS = []
 for category_payloads in PAYLOADS.values():
     _ALL_PAYLOADS.extend(category_payloads)
+
+
+def _extract_json_objects(text: str) -> list[dict[str, Any]]:
+    """Extract parsed JSON dictionary objects from text.
+
+    Tries direct json.loads first. If not a top-level JSON dict/list, scans for
+    candidate JSON objects enclosed in '{' and '}'. Returns parsed dicts only.
+    A response that is not JSON (markdown, prose) returns an empty list.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return []
+
+    # 1. Direct parse attempt
+    try:
+        parsed = json.loads(stripped)
+        if isinstance(parsed, dict):
+            return [parsed]
+        elif isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, dict)]
+    except Exception:
+        pass
+
+    # 2. Search for embedded JSON objects {...}
+    results: list[dict[str, Any]] = []
+    idx = 0
+    text_len = len(text)
+    while idx < text_len:
+        start = text.find("{", idx)
+        if start == -1:
+            break
+        depth = 0
+        in_string = False
+        escape = False
+        end = -1
+        for i in range(start, text_len):
+            c = text[i]
+            if escape:
+                escape = False
+                continue
+            if c == "\\":
+                escape = True
+                continue
+            if c == '"':
+                in_string = not in_string
+                continue
+            if not in_string:
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+        if end != -1:
+            chunk = text[start:end]
+            try:
+                obj = json.loads(chunk)
+                if isinstance(obj, dict):
+                    results.append(obj)
+            except Exception:
+                pass
+            idx = end
+        else:
+            idx = start + 1
+
+    return results
+
+
+def _collect_json_keys_and_values(obj: Any) -> set[str]:
+    """Recursively collect all keys and string scalar values in a JSON object."""
+    tokens: set[str] = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            tokens.add(str(k).lower())
+            if isinstance(v, str):
+                tokens.add(v.lower())
+            elif isinstance(v, (dict, list)):
+                tokens.update(_collect_json_keys_and_values(v))
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, str):
+                tokens.add(item.lower())
+            elif isinstance(item, (dict, list)):
+                tokens.update(_collect_json_keys_and_values(item))
+    return tokens
+
+
+def _collect_json_keys(obj: Any) -> set[str]:
+    """Recursively collect all dictionary keys present in a JSON object."""
+    keys: set[str] = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            keys.add(str(k).lower())
+            keys.update(_collect_json_keys(v))
+    elif isinstance(obj, list):
+        for item in obj:
+            keys.update(_collect_json_keys(item))
+    return keys
 
 
 def _extract_response(result: Any) -> str:
@@ -265,39 +375,61 @@ def _check_indicators(
 
     call_arg_values = [str(v) for v in (call_args or {}).values()]
 
-    def is_reflected(text: str) -> bool:
+    def is_arg_reflected(text: str) -> bool:
+        """Check if text appears in any tool argument other than the payload URL."""
         low = text.lower()
-        if payload and low in payload.lower():
+        for arg_val in call_arg_values:
+            arg_str = str(arg_val).lower()
+            if payload and arg_str == payload.lower():
+                continue
+            if low in arg_str:
+                return True
+        return False
+
+    def is_signature_reflected(required_substrings: set[str]) -> bool:
+        """A signature is reflected if all keys were in the payload URL, or any key was in other args."""
+        if payload and all(sub.lower() in payload.lower() for sub in required_substrings):
             return True
-        return any(low in arg_val.lower() for arg_val in call_arg_values)
+        for sub in required_substrings:
+            if is_arg_reflected(sub):
+                return True
+        return False
 
-    # Strong evidence: cloud metadata
-    for cat in ("aws", "gcp", "azure", "kubernetes"):
-        for pattern in SUCCESS_INDICATORS.get(cat, []):
-            match = re.search(pattern, clean_response, re.IGNORECASE)
-            if match:
-                matched_text = match.group(0)
-                if is_reflected(matched_text):
-                    continue
-                return f"Cloud metadata indicator ({cat}): {pattern}", "CONFIRMED"
+    # 1. Cloud metadata: requires an actual parsed JSON object containing required keys.
+    # A response that is not JSON (markdown, prose) can never match.
+    json_objects = _extract_json_objects(clean_response)
+    if json_objects:
+        for obj in json_objects:
+            obj_tokens = _collect_json_keys_and_values(obj)
+            obj_keys = _collect_json_keys(obj)
+            for cat, desc, required_keys in CLOUD_METADATA_SIGNATURES:
+                req_lower = {k.lower().strip('"') for k in required_keys}
+                # Check if all required keys/tokens are present in the parsed JSON object
+                if req_lower.issubset(obj_tokens) or req_lower.issubset(obj_keys):
+                    if is_signature_reflected(required_keys):
+                        continue
+                    matched_keys = ", ".join(sorted(required_keys))
+                    return f"Cloud metadata indicator ({cat}): {desc} [{matched_keys}]", "SUSPECTED"
 
-    # Strong evidence: internal service banners
+    # 2. Secondary evidence: internal service banners
     for pattern in SUCCESS_INDICATORS.get("internal_services", []):
         match = re.search(pattern, clean_response, re.IGNORECASE)
         if match:
             matched_text = match.group(0)
-            if is_reflected(matched_text):
+            low = matched_text.lower()
+            if (payload and low in payload.lower()) or any(low in str(v).lower() for v in call_arg_values):
                 continue
-            return f"Internal service detected: {pattern}", "CONFIRMED"
+            return f"Internal service detected: {pattern}", "SUSPECTED"
 
-    # Strong evidence: file contents
+    # 3. Secondary evidence: file contents
     for pattern in SUCCESS_INDICATORS.get("file_read", []):
         match = re.search(pattern, clean_response, re.IGNORECASE)
         if match:
             matched_text = match.group(0)
-            if is_reflected(matched_text):
+            low = matched_text.lower()
+            if (payload and low in payload.lower()) or any(low in str(v).lower() for v in call_arg_values):
                 continue
-            return f"File contents via SSRF: {pattern}", "CONFIRMED"
+            return f"File contents via SSRF: {pattern}", "SUSPECTED"
 
     return "", ""
 
@@ -334,32 +466,11 @@ class SSRFScanner(BaseScanner):
                 return _extract_response(res), elapsed
 
             for tool in profile.tools:
-                relevant = is_tool_relevant(tool.name, tool.description, "ssrf")
+                from mcpsec.scanners.param_selection import candidate_injectable_params
 
-                url_params = set()
-                schema = tool.raw_schema
-                if "inputSchema" in schema:
-                    schema = schema["inputSchema"]
-                props = schema.get("properties", {})
-
-                for param_name in tool.parameters:
-                    p_def = props.get(param_name, {})
-                    if any(kw in param_name.lower() for kw in URL_ISH_KEYWORDS):
-                        url_params.add(param_name)
-                    elif p_def.get("format") == "uri":
-                        url_params.add(param_name)
-
-                for param_name, p_def in props.items():
-                    if any(kw in param_name.lower() for kw in URL_ISH_KEYWORDS):
-                        url_params.add(param_name)
-                    elif p_def.get("format") == "uri":
-                        url_params.add(param_name)
-
-                if not url_params and relevant:
-                    for param_name, param_def in props.items():
-                        if param_def.get("type") == "string":
-                            url_params.add(param_name)
-
+                url_params = candidate_injectable_params(
+                    tool, max_params=getattr(self, "max_params_per_tool", 25)
+                )
                 if not url_params:
                     continue
 
@@ -378,12 +489,11 @@ class SSRFScanner(BaseScanner):
                         )
                         if oracle_res.confirmed:
                             findings.append(
-                                Finding(
+                                self.create_finding(
                                     severity=Severity.CRITICAL,
-                                    scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param_name,
-                                    title=f"SSRF in '{param_name}' [CONFIRMED]",
+                                    title=f"SSRF in '{param_name}'",
                                     description=(
                                         f"Tool '{tool.name}' is vulnerable to Server-Side Request Forgery "
                                         f"via the '{param_name}' parameter."
@@ -421,23 +531,19 @@ class SSRFScanner(BaseScanner):
                             evidence, confidence = _check_indicators(response_text, payload, call_args)
 
                             if evidence:
-                                severity = (
-                                    Severity.CRITICAL if confidence == "CONFIRMED" else Severity.HIGH
-                                )
                                 findings.append(
-                                    Finding(
-                                        severity=severity,
-                                        scanner=self.name,
+                                    self.create_finding(
+                                        severity=Severity.HIGH,
                                         tool_name=tool.name,
                                         parameter=param_name,
-                                        title=f"SSRF in '{param_name}' [{confidence}]",
+                                        title=f"SSRF in '{param_name}'",
                                         description=(
                                             f"Tool '{tool.name}' is vulnerable to Server-Side Request Forgery "
                                             f"via the '{param_name}' parameter."
                                         ),
                                         detail=f"Payload: {payload}\nResponse: {response_text[:300]}",
                                         evidence=evidence,
-                                        confidence=confidence.lower(),
+                                        confidence=confidence.lower() if confidence else "suspected",
                                         remediation=(
                                             "Implement an allowlist of permitted domains/IPs. "
                                             "Disable non-HTTP protocols (file://, gopher://, dict://). "

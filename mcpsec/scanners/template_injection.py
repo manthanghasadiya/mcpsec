@@ -53,27 +53,13 @@ class TemplateInjectionScanner(BaseScanner):
             return findings
 
         for tool in profile.tools:
-            # Scoping: tools that generate or format text
-            combined = f"{tool.name} {tool.description}".lower()
-            is_relevant = any(kw in combined for kw in RELEVANT_KEYWORDS)
+            from mcpsec.scanners.param_selection import candidate_injectable_params
 
-            if not is_relevant:
-                continue
-
-            params = []
-            schema = tool.raw_schema
-            if "inputSchema" in schema:
-                schema = schema["inputSchema"]
-
-            props = schema.get("properties", {})
-            for p_name, p_def in props.items():
-                if p_def.get("type") == "string":
-                    params.append(p_name)
-                elif p_def.get("type") == "object":
-                    params.append(p_name)
-
+            params = candidate_injectable_params(
+                tool, max_params=getattr(self, "max_params_per_tool", 25)
+            )
             if not params:
-                params = list(tool.parameters.keys())
+                continue
 
             for param in params:
                 found_vuln = False
@@ -115,12 +101,11 @@ class TemplateInjectionScanner(BaseScanner):
 
                         if proof in text and proof not in serialized_args:
                             findings.append(
-                                Finding(
+                                self.create_finding(
                                     severity=Severity.HIGH,
-                                    scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param,
-                                    title=f"Template Injection in '{param}' [CONFIRMED]",
+                                    title=f"Template Injection in '{param}'",
                                     description=f"Tool '{tool.name}' is vulnerable to template injection via '{param}'.",
                                     detail=f"Payload: {payload}\nResponse: {text[:300]}",
                                     evidence=f"Template payload '{payload}' evaluated to '{proof}'",
@@ -157,13 +142,14 @@ class TemplateInjectionScanner(BaseScanner):
                             confidence = ""
 
                             # Python class references (with reflection guard)
-                            if "<class '" in text or "__main__" in text:
-                                if (
-                                    "<class '" not in serialized_args
-                                    and "__main__" not in serialized_args
-                                ):
+                            if "<class '" in text:
+                                if "<class '" not in serialized_args:
                                     evidence = f"Template payload '{payload}' leaked internal class information"
-                                    confidence = "CONFIRMED"
+                                    confidence = "confirmed"
+                            elif "__main__" in text:
+                                if "__main__" not in serialized_args:
+                                    evidence = f"Template payload '{payload}' leaked module reference"
+                                    confidence = "suspected"
 
                             # Object-based leaks (with reflection guard)
                             elif "{'accessKeyId'" in text or "'DATABASE_URL'" in text:
@@ -172,20 +158,19 @@ class TemplateInjectionScanner(BaseScanner):
                                     and "'DATABASE_URL'" not in serialized_args
                                 ):
                                     evidence = f"Template payload '{payload}' leaked configuration data"
-                                    confidence = "CONFIRMED"
+                                    confidence = "suspected"
 
                             if evidence:
                                 findings.append(
-                                    Finding(
+                                    self.create_finding(
                                         severity=Severity.HIGH,
-                                        scanner=self.name,
                                         tool_name=tool.name,
                                         parameter=param,
-                                        title=f"Template Injection in '{param}' [{confidence}]",
+                                        title=f"Template Injection in '{param}'",
                                         description=f"Tool '{tool.name}' is vulnerable to template injection via '{param}'.",
                                         detail=f"Payload: {payload}\nResponse: {text[:300]}",
                                         evidence=evidence,
-                                        confidence=confidence.lower(),
+                                        confidence=confidence,
                                         remediation="Avoid passing untrusted input directly into template engines or format strings. Use parameterized templates.",
                                         cwe="CWE-1336",
                                     )

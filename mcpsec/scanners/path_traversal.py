@@ -395,29 +395,13 @@ class PathTraversalScanner(BaseScanner):
             return _extract_response(res), elapsed
 
         for tool in profile.tools:
-            # Scanner scoping: skip tools unlikely to do file operations
-            if not is_tool_relevant(tool.name, tool.description, "path-traversal"):
+            from mcpsec.scanners.param_selection import candidate_injectable_params
+
+            path_params = candidate_injectable_params(
+                tool, max_params=getattr(self, "max_params_per_tool", 25)
+            )
+            if not path_params:
                 continue
-
-            # Find injectable parameters
-            path_params = set()
-
-            for param_name in tool.parameters:
-                if any(kw in param_name.lower() for kw in PATH_PARAM_KEYWORDS):
-                    path_params.add(param_name)
-
-            raw_props = tool.raw_schema.get("inputSchema", {}).get("properties", {})
-            for param_name in raw_props:
-                if any(kw in param_name.lower() for kw in PATH_PARAM_KEYWORDS):
-                    path_params.add(param_name)
-
-            if not path_params:
-                for param_name, param_def in raw_props.items():
-                    if param_def.get("type") == "string":
-                        path_params.add(param_name)
-
-            if not path_params:
-                path_params = set(tool.parameters.keys())
 
             for param_name in path_params:
                 base_args = self._get_dummy_args(tool, param_name, "")
@@ -432,12 +416,11 @@ class PathTraversalScanner(BaseScanner):
                     )
                     if oracle_res.confirmed:
                         findings.append(
-                            Finding(
+                            self.create_finding(
                                 severity=Severity.CRITICAL,
-                                scanner=self.name,
                                 tool_name=tool.name,
                                 parameter=param_name,
-                                title=f"Path Traversal in '{param_name}' [CONFIRMED]",
+                                title=f"Path Traversal in '{param_name}'",
                                 description=(
                                     f"Tool '{tool.name}' is vulnerable to path traversal "
                                     f"via the '{param_name}' parameter."
@@ -473,24 +456,27 @@ class PathTraversalScanner(BaseScanner):
                         )
 
                         if evidence:
-                            # CRITICAL requires confirmed file content; LIKELY/heuristic is downgraded
-                            severity = (
-                                Severity.CRITICAL if confidence == "CONFIRMED" else Severity.HIGH
-                            )
+                            # CRITICAL requires confirmed file content; LIKELY/heuristic is SUSPECTED
+                            if confidence == "CONFIRMED":
+                                severity = Severity.CRITICAL
+                                conf = "confirmed"
+                            else:
+                                severity = Severity.HIGH
+                                conf = "suspected"
+
                             findings.append(
-                                Finding(
+                                self.create_finding(
                                     severity=severity,
-                                    scanner=self.name,
                                     tool_name=tool.name,
                                     parameter=param_name,
-                                    title=f"Path Traversal in '{param_name}' [{confidence}]",
+                                    title=f"Path Traversal in '{param_name}'",
                                     description=(
                                         f"Tool '{tool.name}' is vulnerable to path traversal "
                                         f"via the '{param_name}' parameter."
                                     ),
                                     detail=f"Payload: {payload}\nResponse: {response_text[:300]}",
                                     evidence=evidence,
-                                    confidence=confidence.lower(),
+                                    confidence=conf,
                                     remediation=(
                                         "Validate paths against an allowlist of permitted directories. "
                                         "Use os.path.realpath() and verify the resolved path starts "

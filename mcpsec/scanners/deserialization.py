@@ -86,36 +86,25 @@ class DeserializationScanner(BaseScanner):
             return findings
 
         for tool in profile.tools:
-            # Check if tool is relevant based on name/description
-            tool_combined = f"{tool.name} {tool.description}".lower()
-            is_relevant = any(kw in tool_combined for kw in PARAM_KEYWORDS)
+            from mcpsec.scanners.param_selection import candidate_injectable_params
 
-            # Find parameters that might accept serialized data
-            target_params = set()
+            target_params = candidate_injectable_params(
+                tool, max_params=getattr(self, "max_params_per_tool", 25)
+            )
+            if not target_params:
+                continue
 
-            # Extract properties from raw schema
+            # Extract properties from raw schema to detect format param if present
             schema = tool.raw_schema
             if "inputSchema" in schema:
                 schema = schema["inputSchema"]
-            props = schema.get("properties", {})
+            props = schema.get("properties", {}) if isinstance(schema, dict) else {}
 
             format_param = None
             for p_name in props:
                 if p_name.lower() == "format":
                     format_param = p_name
                     break
-
-            for p_name, p_def in props.items():
-                if p_def.get("type") == "string":
-                    name_lower = p_name.lower()
-                    if is_relevant or any(kw in name_lower for kw in PARAM_KEYWORDS):
-                        target_params.add(p_name)
-
-            if not target_params and is_relevant:
-                # Default to all string parameters if tool is relevant
-                for p_name, p_def in props.items():
-                    if p_def.get("type") == "string":
-                        target_params.add(p_name)
 
             for param_name in target_params:
                 # Measure baseline latency for time-based oracle confirmation
@@ -162,18 +151,18 @@ class DeserializationScanner(BaseScanner):
 
                 if oracle_res.confirmed:
                     findings.append(
-                        Finding(
+                        self.create_finding(
                             severity=Severity.CRITICAL,
-                            scanner=self.name,
                             tool_name=tool.name,
                             parameter=param_name,
-                            title=f"Insecure Deserialization in '{param_name}' [CONFIRMED]",
+                            title=f"Insecure Deserialization in '{param_name}'",
                             description=(
                                 f"Tool '{tool.name}' is vulnerable to insecure deserialization "
                                 f"via the '{param_name}' parameter."
                             ),
                             detail=f"Payload: {oracle_res.payload}\nEvidence: {oracle_res.evidence}",
                             evidence=oracle_res.evidence,
+                            confidence="confirmed",
                             remediation=(
                                 "Avoid deserializing untrusted data. "
                                 "If using Python pickle, switch to JSON. "
@@ -219,18 +208,18 @@ class DeserializationScanner(BaseScanner):
 
                             if evidence:
                                 findings.append(
-                                    Finding(
-                                        severity=Severity.CRITICAL,
-                                        scanner=self.name,
+                                    self.create_finding(
+                                        severity=Severity.HIGH,
                                         tool_name=tool.name,
                                         parameter=param_name,
-                                        title=f"Insecure {vuln_type.upper()} Deserialization [CONFIRMED]",
+                                        title=f"Insecure {vuln_type.upper()} Deserialization",
                                         description=(
                                             f"Tool '{tool.name}' appears vulnerable to insecure deserialization "
                                             f"of {vuln_type.upper()} data in the '{param_name}' parameter."
                                         ),
                                         detail=f"Payload: {payload}\nResponse: {clean_response[:300]}",
                                         evidence=evidence,
+                                        confidence="suspected",
                                         remediation=(
                                             "Avoid deserializing untrusted data. "
                                             "If using Python pickle, switch to JSON. "
