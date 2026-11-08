@@ -15,7 +15,7 @@
 [![Sink Patterns](https://img.shields.io/badge/sink%20patterns-3,450+-blueviolet)](https://github.com/manthanghasadiya/mcpsec)
 [![Semgrep Rules](https://img.shields.io/badge/semgrep%20rules-149-purple)](https://github.com/manthanghasadiya/mcpsec)
 
-[Installation](#installation) • [Quick Start](#quick-start) • [Audit v3](#static-analysis-audit-v3) • [Scanners](#scanners) • [Fuzzing](#fuzz-generators)
+[Installation](#installation) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Audit v3](#static-analysis-audit-v3) • [Scanners](#scanners) • [Fuzzing](#fuzz-generators)
 
 </div>
 
@@ -255,6 +255,14 @@ mcpsec fuzz --stdio "server" --output results.sarif
 ---
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
+
+---
+
+## Documentation
+
+- [Architecture Guide](docs/ARCHITECTURE.md): Internal design, the three engines, evidence model, and protocol contracts.
+- [Developer Guide](docs/DEVELOPING.md): Environment setup, writing scanners and oracles, tests, and contribution rules.
+- [Command Reference](docs/USAGE.md): Complete CLI reference covering flags, targets, and operational modes.
 
 ---
 
