@@ -74,6 +74,10 @@ SCHEMA_REJECTION_PATTERNS = [
     r"type\s+mismatch",
     r"validation\s+error",
     r"does\s+not\s+match\s+(?:the\s+)?(?:expected|required)\s+(?:format|pattern|type)",
+    r"validating\s+\"?arguments\"?",
+    r"has\s+type\s+\"[^\"]+\",\s*want\s+\"[^\"]+\"",
+    r"validating\s+/properties/",
+    r"/properties/\w+:\s*type:",
 ]
 
 

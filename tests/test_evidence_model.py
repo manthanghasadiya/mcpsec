@@ -240,3 +240,32 @@ async def test_confirmed_stays_confirmed_non_keyword_fixture():
     for f in all_findings:
         if f.confidence != "confirmed":
             assert f.severity != Severity.CRITICAL
+
+
+@pytest.mark.asyncio
+async def test_recall_guard_sql_rce_genuine_command_output_confirms_critical():
+    """Recall guard: genuine command output confirms CRITICAL in sql-rce."""
+    scanner = SQLInjectionRCEScanner()
+    severity, evidence = scanner._classify_rce_result(
+        "uid=0(root) gid=0(root)", "rce", "'; SELECT 1;--"
+    )
+    assert severity == Severity.CRITICAL
+    assert "uid=" in evidence
+
+    class MockResult:
+        def __init__(self, text: str):
+            class Block:
+                def __init__(self, t: str):
+                    self.text = t
+            self.content = [Block(text)]
+            self.isError = False
+
+    mock_client = AsyncMock()
+    mock_client.call_tool = AsyncMock(return_value=MockResult("uid=0(root) gid=0(root)"))
+    findings = await scanner._test_rce(mock_client, "exec_tool", "query", "postgres")
+    critical_hits = [
+        f for f in findings if f.severity == Severity.CRITICAL and f.confidence == "confirmed"
+    ]
+    assert len(critical_hits) >= 1
+    assert "[CONFIRMED]" in critical_hits[0].title
+
