@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.8.0] - 2026-11-15
+
+### Added
+- **Evidence Model and Confidence Scoring**: Grounded findings with verifiable proof-of-exploit artifacts, differentiating confirmed vulnerabilities from unconfirmed indicators.
+- **Confirm-by-Effect Oracles**:
+  - SQL injection confirm-by-effect oracle using arithmetic expressions and database dialect error matching.
+  - Deserialization confirm-by-effect oracle using Python pickle and YAML execution markers.
+  - Out-of-band SSRF oracle with built-in HTTP collector.
+  - Computed-canary oracles for code execution, command injection, and template injection.
+  - Sentinel-file path traversal oracle.
+- **Structural SSRF and Widened Oracle Aperture**: Robust URL parsing, metadata endpoint coverage, and multi-protocol handling.
+- **Baseline-Differential Response Analyzer**: Compares probe responses against baseline responses to eliminate static reflection and static error false positives.
+- **Recall Corpus Harness**: Data-driven, target-agnostic harness supporting local target manifests for regression testing without exposing private targets.
+- **Repository and Contribution Hygiene**: Contributor onboarding guides, issue templates, and repository `.gitattributes`.
+
+### Improved
+- **AI Error Surfacing**: Surface AI provider failures and rate limits explicitly instead of silently returning empty output.
+- **MCP Capability Detection**: Capability negotiation now checks key presence directly, deduplicating undeclared capability findings.
+- **Fuzz Log Hygiene**: Fuzz engine and transport logs are now isolated to temporary directories and excluded from the repository.
+
+### Fixed
+- **Safe Tar Extraction**: Enforce `filter="data"` (with fallback) during npm source extraction to prevent archive path traversal attacks.
+- **Schema Validation Guard**: Ensure `sql-rce` scanner never confirms RCE or file-read findings on schema-validation rejections.
+- **Crash Detection**: Detect SIGSEGV and fatal process termination signals accurately across stdio, HTTP, and fuzz engines.
+- **Command Injection Classification**: Ensure execution proof takes precedence over generic block or error patterns.
+- **Canary False-Confirmation Guard**: Verify arithmetic canary values against clean server baselines before confirming.
+- **CLI JSON Import**: Ensure `json` module is cleanly imported in CLI entrypoints.
+
 ## [2.7.3] - 2026-11-01
 
 ### Added
