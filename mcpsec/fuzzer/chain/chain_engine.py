@@ -117,6 +117,7 @@ class ChainFuzzingConfig:
     # Reporting
     verbose: bool = False
     save_all_responses: bool = False  # Save all responses for analysis
+    fuzz_log: str | None = None
 
 
 class ChainEngine:
@@ -242,6 +243,7 @@ class ChainEngine:
             self._transport = StdioFuzzer(
                 command=server_command,
                 timeout=self.config.timeout_per_step,
+                error_log_path=self.config.fuzz_log,
             )
             self._transport.start()
             console.print(f"  Started server: [dim]{server_command}[/dim]")
@@ -252,6 +254,7 @@ class ChainEngine:
                 url=http_url,
                 headers=headers or {},
                 timeout=self.config.timeout_per_step,
+                error_log_path=self.config.fuzz_log,
             )
             # HTTP transport in mcpsec doesn't have an async start() usually, but it connects on demand.
             console.print(f"  Connected to: [dim]{http_url}[/dim]")

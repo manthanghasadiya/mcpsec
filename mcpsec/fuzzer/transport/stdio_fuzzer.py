@@ -1,9 +1,11 @@
-import logging
 import asyncio
 import json
+import logging
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -43,12 +45,16 @@ class StdioFuzzer:
         command: str,
         timeout: float = 5.0,
         debug: bool = False,
-        error_log_path: str = "mcpsec_fuzz_stderr.log",
+        error_log_path: Optional[str] = None,
     ):
         self.command = command
         self.timeout = timeout
         self.debug = debug
-        self.error_log_path = error_log_path
+        self.error_log_path = (
+            error_log_path
+            if error_log_path is not None
+            else os.path.join(tempfile.gettempdir(), f"mcpsec_fuzz_{os.getpid()}.log")
+        )
         self.process: subprocess.Popen | None = None
         self.error_file = None
         self.test_count = 0
@@ -56,6 +62,7 @@ class StdioFuzzer:
         self.timeout_count = 0
         self.stderr_lines: list[str] = []
         self.framing = "crlf"  # Default to content-length framing
+        self._log_opened = False
 
     def start(self):
         """Alias for start_server."""
@@ -83,6 +90,9 @@ class StdioFuzzer:
         cmd = parts[0]
         args = parts[1:]
 
+        if is_windows and len(cmd) >= 2 and cmd[0] in ('"', "'") and cmd[-1] == cmd[0]:
+            cmd = cmd[1:-1]
+
         # Resolve command path (vital for Windows batch files like npx.cmd)
         resolved = shutil.which(cmd)
         if not resolved and is_windows:
@@ -93,7 +103,9 @@ class StdioFuzzer:
 
         # Open error log file to safely redirect massive standard error dumps
         # This prevents 65KB pipe buffer deadlock while preserving the logs
-        self.error_file = open(self.error_log_path, "ab")
+        mode = "ab" if self._log_opened else "wb"
+        self._log_opened = True
+        self.error_file = open(self.error_log_path, mode)
 
         try:
             self.process = subprocess.Popen(

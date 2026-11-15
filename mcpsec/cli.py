@@ -1481,6 +1481,9 @@ def fuzz(
         False, "--chained", help="Use stateful attack chains (discovery & dependency analysis)"
     ),
     format: str = typer.Option("json", "--format", help="Output format: json, sarif"),
+    fuzz_log: Optional[str] = typer.Option(
+        None, "--fuzz-log", help="Path to write fuzzer stderr log"
+    ),
 ):
     """
     🔥 Fuzz an MCP server with malformed protocol messages.
@@ -1520,6 +1523,7 @@ def fuzz(
                 intensity=intensity,
                 use_ai=ai,
                 verbose=debug,  # Map debug to verbose
+                fuzz_log=fuzz_log,
             )
         )
         return
@@ -1533,6 +1537,7 @@ def fuzz(
         intensity=intensity,
         ai=ai,
         headers=parsed_headers,
+        fuzz_log=fuzz_log,
     )
     summary = engine.run(gen_list)
 
@@ -1725,12 +1730,14 @@ async def _chained_fuzz_async(
     use_ai: bool,
     verbose: bool = False,
     output_path: str | None = None,
+    fuzz_log: str | None = None,
 ):
     from mcpsec.fuzzer.chain.chain_engine import ChainEngine, ChainFuzzingConfig
 
     config = ChainFuzzingConfig(
         use_ai=use_ai,
         verbose=verbose,
+        fuzz_log=fuzz_log,
     )
 
     # Map intensity to payload counts
