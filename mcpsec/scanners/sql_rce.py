@@ -777,28 +777,18 @@ class SQLInjectionRCEScanner(BaseScanner):
         # Command output patterns
         r"uid=\d+",
         r"gid=\d+",
-        r"root:",
-        r"www-data:",
-        r"postgres:",
-        r"mysql:",
-        r"AUTHORITY\\",
+        r"root:x:0:0",
+        r"root:x?:0:0:",
+        r"www-data:x?:\d+:\d+:",
+        r"nobody:x?:\d+:\d+:",
         r"NT AUTHORITY",
-        r"Administrator",
-        # File operation success
-        r"COPY \d+",
-        r"successfully",
-        r"created",
-        r"inserted",
-        # PostgreSQL COPY TO PROGRAM success
-        r"COPY 0",
-        r"COPY 1",
-        # File content indicators
+        r"AUTHORITY\\",
         r"/bin/bash",
         r"/bin/sh",
-        r"root:x:0:0",
-        r"nobody:",
         r"\[boot loader\]",  # Windows system.ini
         r"\[extensions\]",  # Windows ini
+        # File operation success
+        r"COPY \d+",
     ]
 
     RCE_PARTIAL_INDICATORS = [
@@ -1418,6 +1408,12 @@ class SQLInjectionRCEScanner(BaseScanner):
         ):
             return None, ""
 
+        # Check for SAFE responses first (JSON-RPC errors, schema validation)
+        from mcpsec.scanners.response_classifier import Verdict, classify_response
+
+        if classify_response(response) == Verdict.SAFE:
+            return None, ""
+
         cleaned = response.replace(payload, "") if payload else response
 
         # 1. Check for explicit error indicators first
@@ -1536,4 +1532,8 @@ class SQLInjectionRCEScanner(BaseScanner):
             ),
             cwe="CWE-89",
         )
+
+
+SqlRceScanner = SQLInjectionRCEScanner
+
 
