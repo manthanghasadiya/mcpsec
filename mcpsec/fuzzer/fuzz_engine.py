@@ -58,6 +58,7 @@ class FuzzEngine:
         intensity: str = "medium",
         ai: bool = False,
         headers: dict | None = None,
+        fuzz_log: str | None = None,
     ):
         self.command = command
         self.timeout = timeout
@@ -67,6 +68,7 @@ class FuzzEngine:
         self.intensity = intensity
         self.ai = ai
         self.headers = headers
+        self.fuzz_log = fuzz_log
         self.results: List[FuzzResult] = []
         self.interesting: List[tuple[FuzzCase, FuzzResult]] = []
         self._discovered_tools: list[dict] = []
@@ -81,9 +83,20 @@ class FuzzEngine:
 
         # 1. Start server and initialize (detect framing)
         if self.command.startswith(("http://", "https://")):
-            fuzzer = HttpFuzzer(self.command, self.timeout, debug=self.debug, headers=self.headers)
+            fuzzer = HttpFuzzer(
+                self.command,
+                self.timeout,
+                debug=self.debug,
+                headers=self.headers,
+                error_log_path=self.fuzz_log,
+            )
         else:
-            fuzzer = StdioFuzzer(self.command, self.timeout, debug=self.debug)
+            fuzzer = StdioFuzzer(
+                self.command,
+                self.timeout,
+                debug=self.debug,
+                error_log_path=self.fuzz_log,
+            )
 
         if self.debug:
             console.print("  [dim]Starting server...[/dim]")

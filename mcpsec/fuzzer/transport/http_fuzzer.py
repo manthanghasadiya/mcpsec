@@ -1,5 +1,7 @@
-import logging
 import json
+import logging
+import os
+import tempfile
 import time
 from typing import Optional
 
@@ -18,7 +20,12 @@ class HttpFuzzer:
     """
 
     def __init__(
-        self, url: str, timeout: float = 5.0, debug: bool = False, headers: Optional[dict] = None
+        self,
+        url: str,
+        timeout: float = 5.0,
+        debug: bool = False,
+        headers: Optional[dict] = None,
+        error_log_path: Optional[str] = None,
     ):
         self.url = url
         self.timeout = timeout
@@ -35,7 +42,11 @@ class HttpFuzzer:
         self.crash_count = 0
         self.timeout_count = 0
         self.framing = "jsonl"  # Default to no framing for HTTP bodies
-        self.error_log_path = "mcpsec_fuzz_http.log"
+        self.error_log_path = (
+            error_log_path
+            if error_log_path is not None
+            else os.path.join(tempfile.gettempdir(), f"mcpsec_fuzz_http_{os.getpid()}.log")
+        )
 
     def start(self):
         """No-op for HTTP."""
