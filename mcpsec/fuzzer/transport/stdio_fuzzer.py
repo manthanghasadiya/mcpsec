@@ -166,6 +166,11 @@ class StdioFuzzer:
         if returncode == 0:
             return False, "graceful_exit"
 
+        # Signal death (Linux/macOS): poll() returns a negative code equal to -signal.
+        # SIGSEGV=-11, SIGABRT=-6, SIGBUS=-7, SIGKILL=-9. Always a real crash.
+        if returncode < 0:
+            return True, f"signal_{-returncode}"
+
         # Non-zero exit = potential crash, check stderr for confirmation
         reason = f"exit_code_{returncode}"
 

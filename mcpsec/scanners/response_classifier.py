@@ -159,6 +159,19 @@ SQLI_CONFIRMED = [
 ]
 
 
+# Unambiguous execution / file-read proof. If any of these is present the
+# attack produced real output, and a co-occurring block phrase does not undo that.
+STRUCTURAL_PROOF_PATTERNS = [
+    r"uid=\d+\(",
+    r"gid=\d+\(",
+    r"root:x?:0:0:",
+    r"\w+:x?:\d+:\d+:[^:]*:/",
+    r"\[boot loader\]",
+    r"\[extensions\]",
+    r"NT AUTHORITY\\",
+]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # PUBLIC API
 # ═══════════════════════════════════════════════════════════════════════════
@@ -174,19 +187,21 @@ def classify_response(response_text: str, raw_result: Any = None) -> Verdict:
         response_text: The extracted text content from the MCP response.
         raw_result: The raw MCP CallToolResult object (for structured parsing).
     """
-    # Step 1: Check for JSON-RPC error codes (structured response)
+    # Hard rejections: the whole response is a rejection, nothing executed.
     if _is_jsonrpc_safe(response_text, raw_result):
         return Verdict.SAFE
-
-    # Step 2: Check for schema/validation rejections
     if _matches_any(response_text, SCHEMA_REJECTION_PATTERNS):
         return Verdict.SAFE
 
-    # Step 3: Check for sandbox/access control blocks
+    # Structural execution proof beats a co-occurring block phrase.
+    if _matches_any(response_text, STRUCTURAL_PROOF_PATTERNS):
+        return Verdict.CONFIRMED
+
+    # Soft block: only suppresses when there is no structural proof.
     if _matches_any(response_text, SANDBOX_BLOCK_PATTERNS):
         return Verdict.SAFE
 
-    return Verdict.NONE  # No classification — let scanner-specific logic decide
+    return Verdict.NONE
 
 
 def classify_cmd_injection(response_text: str, raw_result: Any = None) -> tuple[Verdict, str]:

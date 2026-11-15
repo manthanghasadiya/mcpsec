@@ -81,7 +81,7 @@ async def _fetch_npm(package_name: str) -> str | None:
 
         # Extract
         with tarfile.open(tgz_path, "r:gz") as tar:
-            tar.extractall(path=temp_dir)
+            tar.extractall(path=temp_dir, filter="data")
 
         # npm packages usually extract into a 'package' folder
         extracted_path = Path(temp_dir) / "package"

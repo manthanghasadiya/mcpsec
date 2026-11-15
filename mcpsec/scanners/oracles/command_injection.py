@@ -11,6 +11,7 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 import math
+import re
 import secrets
 from typing import Any, Callable
 
@@ -63,6 +64,33 @@ def build_computed_canary_payloads(a: int | str, b: int | str) -> list[str]:
     return payloads
 
 
+async def _verify_second_canary(
+    call_fn: Callable[..., Any],
+    tool_name: str,
+    param_name: str,
+    base_args: dict[str, Any],
+) -> tuple[bool, int, int, str]:
+    while True:
+        a2 = secrets.randbelow(900_000_000) + 100_000_000
+        b2 = secrets.randbelow(900_000_000) + 100_000_000
+        proof2 = str(a2 + b2)
+        canary_payloads2 = build_computed_canary_payloads(a2, b2)
+        if not any(proof2 in p for p in canary_payloads2):
+            break
+
+    proof2_re = re.compile(rf"(?<!\d){re.escape(proof2)}(?!\d)")
+    for p2 in canary_payloads2:
+        test_args2 = dict(base_args)
+        test_args2[param_name] = p2
+        try:
+            resp2, _ = await _invoke_call_fn(call_fn, tool_name, test_args2)
+        except Exception:
+            continue
+        if proof2_re.search(resp2):
+            return True, a2, b2, proof2
+    return False, a2, b2, proof2
+
+
 async def confirm_command_injection(
     call_fn: Callable[..., Any],
     tool_name: str,
@@ -88,14 +116,14 @@ async def confirm_command_injection(
     # METHOD 1: Arithmetic computed canary expansion
     # ═══════════════════════════════════════════════════════════════
     while True:
-        a = secrets.randbelow(90000) + 10000
-        b = secrets.randbelow(90000) + 10000
+        a = secrets.randbelow(900_000_000) + 100_000_000
+        b = secrets.randbelow(900_000_000) + 100_000_000
         proof = str(a + b)
         canary_payloads = build_computed_canary_payloads(a, b)
         if not any(proof in p for p in canary_payloads):
             break
 
-    assert not any(proof in p for p in canary_payloads)
+    proof_re = re.compile(rf"(?<!\d){re.escape(proof)}(?!\d)")
 
     for payload in canary_payloads:
         test_args = dict(base_args)
@@ -106,13 +134,33 @@ async def confirm_command_injection(
         except Exception:
             continue
 
-        if proof in resp_text:
-            return OracleResult(
-                confirmed=True,
-                method="canary",
-                evidence=f"arithmetic canary: {a} + {b} evaluated to {proof}",
-                payload=payload,
-            )
+        if proof_re.search(resp_text):
+            # Check baseline absence
+            baseline_has_proof = False
+            try:
+                base_resp, _ = await _invoke_call_fn(call_fn, tool_name, dict(base_args))
+                if proof_re.search(base_resp):
+                    baseline_has_proof = True
+            except Exception:
+                pass
+
+            if not baseline_has_proof:
+                verified, a2, b2, proof2 = await _verify_second_canary(
+                    call_fn, tool_name, param_name, base_args
+                )
+                if verified:
+                    return OracleResult(
+                        confirmed=True,
+                        method="canary",
+                        evidence=(
+                            f"arithmetic canary: {a} + {b} evaluated to {proof} "
+                            f"(confirmed twice: {a}+{b}={proof}, {a2}+{b2}={proof2})"
+                        ),
+                        payload=payload,
+                    )
+            # Re-verification failed: do not fall through to a false timing confirmation
+            # off the same coincidence; continue to the timing method as an independent check.
+            break
 
     # ═══════════════════════════════════════════════════════════════
     # METHOD 2: Baseline-aware differential time-based confirmation

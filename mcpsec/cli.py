@@ -11,6 +11,8 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -22,7 +24,8 @@ from rich.table import Table
 
 from mcpsec import __version__
 from mcpsec.ai.llm_client import LLMClient, LLMError
-from mcpsec.models import TransportType
+from mcpsec.models import Severity, TransportType, create_finding
+from mcpsec.scanners.response_classifier import Verdict, classify_response
 from mcpsec.sql_scanner import SQLScanner
 from mcpsec.discovery import discover_mcp_servers, DiscoveredServer, get_server_display_name
 from mcpsec.ui import (
@@ -383,6 +386,10 @@ async def _scan_async(
                                         # console.print(f"  [dim]    Response: {response_text[:100].replace('\n', ' ')}[/dim]")
                                         pass  # Reduce noise if user doesn't want it, but maybe keep for now? User asked for specific logs.
 
+                                    # Shared SAFE guard: do not confirm if server blocked or rejected
+                                    if classify_response(response_text) == Verdict.SAFE:
+                                        continue
+
                                     # Check if success indicator is in response (Fuzzy matching)
                                     is_vulnerable = False
                                     if (
@@ -399,22 +406,17 @@ async def _scan_async(
                                         "ssrf",
                                     ]:
                                         leak_patterns = [
-                                            "root:",
-                                            "uid=",
-                                            "gid=",
-                                            "[boot loader]",
-                                            "etc/passwd",
-                                            "SQLite format 3",
-                                            "PostgreSQL",
-                                            "mysql",
-                                            "Error:",
-                                            "127.0.0.1",
-                                            "localhost",
-                                            "200 OK",
-                                            "index of /",
+                                            r"uid=\d+\(",
+                                            r"gid=\d+\(",
+                                            r"root:x?:0:0:",
+                                            r"\w+:x?:\d+:\d+:[^:]*:",
+                                            r"\[boot loader\]",
+                                            r"\[extensions\]",
+                                            r"SQLite format 3",
+                                            r"NT AUTHORITY",
                                         ]
                                         if any(
-                                            p.lower() in response_text.lower()
+                                            re.search(p, response_text, re.IGNORECASE)
                                             for p in leak_patterns
                                         ):
                                             is_vulnerable = True
@@ -423,20 +425,23 @@ async def _scan_async(
                                             )
 
                                     if is_vulnerable:
-                                        from mcpsec.models import Finding, Severity
-
                                         findings.append(
-                                            Finding(
-                                                severity=Severity.CRITICAL,
+                                            create_finding(
+                                                severity=Severity.HIGH,
+                                                confidence="suspected",
                                                 scanner=f"ai-{category}",
-                                                title=f"AI Exploit: {payload_info.get('description', category)}",
-                                                description=f"AI-generated payload confirmed exploitable.\nPayload: {payload}\nResponse: {response_text[:500]}",
-                                                tool=tool.name,
+                                                title=f"AI payload produced a suspicious response: {payload_info.get('description', category)}",
+                                                description=(
+                                                    "AI-generated payload returned a response matching a leak pattern. "
+                                                    "Not confirmed by an effect oracle, review manually.\n"
+                                                    f"Payload: {payload}\nResponse: {response_text[:500]}"
+                                                ),
+                                                tool_name=tool.name,
                                                 parameter=param,
                                             )
                                         )
                                         console.print(
-                                            f"    [green]✓ CONFIRMED: {category} on {tool.name}[/green]"
+                                            f"    [yellow]⚠ Potential {category} on {tool.name} (suspected)[/yellow]"
                                         )
                                 except TimeoutError:
                                     console.print(
